@@ -8,6 +8,8 @@
  * match the design. Selecting a list row updates the detail panel.
  */
 
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api/client";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
