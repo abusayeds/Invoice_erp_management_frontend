@@ -107,10 +107,10 @@ export const BalanceSheet: React.FC = () => {
     );
   };
 
-  if (!sheet) return <div className="flex-1 bg-[#FAFBFC]" />;
+  if (!sheet) return <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm" />;
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "Double Entry" }, { label: "Balance Sheets" }]}
         current={`Balance Sheet - ${sheet.date}`}

@@ -190,7 +190,7 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
   const [notes, setNotes] = useState(log?.notes ?? "");
   const handleSave = () => { onSave?.({ project, task, notes, hours: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}` }); onClose(); };
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Time Log" : "Edit Time Log"}</h1>
         <div className="flex items-center gap-2">
@@ -400,7 +400,7 @@ export const TimeLogs: React.FC = () => {
       ) : mode === "edit" ? (
         <TimeLogForm mode="edit" log={selected} onClose={() => setMode("view")} onSave={async (d) => { await repo.update("timelogs", selected.id, { project: d.project, task: d.task, hours: d.hours, notes: d.notes }); }} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           {/* detail header */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight">Time Log Details</h1>

@@ -778,7 +778,7 @@ export const ProjectsNew: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -1055,7 +1055,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
   if (!project) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-900">
             Project not found
@@ -1096,7 +1096,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-auto">
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2 sticky top-0 z-10">
         <div className="flex items-center gap-2 text-sm text-gray-500">

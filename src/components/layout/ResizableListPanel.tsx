@@ -71,7 +71,7 @@ export const ResizableListPanel: React.FC<ResizableListPanelProps> = ({
   return (
     <aside
       style={{ width }}
-      className={`relative flex-shrink-0 flex flex-col bg-white border-r border-gray-300 ${className}`}
+      className={`relative flex-shrink-0 flex flex-col my-2 bg-white border-r border-t border-b border-gray-300 shadow-sm overflow-hidden ${className}`}
     >
       {children}
 

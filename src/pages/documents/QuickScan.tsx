@@ -76,7 +76,7 @@ export const QuickScan: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
       {/* Top Header */}
       <div className="bg-white border-b border-gray-300 px-6 py-4">
         <h1 className="text-lg font-semibold text-gray-900">Quick Scan</h1>

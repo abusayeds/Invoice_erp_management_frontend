@@ -323,7 +323,7 @@ export const Companies: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#FAFBFC] overflow-hidden">
+    <div className="flex-1 flex flex-col m-2 bg-white border border-gray-300 shadow-sm overflow-hidden">
       {/* App Settings Modal */}
       {settingsModal.open && (
         <AppSettingsModal

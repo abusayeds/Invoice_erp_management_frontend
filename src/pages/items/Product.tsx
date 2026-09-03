@@ -518,7 +518,7 @@ const ProductForm: React.FC<{ mode: "create" | "edit" | "variation"; product?: P
       </Overlay>
     );
   }
-  return <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">{body}</section>;
+  return <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">{body}</section>;
 };
 
 /* ── Component ──────────────────────────────────────────────────── */
@@ -676,7 +676,7 @@ export const Product: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900">{checked.size} {checked.size === 1 ? "Product" : "Products"} Selected</h2>
           </div>
@@ -686,7 +686,7 @@ export const Product: React.FC = () => {
       ) : mode === "edit" ? (
         <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.update("products", selected.id, { name: d.name, category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); }} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           {/* detail header */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>

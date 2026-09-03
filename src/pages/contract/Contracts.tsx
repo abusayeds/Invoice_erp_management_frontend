@@ -1373,7 +1373,7 @@ const DetailsContract: React.FC<{
     },
   ];
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       <AppHeader
         crumbs={[
           { label: "Dashboard" },
@@ -1438,7 +1438,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
   contract,
   onBack,
 }) => (
-  <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+  <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
     <AppHeader
       crumbs={[
         { label: "Dashboard" },
@@ -1706,7 +1706,7 @@ const ManageContractsList: React.FC<{
   });
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       <AppHeader crumbs={[{ label: "Dashboard" }, { label: "Contracts" }]} />
       <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">

@@ -159,27 +159,27 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   ];
 
   return (
-    <div className="h-14 bg-[#0f172a] border-b border-black/20 flex items-center px-3 sm:px-4 gap-2 sm:gap-3">
+    <div className="h-16 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-3">
       {/* Mobile-only menu toggle */}
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 hover:bg-white/10 rounded transition-colors flex-shrink-0"
+        className="lg:hidden p-2 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
         title="Menu"
       >
-        <Menu className="w-5 h-5 text-white/85" />
+        <Menu className="w-6 h-6 text-gray-700" />
       </button>
 
       {/* Search + orange (+) — fixed width matching the list panel (450px) */}
       <div className="flex items-center gap-2 flex-shrink-0" style={{ width: 450 }}>
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
           <input
             type="text"
             placeholder="Search contact, invoice, estimate..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearch}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white/10 border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 focus:bg-white/15"
+            className="w-full pl-9 pr-4 py-2 text-sm bg-gray-100 border border-gray-200 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-300 focus:bg-white text-base py-2.5"
           />
         </div>
 
@@ -233,19 +233,19 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
 
         {/* Timer pill */}
-        <div className="hidden sm:flex items-center gap-2 pl-2 pr-3 py-1 bg-white/10 border border-white/10 rounded-full">
+        <div className="hidden sm:flex items-center gap-2 pl-2 pr-3 py-1 bg-gray-100 border border-gray-200 rounded-full py-1.5 px-3">
           <button
             onClick={() => setIsTimerRunning((r) => !r)}
-            className="w-6 h-6 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-white hover:bg-gray-200 shadow-sm border border-gray-200 transition-colors"
             title={isTimerRunning ? "Pause timer" : "Start timer"}
           >
             {isTimerRunning ? (
-              <Pause className="w-3 h-3 text-white/85" />
+              <Pause className="w-4 h-4 text-gray-700" />
             ) : (
-              <Play className="w-3 h-3 text-white/85" />
+              <Play className="w-4 h-4 text-gray-700" />
             )}
           </button>
-          <span className="text-sm font-mono text-white/85">00:00:00</span>
+          <span className="text-base font-mono text-gray-700 font-medium">00:00:00</span>
         </div>
 
         {/* Settings */}
@@ -262,10 +262,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               setShowUserMenu(false);
               setShowApps(false);
             }}
-            className="p-1.5 hover:bg-white/10 rounded transition-colors relative"
+            className="p-1.5 hover:bg-gray-100 rounded transition-colors relative"
             title="Notifications"
           >
-            <Bell className="w-5 h-5 text-white/85" />
+            <Bell className="w-6 h-6 text-gray-700" />
             {unreadCount > 0 && (
               <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-medium">
                 {unreadCount}
@@ -340,10 +340,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               setShowNotifications(false);
               setShowUserMenu(false);
             }}
-            className="p-1.5 hover:bg-white/10 rounded transition-colors"
+            className="p-1.5 hover:bg-gray-100 rounded transition-colors"
             title="Apps"
           >
-            <Grid3x3 className="w-5 h-5 text-white/85" />
+            <Grid3x3 className="w-6 h-6 text-gray-700" />
           </button>
           {showApps && (
             <div className="absolute right-0 top-11 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50">
@@ -375,7 +375,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               setShowNotifications(false);
               setShowApps(false);
             }}
-            className="flex items-center gap-1 px-1 py-1 hover:bg-white/10 rounded-full transition-colors"
+            className="flex items-center gap-1 px-1 py-1 hover:bg-gray-100 rounded-full transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
               {initial}

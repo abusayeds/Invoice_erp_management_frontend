@@ -125,7 +125,7 @@ export const Team: React.FC = () => {
   // EMPTY STATE
   if (isEmpty && !showInviteModal) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#FAFBFC]">
+      <div className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-24 h-24 bg-blue-100 rounded-full mb-6">
             <Users className="w-12 h-12 text-blue-600" />
@@ -152,7 +152,7 @@ export const Team: React.FC = () => {
 
   // MAIN CONTENT
   return (
-    <div className="flex-1 flex flex-col bg-[#FAFBFC] overflow-hidden">
+    <div className="flex-1 flex flex-col m-2 bg-white border border-gray-300 shadow-sm overflow-hidden">
       {/* Top Header */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">

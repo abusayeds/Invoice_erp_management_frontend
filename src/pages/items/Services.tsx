@@ -159,7 +159,7 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
   const [settingsOpen, setSettingsOpen] = useState(false);
   const handleSave = () => { onSave?.({ name, sac, qty, unit, rate, tax, note }); onClose(); };
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Service" : "Edit Service"}</h1>
         <div className="flex items-center gap-2">
@@ -333,7 +333,7 @@ export const Services: React.FC = () => {
       ) : mode === "edit" ? (
         <ServiceForm mode="edit" service={selected} onClose={() => setMode("view")} onSave={async (d) => { await repo.update("services", selected.id, { name: d.name, note: d.note, price: parseMoney(d.rate), sac: d.sac, qty: parseMoney(d.qty) || 1, unit: d.unit, taxId: ({ "new test tax": 1, "Test Tax": 2, VAT: 3, GST: 4 } as Record<string, number>)[d.tax] || 2 }); }} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           {/* detail header */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>

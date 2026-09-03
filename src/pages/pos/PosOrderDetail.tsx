@@ -35,7 +35,7 @@ export const PosOrderDetail: React.FC = () => {
   const order = (orders || []).find((o) => o.id === id);
   if (!order) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center text-sm text-gray-500">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex items-center justify-center text-sm text-gray-500">
         {orders === undefined ? "Loading..." : "POS sale not found."}
       </div>
     );
@@ -64,7 +64,7 @@ export const PosOrderDetail: React.FC = () => {
     );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "POS Orders", to: "/pos/orders" }]}
         current="POS Sale Details"

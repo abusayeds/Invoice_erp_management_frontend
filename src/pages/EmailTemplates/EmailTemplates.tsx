@@ -518,7 +518,7 @@ const EditEmailTemplate: React.FC<{
     });
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       {/* Breadcrumb */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -695,7 +695,7 @@ const EmailTemplatesList: React.FC<{ onEdit: (t: EmailTemplate) => void }> = ({
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       {/* Breadcrumb */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">

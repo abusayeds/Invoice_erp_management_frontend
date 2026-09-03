@@ -649,7 +649,7 @@ export const Estimates: React.FC = () => {
       ) : editOpen ? (
         <CreateDocForm key={selectedId} collection="estimates" title="Edit Estimate" party="customers" record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Estimate" : "Estimates"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -658,7 +658,7 @@ export const Estimates: React.FC = () => {
           </div>
         </section>
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <div className="min-w-0">

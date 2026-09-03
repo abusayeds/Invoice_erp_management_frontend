@@ -684,7 +684,7 @@ const ManageTickets: React.FC<{
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       <AppHeader
         breadcrumbs={[
           { label: "Dashboard" },
@@ -921,7 +921,7 @@ const EditReply: React.FC<{
   const [noteText, setNoteText] = useState("");
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       <AppHeader
         breadcrumbs={[
           { label: "Dashboard" },

@@ -698,7 +698,7 @@ export const SalesInvoiceReturns: React.FC = () => {
 
   if (showForm) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
         {/* Breadcrumb */}
         <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -943,7 +943,7 @@ export const SalesInvoiceReturns: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">

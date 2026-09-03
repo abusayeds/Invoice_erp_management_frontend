@@ -620,7 +620,7 @@ const EditCustomer: React.FC<{
   );
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300">
         <h1 className="text-lg font-semibold text-gray-900">{isCreate ? "Create Customer" : "Edit Customer"}</h1>
         <div className="flex items-center gap-2">
@@ -1046,7 +1046,7 @@ export const Customers: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Contact" : "Contacts"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -1071,7 +1071,7 @@ export const Customers: React.FC = () => {
           onSaved={(row) => setSelectedId(row._id)}
         />
       ) : selected ? (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           {/* detail header */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
@@ -1241,7 +1241,7 @@ export const Customers: React.FC = () => {
         </section>
       ) : (
         /* Loading skeleton for right panel */
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           {isLoading ? "Loading…" : "Select a customer"}
         </section>
       )}

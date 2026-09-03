@@ -150,7 +150,7 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
   const custName = customerId ? customers.find((c) => c.id === customerId)?.name || custQuery : custQuery;
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Invoice" : "Create Invoice"}</h1>
         <div className="flex items-center gap-2">

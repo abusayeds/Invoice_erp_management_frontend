@@ -294,7 +294,7 @@ export const DealDetail: React.FC = () => {
 
   if (!deal) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col items-center justify-center gap-3">
         <p className="text-gray-500">Deal not found.</p>
         <button onClick={() => navigate("/crm/deals")} className="px-4 py-2 bg-blue-600 text-white rounded-md">
           Back to Deals
@@ -653,7 +653,7 @@ export const DealDetail: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>

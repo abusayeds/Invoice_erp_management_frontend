@@ -108,7 +108,7 @@ const PayrollDetail: React.FC = () => {
 
   if (payrolls !== undefined && !payroll) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3 text-gray-500">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col items-center justify-center gap-3 text-gray-500">
         <p>Payroll not found.</p>
         <button onClick={() => navigate("/hrm/payslip/payroll")} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm">
           Back to Payrolls
@@ -157,7 +157,7 @@ const PayrollDetail: React.FC = () => {
   const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 whitespace-nowrap";
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }, { label: "Payrolls", to: "/hrm/payslip/payroll" }]}
         current={payroll.title}

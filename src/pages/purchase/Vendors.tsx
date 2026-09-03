@@ -509,7 +509,7 @@ const VendorForm: React.FC<{
   };
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
       {/* form header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300">
         <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
@@ -871,7 +871,7 @@ export const Vendors: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Contact" : "Contacts"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -886,7 +886,7 @@ export const Vendors: React.FC = () => {
       ) : editMode ? (
         <VendorForm title="Edit Vendor" initial={selectedDb} onClose={() => setEditMode(false)} onSaved={(id) => setSelectedId(id)} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           {/* detail header */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>

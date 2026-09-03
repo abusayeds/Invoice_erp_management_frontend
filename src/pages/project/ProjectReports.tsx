@@ -80,7 +80,7 @@ export const ProjectReports: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
@@ -184,7 +184,7 @@ export const ProjectReportDetail: React.FC = () => {
   }, [raw, id]);
 
   if (!project) return (
-    <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center text-gray-500">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex items-center justify-center text-gray-500">
       Project not found. <button onClick={() => navigate("/project/projects-report")} className="ml-2 text-blue-500">Back</button>
     </div>
   );
@@ -204,7 +204,7 @@ export const ProjectReportDetail: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>

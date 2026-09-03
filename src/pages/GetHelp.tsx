@@ -109,7 +109,7 @@ export const GetHelp: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <div className="w-full p-4 sm:p-8">
         {/* Header */}
         <div className="mb-10">

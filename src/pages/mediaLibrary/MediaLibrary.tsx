@@ -671,7 +671,7 @@ export const MediaLibrary: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       {/* Breadcrumb header */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">

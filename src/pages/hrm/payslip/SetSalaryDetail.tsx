@@ -146,7 +146,7 @@ const SetSalaryDetail: React.FC = () => {
 
   if (!employee) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3 text-gray-500">
+      <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col items-center justify-center gap-3 text-gray-500">
         <p>Employee not found.</p>
         <button onClick={() => navigate("/hrm/payslip/set-salary")} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm">
           Back to Set Salary
@@ -247,7 +247,7 @@ const SetSalaryDetail: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }, { label: "Set Salary", to: "/hrm/payslip/set-salary" }]}
         current="View Salary"

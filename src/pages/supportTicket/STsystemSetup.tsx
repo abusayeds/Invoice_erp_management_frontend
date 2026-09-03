@@ -1308,7 +1308,7 @@ export const STsystemSetup: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm flex flex-col overflow-hidden">
       <AppHeader section={current.section} />
 
       {/* Page title */}

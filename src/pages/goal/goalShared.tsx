@@ -57,7 +57,7 @@ export function ListShell({
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex flex-col">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: module }]} current={current} onNavigate={navigate} />
 
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">

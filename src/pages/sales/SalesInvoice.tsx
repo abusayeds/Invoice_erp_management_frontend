@@ -1261,7 +1261,7 @@ export const SalesInvoice: React.FC = () => {
       ) : editOpen ? (
         <CreateInvoiceForm key={selectedId} invoice={dbInvoices.find((i) => i.id === selectedId)} onClose={() => setEditOpen(false)} onSaved={(id) => setSelectedId(id)} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">
               {checked.size} {checked.size === 1 ? "Invoice" : "Invoices"} Selected
@@ -1277,7 +1277,7 @@ export const SalesInvoice: React.FC = () => {
           </div>
         </section>
       ) : (
-      <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+      <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
             <div className="min-w-0">

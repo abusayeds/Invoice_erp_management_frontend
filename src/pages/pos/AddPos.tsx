@@ -174,7 +174,7 @@ export const AddPos: React.FC = () => {
   const inputCls = "px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30";
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex">
+    <div className="flex-1 m-2 bg-white border border-gray-300 shadow-sm overflow-hidden flex">
       {/* ── product side ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* toolbar */}
@@ -501,7 +501,7 @@ export function ReceiptModal({ order, onClose }: { order: PosOrder; onClose: () 
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
-      <div className="bg-[#FAFBFC] rounded-xl border border-gray-200 shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+      <div className="m-2 bg-white border border-gray-300 shadow-sm rounded-xl border border-gray-200 shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-green-600" />

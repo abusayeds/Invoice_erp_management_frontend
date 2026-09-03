@@ -240,7 +240,7 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: number) =
 
   const fc = "w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Payment" : "Add Payment"}</h1>
         <div className="flex items-center gap-2">
@@ -498,7 +498,7 @@ export const PaymentReceived: React.FC = () => {
       ) : editOpen ? (
         <RecordPaymentForm key={selectedId} record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Payment" : "Payments"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -507,7 +507,7 @@ export const PaymentReceived: React.FC = () => {
           </div>
         </section>
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <h1 className="text-base tracking-tight font-semibold text-gray-900 truncate min-w-0">{selected.name}</h1>

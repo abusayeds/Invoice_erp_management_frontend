@@ -467,14 +467,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         className={`
           fixed lg:relative inset-y-0 left-0 z-50
-          h-screen w-72 max-w-[85vw] lg:max-w-none bg-[#1e293b] border-r border-black/20 flex flex-col
+          h-screen w-72 max-w-[85vw] lg:max-w-none flex flex-col
           transition-all duration-300 ease-in-out
           ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
         style={isDesktop ? { width: sidebarWidth } : undefined}
       >
         {/* Logo Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-white/10 bg-[#0f172a]">
+        <div className="h-16 flex-shrink-0 flex items-center justify-between px-4 bg-white border-b border-gray-200">
           {!collapsed && (
             <Link
               to="/"
@@ -486,7 +486,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <img src={Logo} alt="Qayd Logo" />
               </div>
               {/* Logo Text */}
-              <h1 className="text-2xl font-semibold text-white tracking-tight">
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
                 Qayd
               </h1>
             </Link>
@@ -495,11 +495,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {collapsed && (
             <div className="flex items-center justify-center w-full">
               <button
-                className="hidden lg:flex p-1.5 hover:bg-white/10 rounded-md transition-colors"
+                className="hidden lg:flex p-1.5 hover:bg-gray-100 rounded-md transition-colors"
                 onClick={toggleCollapse}
                 title="Expand sidebar"
               >
-                <Menu className="w-4 h-4 text-white/85" />
+                <Menu className="w-5 h-5 text-gray-700" />
               </button>
             </div>
           )}
@@ -508,23 +508,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!collapsed && (
             <>
               <button
-                className="lg:hidden p-1.5 hover:bg-white/10 rounded-md transition-colors"
+                className="lg:hidden p-1.5 hover:bg-gray-100 rounded-md transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <X className="w-4 h-4 text-white/85" />
+                <X className="w-5 h-5 text-gray-700" />
               </button>
               <button
-                className="hidden lg:block p-1.5 hover:bg-white/10 rounded-md transition-colors"
+                className="hidden lg:block p-1.5 hover:bg-gray-100 rounded-md transition-colors"
                 onClick={toggleCollapse}
               >
-                <Menu className="w-4 h-4 text-white/85" />
+                <Menu className="w-5 h-5 text-gray-700" />
               </button>
             </>
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-2 px-2">
+        {/* Menu & Footer Container */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-[#1e293b] my-2 ml-2 border border-black/20 border-r-0 shadow-sm">
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto py-2 px-2 custom-scrollbar">
           <ul className="">
             {visibleItems.map((item) => (
               <li key={item.label}>
@@ -539,7 +541,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ${
                           isParentActive(item.children)
                             ? "bg-blue-600 text-white shadow-sm"
-                            : "text-white/85 hover:bg-white/10 hover:text-white"
+                            : "text-white/85 hover:bg-gray-100 hover:text-white"
                         }
                       `}
                       title={collapsed ? item.label : ""}
@@ -583,7 +585,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 ${
                                   isActive(child.path)
                                     ? "bg-blue-600 text-white font-medium shadow-sm"
-                                    : "text-white/85 hover:bg-white/10 hover:text-white"
+                                    : "text-white/85 hover:bg-gray-100 hover:text-white"
                                 }
                               `}
                             >
@@ -611,7 +613,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ${
                         isActive(item.path)
                           ? "bg-blue-600 text-white font-medium shadow-sm"
-                          : "text-white/85 hover:bg-white/10 hover:text-white"
+                          : "text-white/85 hover:bg-gray-100 hover:text-white"
                       }
                     `}
                     title={collapsed ? item.label : ""}
@@ -634,12 +636,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="border-t border-white/10 p-2">
           <Link
             to="/get-help"
-            className={`w-full flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2 rounded-md  text-white/85 hover:bg-white/10 hover:text-white transition-all duration-150`}
+            className={`w-full flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2 rounded-md  text-white/85 hover:bg-gray-100 hover:text-white transition-all duration-150`}
             title={collapsed ? "Get Help" : ""}
           >
             <HelpCircle className="w-[16px] h-[16px]" strokeWidth={1.8} />
             {!collapsed && <span className="tracking-tight">Get Help</span>}
           </Link>
+        </div>
         </div>
       </div>
     </>

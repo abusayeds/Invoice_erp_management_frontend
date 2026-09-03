@@ -403,7 +403,7 @@ const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, o
   }, []);
   const matches = vendorList.filter((v) => v.toLowerCase().includes(vendorQuery.toLowerCase()));
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       {/* header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">Edit Debit Note</h1>
@@ -702,7 +702,7 @@ export const DebitNotes: React.FC = () => {
         /* Create Debit Note — same full inline form as Create Credit Note */
         <CreateDocForm collection="debitNotes" title="New Debit Note" party="vendors" buy creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+        <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} Debit {checked.size === 1 ? "Note" : "Notes"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -713,7 +713,7 @@ export const DebitNotes: React.FC = () => {
       ) : editMode ? (
         <EditDebitNote dn={selected} onClose={() => setEditMode(false)} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <div className="min-w-0">
