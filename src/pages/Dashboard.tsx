@@ -502,7 +502,7 @@ export const Dashboard: React.FC = () => {
           <div className="p-4">
             {chartType === "bar" ? (
               <>
-                <div ref={scrollRef} className="overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+                <div ref={scrollRef} className="" >
                   <div style={{ minWidth: chartData.length * 46 }}>
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

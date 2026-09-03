@@ -104,7 +104,7 @@ export const Banking: React.FC = () => {
 
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-nowrap items-center gap-2 sm:gap-4 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4" >
             <h2 className="text-lg font-semibold text-gray-900">{showForm ? (isEditing ? "Edit Bank Account" : "Add Bank Account") : "Banking"}</h2>
             {!showForm && (<><h3 className="text-lg font-medium text-gray-700">{selectedAccount.accountName}</h3><span className="text-sm text-gray-500">{selectedAccount.bankName}</span></>)}
           </div>

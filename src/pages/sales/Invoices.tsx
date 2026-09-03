@@ -251,7 +251,7 @@ export const Invoices: React.FC = () => {
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Left: title */}
-          <div className="flex flex-nowrap items-center gap-2 sm:gap-4 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4" >
             <h2 className="text-lg font-semibold text-gray-900">
               {showForm ? (isEditing ? "Edit Invoice" : "New Invoice") : "Invoices"}
             </h2>

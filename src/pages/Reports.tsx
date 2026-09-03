@@ -299,7 +299,7 @@ export const Reports: React.FC = () => {
         </div>
 
         {/* filter pills */}
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-300" >
           <Dropdown trigger={
             <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-500 rounded-full px-3 py-1 whitespace-nowrap">
               <XCircle className="w-3.5 h-3.5" /> Columns: {report.columnsSelected} Selected <ChevronDown className="w-3.5 h-3.5" />

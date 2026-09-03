@@ -1139,7 +1139,7 @@ export const SalesInvoice: React.FC = () => {
         </div>
 
         {/* Toolbar: sort + filter chips */}
-        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-300">
           {/* Sort by: fields + direction */}
           <Dropdown
             trigger={

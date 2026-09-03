@@ -99,7 +99,7 @@ export const MyDocument: React.FC = () => {
         {/* Filters Bar */}
         <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
+            <div className="flex flex-wrap items-center gap-2" >
               <button className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 Today
