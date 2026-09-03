@@ -247,7 +247,7 @@ const FormBuilder: React.FC = () => {
   return (
     <div className="h-full overflow-y-auto custom-scrollbar bg-[#FAFBFC]">
       {/* header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white sticky top-0 z-10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300 bg-white sticky top-0 z-10">
         <div>
           <div className="text-xs text-gray-400">Dashboard <span className="mx-1">›</span> Form Builder <span className="mx-1">›</span> <span className="text-gray-700 font-medium">Create</span></div>
           <h1 className="text-xl font-bold text-gray-900 mt-0.5">Form Builder</h1>

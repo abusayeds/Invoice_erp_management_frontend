@@ -226,7 +226,7 @@ export const Invoices: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       {/* Top Summary Bar */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-6">
             <button className="text-sm font-medium text-gray-900 border-b-2 border-blue-600 pb-2">Summary</button>
@@ -248,10 +248,10 @@ export const Invoices: React.FC = () => {
       </div>
 
       {/* Invoice Header — switches between view-mode actions and form-mode buttons */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Left: title */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-4 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
             <h2 className="text-lg font-semibold text-gray-900">
               {showForm ? (isEditing ? "Edit Invoice" : "New Invoice") : "Invoices"}
             </h2>
@@ -400,7 +400,7 @@ export const Invoices: React.FC = () => {
       </div>
 
       {/* Mobile list toggle */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-2">
+      <div className="lg:hidden bg-white border-b border-gray-300 px-4 py-2">
         <button
           onClick={() => setShowMobileList(!showMobileList)}
           className="flex items-center gap-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md px-3 py-1.5"
@@ -414,7 +414,7 @@ export const Invoices: React.FC = () => {
         {/* Left Sidebar - Invoice List */}
         <div className={`${showMobileList ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-64 bg-white border-r border-gray-200`}>
           {/* Search */}
-          <div className="p-3 border-b border-gray-200">
+          <div className="p-3 border-b border-gray-300">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -428,7 +428,7 @@ export const Invoices: React.FC = () => {
           </div>
 
           {/* Filters */}
-          <div className="p-3 border-b border-gray-200">
+          <div className="p-3 border-b border-gray-300">
             <div className="flex items-center gap-2 text-xs mb-2">
               <span className="text-gray-600">Sort by:</span>
               <select className="px-2 py-1 border border-gray-300 rounded text-gray-700">
@@ -599,7 +599,7 @@ export const Invoices: React.FC = () => {
               {/* Items Table */}
               <div className="mb-6 overflow-x-auto">
                 <table className="w-full text-sm min-w-[540px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-50 border-b border-gray-300">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Sr. No.</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Items</th>
@@ -709,7 +709,7 @@ export const Invoices: React.FC = () => {
             /* ─── INVOICE DETAIL VIEW ─── */
             <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
               {/* Invoice Header Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 pb-4 border-b border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 pb-4 border-b border-gray-300">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Invoice #</label>
                   <p className="text-lg font-semibold text-gray-900">{selectedInvoice.invoiceNumber}</p>
@@ -764,7 +764,7 @@ export const Invoices: React.FC = () => {
                 <div className="flex-1 overflow-x-auto">
                   <table className="w-full text-sm border-collapse min-w-[500px]">
                     <thead>
-                      <tr className="border-b border-gray-200">
+                      <tr className="border-b border-gray-300">
                         <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Sr.No</th>
                         <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Items</th>
                         <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Rate</th>
@@ -836,7 +836,7 @@ export const Invoices: React.FC = () => {
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">Add Payment</h2>
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
@@ -906,7 +906,7 @@ export const Invoices: React.FC = () => {
       {showSignatureModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">Customer Signature</h2>
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowSignatureModal(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
@@ -954,7 +954,7 @@ export const Invoices: React.FC = () => {
       {showInvoicePreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <div className="flex items-center gap-3">
                 <button onClick={() => setShowInvoicePreview(false)} className="p-2 hover:bg-gray-100 rounded-md">
                   <X className="w-5 h-5 text-gray-600" />
@@ -1021,7 +1021,7 @@ export const Invoices: React.FC = () => {
                     </thead>
                     <tbody>
                       {selectedInvoice.items.map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-200">
+                        <tr key={idx} className="border-b border-gray-300">
                           <td className="py-3 px-3"><div className="font-semibold">{idx + 1} {item.item}</div></td>
                           <td className="py-3 px-3">{item.quantity}</td>
                           <td className="py-3 px-3 text-right">${item.rate.toFixed(2)}</td>

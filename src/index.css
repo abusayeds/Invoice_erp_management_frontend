@@ -454,6 +454,26 @@ textarea:not(.keep-box, table textarea) {
     background: var(--color-base-400);
   }
 
+  /* Hover Scrollbar (Hidden by default, small 4px, visible on hover) */
+  .hover-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .hover-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .hover-scrollbar::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 100px;
+    transition: background 0.2s;
+  }
+  .hover-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: var(--color-base-300);
+  }
+  .hover-scrollbar:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--color-base-400);
+  }
+
   /* Premium Shadow */
   .shadow-premium {
     box-shadow:

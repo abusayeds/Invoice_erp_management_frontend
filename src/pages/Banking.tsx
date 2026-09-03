@@ -92,7 +92,7 @@ export const Banking: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-6"><button className="text-sm font-medium text-gray-900 border-b-2 border-blue-600 pb-2">Summary</button></div>
           <div className="flex items-center gap-3">
@@ -102,9 +102,9 @@ export const Banking: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-4 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
             <h2 className="text-lg font-semibold text-gray-900">{showForm ? (isEditing ? "Edit Bank Account" : "Add Bank Account") : "Banking"}</h2>
             {!showForm && (<><h3 className="text-lg font-medium text-gray-700">{selectedAccount.accountName}</h3><span className="text-sm text-gray-500">{selectedAccount.bankName}</span></>)}
           </div>
@@ -130,7 +130,7 @@ export const Banking: React.FC = () => {
         </div>
       </div>
 
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-2">
+      <div className="lg:hidden bg-white border-b border-gray-300 px-4 py-2">
         <button onClick={() => setShowMobileList(!showMobileList)} className="flex items-center gap-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md px-3 py-1.5">
           {showMobileList ? "← Back to Details" : "☰ View Accounts"}
         </button>
@@ -138,7 +138,7 @@ export const Banking: React.FC = () => {
 
       <div className="flex-1 overflow-hidden flex">
         <div className={`${showMobileList ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-64 bg-white border-r border-gray-200`}>
-          <div className="p-3 border-b border-gray-200">
+          <div className="p-3 border-b border-gray-300">
             <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" placeholder="Search accounts" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600" /></div>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -190,7 +190,7 @@ export const Banking: React.FC = () => {
             </div>
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <div className="flex items-start gap-4 mb-6 pb-4 border-b border-gray-200">
+              <div className="flex items-start gap-4 mb-6 pb-4 border-b border-gray-300">
                 <div className="w-14 h-14 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Building2 className="w-8 h-8 text-blue-600" />
                 </div>

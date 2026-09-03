@@ -178,7 +178,7 @@ export const AddPos: React.FC = () => {
       {/* ── product side ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* toolbar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 flex-wrap">
+        <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center gap-3 flex-wrap">
           <button onClick={() => navigate("/")} title="Home" className="p-2 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-50">
             <Home className="w-4 h-4" />
           </button>
@@ -210,7 +210,7 @@ export const AddPos: React.FC = () => {
         </div>
 
         {/* category chips */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2 flex-wrap">
+        <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center gap-2 flex-wrap">
           {categories.map((c) => (
             <button
               key={c}
@@ -396,7 +396,7 @@ export const AddPos: React.FC = () => {
 
               <div className="mt-5 border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-50 border-b border-gray-300">
                     <tr>
                       {["Product", "Qty", "Price", "Taxes", "Tax Amount", "Total"].map((h) => (
                         <th key={h} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>

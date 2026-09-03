@@ -654,7 +654,7 @@ export const DealDetail: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
           <span>›</span>
@@ -666,7 +666,7 @@ export const DealDetail: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">Deal Details</h1>
         <button onClick={() => navigate("/crm/deals")} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
           <ArrowLeft className="w-4 h-4" /> Back

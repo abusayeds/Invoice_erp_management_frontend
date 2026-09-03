@@ -753,7 +753,7 @@ const EditRole: React.FC<EditRoleProps> = ({
           ) : (
             <>
               {/* Tabs (one per add-on label) */}
-              <div className="mt-6 border-b border-gray-200 overflow-x-auto">
+              <div className="mt-6 border-b border-gray-300 overflow-x-auto">
                 <div className="flex gap-1 min-w-max">
                   {addOns.map((addOn) => (
                     <button

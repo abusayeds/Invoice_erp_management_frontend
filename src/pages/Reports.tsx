@@ -251,10 +251,10 @@ export const Reports: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ REPORT NAV ════════ */}
       <ResizableListPanel>
-        <div className="h-12 flex items-center px-4 border-b border-gray-200">
+        <div className="h-12 flex items-center px-4 border-b border-gray-300">
           <h2 className="text-base font-semibold text-gray-900">Reports</h2>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -263,13 +263,13 @@ export const Reports: React.FC = () => {
             return (
               <div key={cat.title}>
                 <button onClick={() => setOpen((o) => ({ ...o, [cat.title]: !o[cat.title] }))}
-                  className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-200 hover:bg-gray-50">
+                  className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-300 hover:bg-gray-50">
                   <span className="text-sm font-bold text-gray-900">{cat.title}</span>
                   {isOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
                 </button>
                 {isOpen && cat.items.map((it) => (
                   <button key={it} onClick={() => setActive(it)}
-                    className={`w-full text-left px-5 py-3 border-b border-gray-200 text-sm ${it === active ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{it}</button>
+                    className={`w-full text-left px-5 py-3 border-b border-gray-300 text-sm ${it === active ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{it}</button>
                 ))}
               </div>
             );
@@ -280,7 +280,7 @@ export const Reports: React.FC = () => {
       {/* ════════ REPORT VIEW ════════ */}
       <section className="flex-1 flex flex-col overflow-hidden">
         {/* title bar */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300">
           <div className="flex items-center gap-3">
             <AlignLeft className="w-5 h-5 text-gray-500" />
             <h1 className="text-lg font-semibold text-gray-900">{report.name}</h1>
@@ -299,7 +299,7 @@ export const Reports: React.FC = () => {
         </div>
 
         {/* filter pills */}
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-200 overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
           <Dropdown trigger={
             <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-500 rounded-full px-3 py-1 whitespace-nowrap">
               <XCircle className="w-3.5 h-3.5" /> Columns: {report.columnsSelected} Selected <ChevronDown className="w-3.5 h-3.5" />
@@ -322,7 +322,7 @@ export const Reports: React.FC = () => {
         <div className="flex-1 overflow-auto custom-scrollbar">
           <table className="w-full text-sm whitespace-nowrap">
             <thead className="sticky top-0 bg-gray-50 z-10">
-              <tr className="border-b border-gray-200">
+              <tr className="border-b border-gray-300">
                 {report.cols.map((c) => (
                   <th key={c.label} className={`px-5 py-3 text-xs font-bold text-gray-700 ${c.right ? "text-right" : "text-left"}`}>{c.label}</th>
                 ))}
@@ -330,7 +330,7 @@ export const Reports: React.FC = () => {
             </thead>
             <tbody>
               {report.rows.map((r, i) => (
-                <tr key={i} className="border-b border-gray-200 hover:bg-gray-50">
+                <tr key={i} className="border-b border-gray-300 hover:bg-gray-50">
                   {r.map((cell, j) => (
                     <td key={j} className={`px-5 py-3 ${report.cols[j].right ? "text-right text-gray-900" : "text-left"} ${j === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{cell}</td>
                   ))}

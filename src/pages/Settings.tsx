@@ -206,7 +206,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="flex gap-4 mb-4 border-b border-gray-200">
+          <div className="flex gap-4 mb-4 border-b border-gray-300">
             <button className="pb-2 text-sm font-medium text-gray-900 border-b-2 border-blue-600">
               All Category
             </button>
@@ -629,7 +629,7 @@ export const SettingsPage: React.FC = () => {
 
       <div className="border border-gray-200 rounded-lg overflow-x-auto mb-6">
         <table className="w-full min-w-[700px]">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               {["Item Name", "SKU", "No of Labels", "Header", "Line 1", "Line 2", "Action"].map(
                 (h) => (
@@ -774,7 +774,7 @@ export const SettingsPage: React.FC = () => {
 
           <div className="border border-gray-200 rounded-lg overflow-x-auto">
             <table className="w-full min-w-[500px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   {["Products", "Quantity", "Price"].map((h) => (
                     <th
@@ -974,7 +974,7 @@ export const SettingsPage: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">
             Dashboard
@@ -985,7 +985,7 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
       </div>
 

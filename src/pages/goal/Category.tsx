@@ -97,7 +97,7 @@ export const Category: React.FC = () => {
         filterLabel="Is Active"
       >
         <table className="w-full text-sm min-w-[800px]">
-          <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+          <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                 <button onClick={() => toggleSort("name")} className="flex items-center gap-1 hover:text-gray-900">

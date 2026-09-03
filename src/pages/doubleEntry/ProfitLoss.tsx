@@ -73,7 +73,7 @@ export const ProfitLoss: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "Double Entry" }]} current="Profit & Loss" onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">Profit & Loss Statement</h2>
       </div>
 

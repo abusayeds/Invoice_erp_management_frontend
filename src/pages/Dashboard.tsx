@@ -282,7 +282,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-auto">
       {/* ── Page heading row ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-12 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-12 bg-white border-b border-gray-300">
         <h1 className="text-lg font-normal text-gray-900">Summary</h1>
         <div className="flex items-center gap-1">
           {/* Period dropdown */}
@@ -431,7 +431,7 @@ export const Dashboard: React.FC = () => {
         {/* ── Chart card ─────────────────────────────────────────── */}
         <div className="bg-white rounded-lg border border-gray-200">
           {/* toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-300">
             <CaretMenu
               value={metric}
               onChange={setMetric}
@@ -502,7 +502,7 @@ export const Dashboard: React.FC = () => {
           <div className="p-4">
             {chartType === "bar" ? (
               <>
-                <div ref={scrollRef} className="overflow-x-auto custom-scrollbar">
+                <div ref={scrollRef} className="overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
                   <div style={{ minWidth: chartData.length * 46 }}>
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

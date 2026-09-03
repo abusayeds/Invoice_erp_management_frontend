@@ -376,7 +376,7 @@ export const Companies: React.FC = () => {
       )}
 
       {/* Mobile Toggle */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-2">
+      <div className="lg:hidden bg-white border-b border-gray-300 px-4 py-2">
         <button
           onClick={() => setShowMobileList(!showMobileList)}
           className="flex items-center gap-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md px-3 py-1.5"
@@ -391,7 +391,7 @@ export const Companies: React.FC = () => {
           className={`${showMobileList ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-72 bg-white border-r border-gray-200`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-300">
             <h2 className="text-base font-semibold text-gray-900">Companies</h2>
             <button
               onClick={handleAddCompany}
@@ -456,7 +456,7 @@ export const Companies: React.FC = () => {
           {activeTab === "info" && selectedCompany ? (
             <>
               {/* Info Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
                 <h2 className="text-base font-semibold text-gray-900">
                   {selectedCompany.businessName}
                 </h2>
@@ -484,7 +484,7 @@ export const Companies: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Business Name</p>
                     <p className="text-sm text-gray-900">{selectedCompany.businessName}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                   <div className="flex justify-end">
                     <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold">
@@ -498,19 +498,19 @@ export const Companies: React.FC = () => {
                   <a href={`mailto:${selectedCompany.email}`} className="text-sm text-blue-600 hover:underline">
                     {selectedCompany.email || <span className="text-gray-400">—</span>}
                   </a>
-                  <div className="border-b border-gray-200 mt-2" />
+                  <div className="border-b border-gray-300 mt-2" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Phone</p>
                     <p className="text-sm text-gray-900">{selectedCompany.phone || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Mobile</p>
                     <p className="text-sm text-gray-900">{selectedCompany.mobile || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                 </div>
 
@@ -518,12 +518,12 @@ export const Companies: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Fax</p>
                     <p className="text-sm text-gray-900">{selectedCompany.fax || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Website</p>
                     <p className="text-sm text-gray-900">{selectedCompany.website || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                 </div>
 
@@ -535,7 +535,7 @@ export const Companies: React.FC = () => {
                     <p className="text-sm text-gray-900 whitespace-pre-line">
                       {selectedCompany.billingAddress || <span className="text-gray-400">—</span>}
                     </p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                 </div>
 
@@ -546,12 +546,12 @@ export const Companies: React.FC = () => {
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Reg No</p>
                       <p className="text-sm text-gray-900">{selectedCompany.regNo || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
+                      <div className="border-b border-gray-300 mt-2" />
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 mb-1">VAT</p>
                       <p className="text-sm text-gray-900">{selectedCompany.vat || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
+                      <div className="border-b border-gray-300 mt-2" />
                     </div>
                   </div>
 
@@ -559,19 +559,19 @@ export const Companies: React.FC = () => {
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Payment Terms (Sales)</p>
                       <p className="text-sm text-gray-900">{selectedCompany.paymentTermsSales || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
+                      <div className="border-b border-gray-300 mt-2" />
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Payment Terms (Purchases)</p>
                       <p className="text-sm text-gray-900">{selectedCompany.paymentTermsPurchase || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
+                      <div className="border-b border-gray-300 mt-2" />
                     </div>
                   </div>
 
                   <div className="mt-4">
                     <p className="text-xs text-gray-500 mb-1">Start Fiscal Year</p>
                     <p className="text-sm text-gray-900">{selectedCompany.startFiscalYear}</p>
-                    <div className="border-b border-gray-200 mt-2" />
+                    <div className="border-b border-gray-300 mt-2" />
                   </div>
                 </div>
 
@@ -612,7 +612,7 @@ export const Companies: React.FC = () => {
           ) : (
             /* Add / Edit Form */
             <>
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
                 <h2 className="text-base font-semibold text-gray-900">
                   {isEditing ? "Edit Company" : "Add Company"}
                 </h2>

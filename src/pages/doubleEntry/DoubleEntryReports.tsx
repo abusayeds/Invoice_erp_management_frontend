@@ -144,7 +144,7 @@ export const DoubleEntryReports: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "Double Entry" }]} current="Reports" onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">Reports</h2>
       </div>
 
@@ -208,7 +208,7 @@ export const DoubleEntryReports: React.FC = () => {
           <div className="overflow-x-auto border-t border-gray-100">
             {tab === "Journal Entry" && (
               <table className="w-full min-w-[980px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="w-10" />
                     <th className={th}>Journal #</th>
@@ -233,7 +233,7 @@ export const DoubleEntryReports: React.FC = () => {
 
             {(tab === "General Ledger" || tab === "Account Balance") && (
               <table className="w-full min-w-[760px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className={th}>Account Code</th>
                     <th className={th}>Account Name</th>
@@ -268,7 +268,7 @@ export const DoubleEntryReports: React.FC = () => {
 
             {tab === "Account Statement" && (
               <table className="w-full min-w-[900px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className={th}>Date</th>
                     <th className={th}>Account</th>
@@ -299,7 +299,7 @@ export const DoubleEntryReports: React.FC = () => {
 
             {tab === "Cash Flow" && (
               <table className="w-full min-w-[900px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className={th}>Date</th>
                     <th className={th}>Account</th>
@@ -334,7 +334,7 @@ export const DoubleEntryReports: React.FC = () => {
 
             {tab === "Expense Report" && (
               <table className="w-full min-w-[760px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className={th}>Journal #</th>
                     <th className={th}>Date</th>
@@ -401,7 +401,7 @@ function JournalRow({ entry, open, onToggle }: { entry: JournalEntry; open: bool
         <tr>
           <td colSpan={8} className="bg-gray-50/70 px-6 py-4">
             <table className="w-full text-sm bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   <th className={th}>Account Code</th>
                   <th className={th}>Account Name</th>

@@ -440,7 +440,7 @@ const MediaDetailsModal: React.FC<{
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-300 flex-shrink-0">
           <div className="flex items-start gap-3">
             <ImageIcon className="w-5 h-5 text-gray-600 mt-0.5" />
             <div>
@@ -579,7 +579,7 @@ const FolderModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
           <h2 className="text-base font-semibold text-gray-900">
             {mode === "add" ? "New Folder" : "Edit Folder"}
           </h2>
@@ -673,7 +673,7 @@ export const MediaLibrary: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
       {/* Breadcrumb header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
           <span className="text-gray-400">›</span>
@@ -690,7 +690,7 @@ export const MediaLibrary: React.FC = () => {
       </div>
 
       {/* Page title + Upload button */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Manage Media Library
         </h1>

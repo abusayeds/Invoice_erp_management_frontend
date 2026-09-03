@@ -1,17 +1,21 @@
 /**
  * File: src/pages/sales/Customers.tsx
- * Customer page — master/detail layout matching the reference design.
- * Left: customer list (search, sort, filter chips, selection mode).
+ * Customer page — master/detail layout.
+ * Left: customer list (search, sort, filter chips, selection mode, pagination).
  * Right: detail with Overview / Details / Settings tabs + action icons
  *        (edit, Add Payment, Statement, more) and their modals.
- * Backend not wired (per request) — data is hardcoded to match the design.
+ *
+ * ✅ Fully connected to backend via /api/v1/customers (REST).
+ * ✅ Server-side: searchTerm, sort, pagination, isArchive filter.
+ * ✅ No local Dexie reads/writes for the customer entity.
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useCollection, repo, downloadDocPdf } from "@/lib/db";
+import { downloadDocPdf } from "@/lib/db";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Plus,
@@ -57,16 +61,31 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import {
+  fetchCustomers,
+  fetchCustomer,
+  createCustomer,
+  updateCustomer,
+  archiveCustomer,
+  archiveCustomers,
+  deleteCustomer,
+  deleteCustomers,
+  mergeCustomers,
+  backendToRow,
+  uiSortToBackend,
+  createdOnToRange,
+  type CustomerFormData,
+  type TCustomerRow,
+} from "@/services/customersApi";
+import type { TBackendParty } from "@/services/customerTypes";
 
-/* ── Data ──────────────────────────────────────────────────────── */
-interface Customer {
-  id: number;
-  name: string;
-  contact: string;
-  amount: number;
-}
-
-// Customers now come live from the shared datastore (see component below).
+/* ── Constants ─────────────────────────────────────────────────────── */
+const sortFields = ["Name", "First Name", "Last Name", "Created On", "Outstanding", "Total", "Due", "Paid"];
+const createdOptions = ["All", "Today", "This Week", "This Month", "This Year"];
+const activityFilters = ["All", "Created", "Updated", "Archived", "Draft", "Sent", "Invoiced"];
+const PAYMENT_TERMS = ["Default Company", "Net on receipt", "Net 7", "Net 10", "Net 15", "Net 30", "Net 60"];
+const CURRENCIES = ["$ USD", "৳ BDT", "€ EUR", "£ GBP", "₹ INR"];
+const PAGE_SIZE = 20;
 
 const chartData = [
   { name: "Jan '26", Sales: 0, Overdue: 0, Paid: 0 },
@@ -77,15 +96,61 @@ const chartData = [
   { name: "Jun '26", Sales: 0, Overdue: 0, Paid: 0 },
 ];
 
-const sortFields = ["Name", "First Name", "Last Name", "Created On", "Outstanding", "Total", "Due", "Paid"];
-const createdOptions = ["All", "Today", "This Week", "This Month", "This Year"];
-const activityFilters = ["All", "Created", "Updated", "Archived", "Draft", "Sent", "Invoiced"];
-
-/* ── Helpers ───────────────────────────────────────────────────── */
+/* ── Helpers ───────────────────────────────────────────────────────── */
 const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/* ── Outside-click dropdown ────────────────────────────────────── */
+/** Convert full TBackendParty doc → UI form initial state */
+function docToForm(doc: TBackendParty): CustomerFormData {
+  const p = doc.businessProfile ?? {};
+  const billing = p.billing_address ?? {};
+  const shipping = p.shipping_address ?? {};
+  const [firstName = "", ...lastParts] = (doc.name ?? "").split(" ");
+  return {
+    name: p.companyName ?? "",
+    firstName,
+    lastName: lastParts.join(" "),
+    email: doc.email ?? "",
+    phone: p.business_phone ?? "",
+    mobile: doc.phone ?? "",
+    fax: p.fax ?? "",
+    homePhone: p.home_phone ?? "",
+    regNo: p.registration_number ?? "",
+    taxId: p.tax_number ?? "",
+    birthday: p.birthday ? String(p.birthday).slice(0, 10) : "",
+    anniversary: p.anniversary ? String(p.anniversary).slice(0, 10) : "",
+    bank: p.bank_details ?? "",
+    street1: billing.address_line_1 ?? "",
+    street2: billing.address_line_2 ?? "",
+    zip: billing.zip_code ?? "",
+    city: billing.city ?? "",
+    state: billing.state ?? "",
+    country: billing.country ?? "",
+    sameAsBilling: p.same_as_billing ?? false,
+    shipStreet1: shipping.address_line_1 ?? "",
+    shipStreet2: shipping.address_line_2 ?? "",
+    shipZip: shipping.zip_code ?? "",
+    shipCity: shipping.city ?? "",
+    shipState: shipping.state ?? "",
+    shipCountry: shipping.country ?? "",
+    currency: doc.currency ?? "$ USD",
+    defaultTaxService: typeof p.default_tax_service_id === "object"
+      ? `${(p.default_tax_service_id as any).name ?? ""} (${(p.default_tax_service_id as any).rate ?? ""}%)`
+      : "None",
+    defaultTaxProduct: typeof p.default_tax_product_id === "object"
+      ? `${(p.default_tax_product_id as any).name ?? ""} (${(p.default_tax_product_id as any).rate ?? ""}%)`
+      : "None",
+    hourlyRate: p.hourly_rate != null ? String(p.hourly_rate) : "",
+    paymentTerms: p.payment_terms ?? "Default Company",
+    openingBalance: p.opening_balance != null ? String(p.opening_balance) : "",
+    openingBalanceDate: p.opening_balance_date ? String(p.opening_balance_date).slice(0, 10) : "",
+    notes: p.notes ?? "",
+    paymentReminder: p.payment_reminder !== false,
+    isLoginRequired: p.is_login_required ?? false,
+  };
+}
+
+/* ── Outside-click dropdown ────────────────────────────────────────── */
 const Dropdown: React.FC<{
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
@@ -113,7 +178,7 @@ const Dropdown: React.FC<{
   );
 };
 
-/* ── Detail "more" menu (Archive / Duplicate ▸ / Trash) ────────── */
+/* ── Detail "more" menu ────────────────────────────────────────────── */
 const DetailMoreMenu: React.FC<{
   close: () => void;
   onArchive: () => void;
@@ -148,7 +213,7 @@ const DetailMoreMenu: React.FC<{
   );
 };
 
-/* ── Modal shell ───────────────────────────────────────────────── */
+/* ── Modal shell ───────────────────────────────────────────────────── */
 const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({ onClose, children }) => {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -162,11 +227,11 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
   );
 };
 
-/* ── Add Payment modal ─────────────────────────────────────────── */
+/* ── Add Payment modal ─────────────────────────────────────────────── */
 const PaymentModal: React.FC<{ onClose: () => void; customer: string }> = ({ onClose, customer }) => (
   <Overlay onClose={onClose}>
     <div className="w-full max-w-lg my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
         <h3 className="text-base font-semibold text-gray-900">Add Payment</h3>
         <div className="flex items-center gap-2">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -195,7 +260,7 @@ const PaymentModal: React.FC<{ onClose: () => void; customer: string }> = ({ onC
           <label className="text-xs text-gray-500">Amount</label>
           <div className="flex items-center gap-2 mt-1">
             <button className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap">Full Payment</button>
-            <input defaultValue="6201.52" className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
+            <input defaultValue="0.00" className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
           </div>
         </div>
         <div>
@@ -224,11 +289,11 @@ const PaymentModal: React.FC<{ onClose: () => void; customer: string }> = ({ onC
   </Overlay>
 );
 
-/* ── Statement config modal ────────────────────────────────────── */
+/* ── Statement config modal ────────────────────────────────────────── */
 const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ onClose, onGo }) => (
   <Overlay onClose={onClose}>
     <div className="w-full max-w-md my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
         <h3 className="text-base font-semibold text-gray-900">Statement</h3>
         <div className="flex items-center gap-2">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -260,7 +325,7 @@ const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ o
   </Overlay>
 );
 
-/* ── Statement preview (settings-driven live document) ─────────── */
+/* ── Statement preview ─────────────────────────────────────────────── */
 const StatementPreview: React.FC<{
   onClose: () => void;
   name: string;
@@ -270,9 +335,6 @@ const StatementPreview: React.FC<{
 }> = ({ onClose, name, partyId, onOpenSettings, onDownload }) => {
   const settings = usePdfSettings("statement", "normal");
   const printRef = useRef<HTMLDivElement>(null);
-
-  /** Browser print dialog — prints from a connected printer, or offers
-   *  "Save as PDF" when no printer is available (native dialog behaviour). */
   const print = () => {
     const html = printRef.current?.innerHTML || "";
     const w = window.open("", "_blank", "width=900,height=1000");
@@ -282,7 +344,6 @@ const StatementPreview: React.FC<{
     w.focus();
     setTimeout(() => { w.print(); w.onafterprint = () => w.close(); }, 300);
   };
-
   const actions: { icon: React.ElementType; title: string; onClick?: () => void }[] = [
     { icon: SlidersHorizontal, title: "PDF settings", onClick: onOpenSettings },
     { icon: Download, title: "Download", onClick: onDownload },
@@ -290,7 +351,6 @@ const StatementPreview: React.FC<{
     { icon: Mail, title: "Email" },
     { icon: MessageCircle, title: "WhatsApp" },
   ];
-
   return (
     <Overlay onClose={onClose}>
       <div className="w-full max-w-3xl my-6 rounded-lg overflow-hidden shadow-2xl">
@@ -311,13 +371,13 @@ const StatementPreview: React.FC<{
   );
 };
 
-/* ── Merge Customers modal (reference flow) ────────────────────── */
+/* ── Merge Customers modal ─────────────────────────────────────────── */
 const MergeCustomersModal: React.FC<{
-  customers: { id: number; name: string; contact: string }[];
+  customers: { _id: string; name: string; contact: string }[];
   onClose: () => void;
-  onMerge: (targetId: number) => void;
+  onMerge: (targetId: string) => void;
 }> = ({ customers, onClose, onMerge }) => {
-  const [targetId, setTargetId] = useState<number | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(null);
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", h);
@@ -326,7 +386,7 @@ const MergeCustomersModal: React.FC<{
   return (
     <div className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4" onMouseDown={onClose}>
       <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-xl bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900">Merge Customers</h3>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -341,9 +401,9 @@ const MergeCustomersModal: React.FC<{
         </div>
         <div className="divide-y divide-gray-200 max-h-[50vh] overflow-y-auto custom-scrollbar">
           {customers.map((c) => (
-            <button key={c.id} onClick={() => setTargetId(c.id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50">
-              <span className={`w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center ${targetId === c.id ? "border-blue-600" : "border-gray-400"}`}>
-                {targetId === c.id && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+            <button key={c._id} onClick={() => setTargetId(c._id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50">
+              <span className={`w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center ${targetId === c._id ? "border-blue-600" : "border-gray-400"}`}>
+                {targetId === c._id && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-gray-900 truncate">{c.name}</span>
@@ -360,14 +420,14 @@ const MergeCustomersModal: React.FC<{
   );
 };
 
-/* ── Toggle ────────────────────────────────────────────────────── */
+/* ── Toggle ────────────────────────────────────────────────────────── */
 const Toggle: React.FC<{ on: boolean; onChange: () => void }> = ({ on, onChange }) => (
   <button onClick={onChange} className={`w-9 h-5 rounded-full transition-colors relative ${on ? "bg-blue-600" : "bg-gray-300"}`}>
     <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
   </button>
 );
 
-/* ── Calendar date-picker popover (matches the reference) ──────── */
+/* ── Calendar date-picker popover ──────────────────────────────────── */
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const CalendarPopover: React.FC<{ value: string; onPick: (v: string) => void; onClose: () => void }> = ({ value, onPick, onClose }) => {
@@ -412,7 +472,6 @@ const CalendarPopover: React.FC<{ value: string; onPick: (v: string) => void; on
   );
 };
 
-/** Input field with a calendar icon that opens the date-picker popover. */
 const DateField: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -430,7 +489,7 @@ const DateField: React.FC<{ label: string; value: string; onChange: (v: string) 
   );
 };
 
-/* ── Rich text editor (Bank Details — B / I / U, color, size) ──── */
+/* ── Rich text editor ──────────────────────────────────────────────── */
 const RichTextEditor: React.FC<{ value: string; onChange: (html: string) => void; placeholder?: string }> = ({ value, onChange, placeholder }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [color, setColor] = useState("#000000");
@@ -441,7 +500,7 @@ const RichTextEditor: React.FC<{ value: string; onChange: (html: string) => void
   const exec = (cmd: string, val?: string) => { ref.current?.focus(); document.execCommand(cmd, false, val); onChange(ref.current?.innerHTML || ""); };
   return (
     <div className="border border-gray-300 rounded-md overflow-hidden">
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 bg-gray-50">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-300 bg-gray-50">
         {([["bold", Bold], ["italic", Italic], ["underline", Underline]] as const).map(([cmd, Ic]) => (
           <button key={cmd} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec(cmd)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-700"><Ic className="w-4 h-4" /></button>
         ))}
@@ -464,7 +523,7 @@ const RichTextEditor: React.FC<{ value: string; onChange: (html: string) => void
   );
 };
 
-/* ── Edit Customer form (inline, replaces detail; persists to datastore) ── */
+/* ── Edit Customer form ────────────────────────────────────────────── */
 const editFieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
 const EditField: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; icon?: React.ReactNode }> = ({ label, value, onChange, placeholder, icon }) => (
   <div className="relative fl-wrap">
@@ -476,7 +535,6 @@ const EditField: React.FC<{ label: string; value: string; onChange: (v: string) 
   </div>
 );
 
-/** Floating-label select used by the edit form (Settings tab). */
 const EditSelect: React.FC<{ label: string; value: string; options: string[]; onChange: (v: string) => void }> = ({ label, value, options, onChange }) => (
   <div className="relative fl-wrap">
     <label className="fl-label">{label}</label>
@@ -487,13 +545,13 @@ const EditSelect: React.FC<{ label: string; value: string; options: string[]; on
   </div>
 );
 
-const PAYMENT_TERMS = ["Default Company", "Net on receipt", "Net 7", "Net 10", "Net 15", "Net 30", "Net 60"];
-const CURRENCIES = ["$ USD", "৳ BDT", "€ EUR", "£ GBP", "₹ INR"];
-
-const EditCustomer: React.FC<{ customer: any; onClose: () => void; mode?: "edit" | "create"; onSaved?: (id: number) => void }> = ({ customer, onClose, mode = "edit", onSaved }) => {
-  const isCreate = mode === "create";
-  const taxes = useCollection<any>("taxes", "name");
-  const taxOptions = ["None", ...taxes.map((t) => `${t.name} (${t.rate}%)`)];
+const EditCustomer: React.FC<{
+  doc: TBackendParty | null;   // null = create mode
+  onClose: () => void;
+  onSaved: (row: TCustomerRow) => void;
+}> = ({ doc, onClose, onSaved }) => {
+  const qc = useQueryClient();
+  const isCreate = doc === null;
   const [tab, setTab] = useState<"Details" | "Settings">("Details");
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
   const switchTab = (t: "Details" | "Settings") => {
@@ -501,85 +559,79 @@ const EditCustomer: React.FC<{ customer: any; onClose: () => void; mode?: "edit"
     setTabDir(t === "Settings" ? "right" : "left");
     setTab(t);
   };
-  const [sameAsBilling, setSameAsBilling] = useState(!!customer.sameAsBilling);
-  const [emailEditing, setEmailEditing] = useState(!customer.email);
-  const [f, setF] = useState({
-    name: customer.name || "",
-    regNo: customer.regNo || "", taxId: customer.taxId || "",
-    phone: customer.phone || "", fax: customer.fax || "",
-    firstName: (customer.contact || "").split(" ")[0] || "",
-    lastName: (customer.contact || "").split(" ").slice(1).join(" ") || "",
-    email: customer.email || "",
-    mobile: customer.mobile || "", homePhone: customer.homePhone || "",
-    birthday: customer.birthday || "", anniversary: customer.anniversary || "",
-    street1: customer.street1 || "", street2: customer.street2 || "",
-    zip: customer.zip || "", city: customer.city || "", state: customer.state || "", country: customer.country || "",
-    shipStreet1: customer.shipStreet1 || "", shipStreet2: customer.shipStreet2 || "",
-    shipZip: customer.shipZip || "", shipCity: customer.shipCity || "", shipState: customer.shipState || "", shipCountry: customer.shipCountry || "",
-    bank: customer.bank || "",
-    /* settings tab */
-    currency: customer.currency || "$ USD",
-    defaultTaxService: customer.defaultTaxService || "None",
-    defaultTaxProduct: customer.defaultTaxProduct || "None",
-    hourlyRate: customer.hourlyRate != null ? String(customer.hourlyRate) : "",
-    paymentTerms: customer.paymentTerms || "Default Company",
-    openingBalance: customer.openingBalance != null ? String(customer.openingBalance) : "",
-    openingBalanceDate: customer.openingBalanceDate || "",
-    notes: customer.notes || "",
-    paymentReminder: customer.paymentReminder !== false,
+
+  const [f, setF] = useState<CustomerFormData>(() => doc ? docToForm(doc) : {
+    name: "", firstName: "", lastName: "", email: "",
+    phone: "", mobile: "", fax: "", homePhone: "", regNo: "", taxId: "",
+    birthday: "", anniversary: "", bank: "",
+    street1: "", street2: "", zip: "", city: "", state: "", country: "",
+    sameAsBilling: false,
+    shipStreet1: "", shipStreet2: "", shipZip: "", shipCity: "", shipState: "", shipCountry: "",
+    currency: "$ USD", defaultTaxService: "None", defaultTaxProduct: "None",
+    hourlyRate: "", paymentTerms: "Default Company",
+    openingBalance: "", openingBalanceDate: "", notes: "", paymentReminder: true,
   });
-  const set = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }));
-  /* "Same as Billing" mirrors the billing values into the shipping column */
+
+  const set = (k: keyof CustomerFormData, v: any) => setF((p) => ({ ...p, [k]: v }));
+  const [sameAsBilling, setSameAsBilling] = useState(f.sameAsBilling);
+  const [emailEditing, setEmailEditing] = useState(!f.email);
+
   const ship = (k: "Street1" | "Street2" | "Zip" | "City" | "State" | "Country") =>
     sameAsBilling ? (f as any)[k.charAt(0).toLowerCase() + k.slice(1)] : (f as any)["ship" + k];
 
-  const save = async () => {
-    const contact = `${f.firstName} ${f.lastName}`.trim();
-    const payload = {
-      contact, email: f.email.trim(), phone: f.phone.trim(),
-      regNo: f.regNo, taxId: f.taxId, fax: f.fax, mobile: f.mobile, homePhone: f.homePhone,
-      birthday: f.birthday, anniversary: f.anniversary,
-      street1: f.street1, street2: f.street2, zip: f.zip, city: f.city, state: f.state, country: f.country,
-      sameAsBilling,
-      shipStreet1: ship("Street1"), shipStreet2: ship("Street2"), shipZip: ship("Zip"),
-      shipCity: ship("City"), shipState: ship("State"), shipCountry: ship("Country"),
-      bank: f.bank, subtitle: contact || f.email.trim(),
-      currency: f.currency, defaultTaxService: f.defaultTaxService, defaultTaxProduct: f.defaultTaxProduct,
-      hourlyRate: parseFloat(f.hourlyRate) || 0,
-      paymentTerms: f.paymentTerms,
-      openingBalance: parseFloat(f.openingBalance) || 0,
-      openingBalanceDate: f.openingBalanceDate,
-      notes: f.notes, paymentReminder: f.paymentReminder,
-    };
-    if (isCreate) {
-      if (!f.name.trim()) return;
-      const id = await repo.add("customers", { name: f.name.trim(), balance: 0, status: "Active", ...payload });
-      onSaved?.(id as number);
-    } else {
-      await repo.update("customers", customer.id, { name: f.name.trim() || customer.name, ...payload });
-    }
-    onClose();
+  const createMut = useMutation({
+    mutationFn: (data: CustomerFormData) => createCustomer(data),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      showToast("Customer created", "success");
+      onSaved(backendToRow(created));
+      onClose();
+    },
+    onError: (err: any) => showToast(err?.message ?? "Failed to create customer", "error"),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: CustomerFormData) => updateCustomer(doc!._id, data),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["customer", doc!._id] });
+      showToast("Customer updated", "success");
+      onSaved(backendToRow(updated));
+      onClose();
+    },
+    onError: (err: any) => showToast(err?.message ?? "Failed to update customer", "error"),
+  });
+
+  const isBusy = createMut.isPending || updateMut.isPending;
+
+  const save = () => {
+    if (!f.name.trim()) { showToast("Company name is required", "warning"); return; }
+    const payload: CustomerFormData = { ...f, sameAsBilling };
+    if (isCreate) createMut.mutate(payload);
+    else updateMut.mutate(payload);
   };
 
   const shipDisabled = sameAsBilling;
   const shipField = (label: string, key: "Street1" | "Street2" | "Zip" | "City" | "State" | "Country", placeholder?: string) => (
     <div className={`relative fl-wrap ${shipDisabled ? "opacity-60 pointer-events-none" : ""}`}>
       <label className="fl-label">{label}</label>
-      <input value={ship(key)} onChange={(e) => set("ship" + key, e.target.value)} placeholder={placeholder && placeholder !== label ? placeholder : " "} className={editFieldCls} />
+      <input value={ship(key)} onChange={(e) => set(("ship" + key) as any, e.target.value)} placeholder={placeholder && placeholder !== label ? placeholder : " "} className={editFieldCls} />
     </div>
   );
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+    <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300">
         <h1 className="text-lg font-semibold text-gray-900">{isCreate ? "Create Customer" : "Edit Customer"}</h1>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700"><Sparkles className="w-4 h-4" /></button>
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={save} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">Save</button>
+          <button onClick={save} disabled={isBusy} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-60">
+            {isBusy ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
-      <div className="flex items-center justify-center gap-8 border-b border-gray-200">
+      <div className="flex items-center justify-center gap-8 border-b border-gray-300">
         {(["Details", "Settings"] as const).map((t) => (
           <button key={t} onClick={() => switchTab(t)} className={`py-3 text-sm transition-colors border-b-2 -mb-px ${tab === t ? "text-gray-900 font-medium border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>{t}</button>
         ))}
@@ -596,7 +648,6 @@ const EditCustomer: React.FC<{ customer: any; onClose: () => void; mode?: "edit"
             </div>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4"><EditField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} /><EditField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} /></div>
-              {/* Email — shown as a removable chip once set (matches the reference) */}
               <div className="relative">
                 <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Email</label>
                 {f.email && !emailEditing ? (
@@ -654,8 +705,8 @@ const EditCustomer: React.FC<{ customer: any; onClose: () => void; mode?: "edit"
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <EditSelect label="Currency" value={f.currency} options={CURRENCIES} onChange={(v) => set("currency", v)} />
-            <EditSelect label="Default Taxes (Service)" value={f.defaultTaxService} options={taxOptions} onChange={(v) => set("defaultTaxService", v)} />
-            <EditSelect label="Default Taxes (Product)" value={f.defaultTaxProduct} options={taxOptions} onChange={(v) => set("defaultTaxProduct", v)} />
+            <EditField label="Default Taxes (Service)" value={f.defaultTaxService} onChange={(v) => set("defaultTaxService", v)} />
+            <EditField label="Default Taxes (Product)" value={f.defaultTaxProduct} onChange={(v) => set("defaultTaxProduct", v)} />
             <EditField label="Hourly Rate" value={f.hourlyRate} onChange={(v) => set("hourlyRate", v)} placeholder="Hourly Rate" />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -679,253 +730,280 @@ const EditCustomer: React.FC<{ customer: any; onClose: () => void; mode?: "edit"
   );
 };
 
-/* ── Component ──────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+══════════════════════════════════════════════════════════════════ */
 export const Customers: React.FC = () => {
   const navigate = useNavigate();
-  const dbCustomers = useCollection<any>("customers", "name");
-  const dbInvoices = useCollection<any>("invoices");
-  const dbPayments = useCollection<any>("paymentsReceived");
-  const customers: Customer[] = useMemo(
-    () => dbCustomers
-      .filter((c) => c.status !== "Archived")
-      .map((c) => ({ id: c.id, name: c.name, contact: c.contact || c.email || c.subtitle || "—", amount: -(c.balance || 0) })),
-    [dbCustomers],
-  );
-  const [createMode, setCreateMode] = useState(false);
-  // Opened from an activity link (or another page) → pre-select that customer.
+  const qc = useQueryClient();
   const location = useLocation();
-  const navSelectedId = (location.state as { selectedId?: number } | null)?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 1);
-  useEffect(() => { if (navSelectedId != null) { setSelectedId(navSelectedId); setEditMode(false); setCreateMode(false); } }, [navSelectedId]);
-  const [tab, setTab] = useState<"Overview" | "Details" | "Settings">("Overview");
+  const navSelectedId = (location.state as { selectedId?: string } | null)?.selectedId;
+
+  /* ── Server-side query params ───────────────────── */
+  const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("Name");
   const [createdOn, setCreatedOn] = useState("All");
-  const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState("All");
-  const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "pdfSettings">(null);
-  // selection-bar bulk actions: merge picker → confirm alert / archive / delete alerts
-  const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
-  const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
-  // pending duplicate that needs the "already exists" confirmation ("customer" or "both")
-  const [dupConfirm, setDupConfirm] = useState<null | "customer" | "both">(null);
-  const [editMode, setEditMode] = useState(false);
-  const [reminder, setReminder] = useState(true);
-  const [contactLogin, setContactLogin] = useState(false);
 
-  // selection mode
-  const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
-
-  const filtered = useMemo(() => {
-    let list = customers.filter((c) => search.trim() === "" || (c.name || "").toLowerCase().includes(search.toLowerCase()));
-    list = [...list].sort((a, b) =>
-      sortBy === "Outstanding" || sortBy === "Total" || sortBy === "Due" || sortBy === "Paid"
-        ? a.amount - b.amount
-        : (a.name || "").localeCompare(b.name || ""),
-    );
-    return list;
-  }, [customers, search, sortBy]);
-
-  const selected = customers.find((c) => c.id === selectedId) || customers[0];
-  const listDue = customers.reduce((s, c) => s + (c.amount < 0 ? -c.amount : 0), 0);
-  // Resolve the full DB record for whatever row is actually displayed (selected),
-  // not the raw selectedId — they diverge when selectedId is stale (e.g. after the
-  // selected customer was archived/trashed), which would otherwise duplicate {}.
-  const selectedDb: any = dbCustomers.find((c) => c.id === (selected?.id ?? selectedId)) || {};
-  const custInv = dbInvoices.filter((i) => i.customerId === selectedId);
-  const custTotal = custInv.reduce((s, i) => s + (i.total || 0), 0);
-  const custPaid = custInv.reduce((s, i) => s + (i.amountPaid || 0), 0);
-  const custDue = custInv.reduce((s, i) => s + (i.amountDue || 0), 0);
-  const stmtTx = [
-    ...custInv.map((i) => ({ ts: i.ts || 0, date: i.date, details: `Invoice ${i.number}`, amount: i.total || 0, paid: 0 })),
-    ...dbPayments.filter((p) => p.customerId === selectedId).map((p) => ({ ts: p.ts || 0, date: p.date, details: `Payment ${p.number}`, amount: 0, paid: p.amount || 0 })),
-  ].sort((a, b) => a.ts - b.ts);
-  let _bal = 0;
-  const stmtRows = stmtTx.map((t) => { _bal += t.amount - t.paid; return { date: t.date, details: t.details, amount: money(t.amount), paid: money(t.paid), balance: money(_bal) }; });
-  const stmtSummary = { amount: money(stmtTx.reduce((s, t) => s + t.amount, 0)), paid: money(stmtTx.reduce((s, t) => s + t.paid, 0)), balance: money(_bal) };
-
-  /* ── More-menu actions ─────────────────────────────────────────── */
-  const removeSelected = async () => {
-    const id = selected?.id ?? selectedId;
-    if (!id) return;
-    await repo.remove("customers", id);
-    const remaining = customers.filter((c) => c.id !== id);
-    setSelectedId(remaining[0]?.id ?? 0);
-    setEditMode(false);
-  };
-  // Archive keeps the record (status: Archived) but drops it from the list.
-  const archiveSelectedOne = async () => {
-    const id = selected?.id ?? selectedId;
-    if (!id) return;
-    await repo.update("customers", id, { status: "Archived" });
-    const remaining = customers.filter((c) => c.id !== id);
-    setSelectedId(remaining[0]?.id ?? 0);
-    setEditMode(false);
-  };
-
-  /* ── Selection-bar bulk actions (merge / archive / delete + alerts) ── */
-  const checkedIds = [...checked];
-  const afterBulk = (removedIds: number[]) => {
-    const remaining = customers.filter((c) => !removedIds.includes(c.id));
-    if (removedIds.includes(selectedId)) setSelectedId(remaining[0]?.id ?? 0);
-    exitSelect();
-    setSelAction(null);
-  };
-  const bulkArchive = async () => {
-    await Promise.all(checkedIds.map((id) => repo.update("customers", id, { status: "Archived" })));
-    showToast(`${checkedIds.length} ${checkedIds.length === 1 ? "customer" : "customers"} archived`, "success");
-    afterBulk(checkedIds);
-  };
-  const bulkDelete = async () => {
-    await repo.removeMany("customers", checkedIds);
-    showToast(`${checkedIds.length} ${checkedIds.length === 1 ? "customer" : "customers"} deleted`, "success");
-    afterBulk(checkedIds);
-  };
-  /** Merge: re-point every reference of the losing customers to the target,
-   *  combine balances, then remove the losers — fully relational. */
-  const bulkMerge = async (targetId: number) => {
-    const losers = checkedIds.filter((id) => id !== targetId);
-    const refCollections = ["invoices", "estimates", "proformas", "salesReceipts", "creditNotes", "deliveryChallans", "paymentsReceived", "projects", "timelogs"] as const;
-    for (const col of refCollections) {
-      const rows = await repo.getAll(col);
-      await Promise.all(rows.filter((r: any) => losers.includes(r.customerId)).map((r: any) => repo.update(col, r.id, { customerId: targetId })));
-    }
-    const all = await repo.getAll("customers");
-    const extra = losers.reduce((s, id) => s + (all.find((c: any) => c.id === id)?.balance || 0), 0);
-    const target = all.find((c: any) => c.id === targetId);
-    await repo.update("customers", targetId, { balance: (target?.balance || 0) + extra });
-    await repo.removeMany("customers", losers);
-    showToast("Customers merged", "success");
-    afterBulk(losers);
-    setSelectedId(targetId);
-  };
-  // Copy the full customer record into a new customers row (same company name).
-  const duplicateAsCustomer = async (): Promise<number> => {
-    const { id, createdAt, updatedAt, ...rest } = selectedDb;
-    const newId = await repo.add("customers", { ...rest });
-    return newId;
-  };
-  // Copy the full customer record into the vendors collection.
-  const duplicateAsVendor = async (): Promise<number> => {
-    const { id, createdAt, updatedAt, balance, ...rest } = selectedDb;
-    return repo.add("vendors", { ...rest, payable: balance || 0, status: rest.status || "Active" });
-  };
-  const goToVendor = (vendorId: number) => navigate("/purchase/vendors", { state: { selectedId: vendorId } });
-  const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
-    if (!selectedDb?.name) return; // nothing valid to duplicate
-    if (target === "vendor") {
-      goToVendor(await duplicateAsVendor());
-      return;
-    }
-    // customer + both create a customer copy → confirm first ("name already exists").
-    setDupConfirm(target);
-  };
-  const confirmDuplicate = async () => {
-    const target = dupConfirm;
-    setDupConfirm(null);
-    if (!target || !selectedDb?.name) return;
-    const newId = await duplicateAsCustomer();
-    if (target === "both") goToVendor(await duplicateAsVendor());
-    else setSelectedId(newId);
-  };
-
-  const allSelected = filtered.length > 0 && filtered.every((c) => checked.has(c.id));
-  const selectedCustomers = customers.filter((c) => checked.has(c.id));
-  const totals = {
-    total: selectedCustomers.reduce((s, c) => s + Math.abs(c.amount), 0),
-    paid: selectedCustomers.filter((c) => c.amount >= 0).reduce((s, c) => s + c.amount, 0),
-    due: selectedCustomers.filter((c) => c.amount < 0).reduce((s, c) => s + Math.abs(c.amount), 0),
-  };
-  const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((c) => c.id))));
+  // Debounced search input → only fire after user stops typing
+  const [searchInput, setSearchInput] = useState("");
   useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [selectMode]);
+    const t = setTimeout(() => { setSearchTerm(searchInput); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const tabs: ("Overview" | "Details" | "Settings")[] = ["Overview", "Details", "Settings"];
-  // Directional push: moving to a higher tab enters from the right, lower from the left.
+  /* ── List query ─────────────────────────────────── */
+  const dateRange = createdOnToRange(createdOn);
+  const { data: listData, isLoading, isFetching } = useQuery({
+    queryKey: ["customers", page, searchTerm, sortBy, createdOn],
+    queryFn: () => fetchCustomers({
+      page,
+      limit: PAGE_SIZE,
+      searchTerm: searchTerm || undefined,
+      sort: uiSortToBackend(sortBy),
+      ...dateRange,
+    }),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const rows: TCustomerRow[] = listData?.rows ?? [];
+  const pagination = listData?.pagination;
+
+  /* ── Selected customer & detail ─────────────────── */
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [createMode, setCreateMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [tab, setTab] = useState<"Overview" | "Details" | "Settings">("Overview");
+  const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "pdfSettings">(null);
+  const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [dupConfirm, setDupConfirm] = useState<null | "customer" | "both">(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
+
+  // Select first row on initial load
+  useEffect(() => {
+    if (!selectedId && rows.length > 0) setSelectedId(rows[0]._id);
+  }, [rows, selectedId]);
+
+  // Navigation-driven pre-selection
+  useEffect(() => {
+    if (navSelectedId) { setSelectedId(navSelectedId); setEditMode(false); setCreateMode(false); }
+  }, [navSelectedId]);
+
+  /* ── Fetch single (full detail doc) when selected ── */
+  const { data: selectedDoc } = useQuery<TBackendParty | null>({
+    queryKey: ["customer", selectedId],
+    queryFn: () => (selectedId ? fetchCustomer(selectedId) : null),
+    enabled: !!selectedId,
+    staleTime: 60_000,
+  });
+
+  const selected = rows.find((r) => r._id === selectedId) ?? rows[0];
+  const doc = selectedDoc ?? null;
+
+  /* ── Tab switch ─────────────────────────────────── */
+  const tabs: ("Overview" | "Details" | "Settings")[] = ["Overview", "Details", "Settings"];
   const switchTab = (t: (typeof tabs)[number]) => {
     if (t === tab) return;
     setTabDir(tabs.indexOf(t) > tabs.indexOf(tab) ? "right" : "left");
     setTab(t);
   };
 
-  if (!selected && !createMode) return <ListEmptyState title="No customers yet" onCreate={() => { setCreateMode(true); setSelectMode(false); }} createLabel="New Customer" />;
+  /* ── Mutations ──────────────────────────────────── */
+  const archiveMut = useMutation({
+    mutationFn: (id: string) => archiveCustomer(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["customers"] }); showToast("Customer archived", "success"); },
+    onError: () => showToast("Archive failed", "error"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteCustomer(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      setSelectedId(rows.find((r) => r._id !== selectedId)?._id ?? "");
+      showToast("Customer deleted", "success");
+    },
+    onError: () => showToast("Delete failed", "error"),
+  });
+
+  const bulkArchiveMut = useMutation({
+    mutationFn: (ids: string[]) => archiveCustomers(ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      showToast(`${checked.size} customer(s) archived`, "success");
+      exitSelect(); setSelAction(null);
+    },
+    onError: () => showToast("Archive failed", "error"),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) => deleteCustomers(ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      showToast(`${checked.size} customer(s) deleted`, "success");
+      exitSelect(); setSelAction(null);
+    },
+    onError: () => showToast("Delete failed", "error"),
+  });
+
+  const mergeMut = useMutation({
+    mutationFn: ({ survivorId, mergedIds }: { survivorId: string; mergedIds: string[] }) =>
+      mergeCustomers(survivorId, mergedIds),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      setSelectedId(vars.survivorId);
+      showToast("Customers merged", "success");
+      exitSelect(); setSelAction(null);
+    },
+    onError: () => showToast("Merge failed", "error"),
+  });
+
+  /* ── Selection helpers ──────────────────────────── */
+  const allSelected = rows.length > 0 && rows.every((r) => checked.has(r._id));
+  const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(rows.map((r) => r._id))));
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [selectMode]);
+
+  const checkedIds = [...checked];
+  const selectedCustomers = rows.filter((r) => checked.has(r._id));
+  const totals = {
+    total: selectedCustomers.reduce((s, c) => s + Math.abs(c.amount), 0),
+    paid: selectedCustomers.filter((c) => c.amount >= 0).reduce((s, c) => s + c.amount, 0),
+    due: selectedCustomers.filter((c) => c.amount < 0).reduce((s, c) => s + Math.abs(c.amount), 0),
+  };
+
+  const listDue = rows.reduce((s, c) => s + (c.amount < 0 ? Math.abs(c.amount) : 0), 0);
+
+  /* ── Archive / Delete single ───────────────────── */
+  const archiveSelectedOne = () => {
+    if (!selected?._id) return;
+    archiveMut.mutate(selected._id);
+  };
+  const removeSelected = () => {
+    if (!selected?._id) return;
+    deleteMut.mutate(selected._id);
+  };
+
+  /* ── Bulk merge ─────────────────────────────────── */
+  const bulkMerge = (survivorId: string) => {
+    const mergedIds = checkedIds.filter((id) => id !== survivorId);
+    mergeMut.mutate({ survivorId, mergedIds });
+  };
+
+  /* ── Duplicate (client-side copy: calls create) ── */
+  const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
+    if (!doc) return;
+    if (target === "vendor") {
+      showToast("Duplicate as vendor not yet connected", "warning");
+      return;
+    }
+    setDupConfirm(target);
+  };
+  const confirmDuplicate = async () => {
+    const target = dupConfirm;
+    setDupConfirm(null);
+    if (!doc || !target) return;
+    try {
+      const form = docToForm(doc);
+      form.name = `${form.name} (Copy)`;
+      const created = await createCustomer(form);
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      setSelectedId(created._id);
+      showToast("Customer duplicated", "success");
+    } catch {
+      showToast("Duplicate failed", "error");
+    }
+  };
+
+  /* ── Empty state ────────────────────────────────── */
+  if (!isLoading && rows.length === 0 && !createMode) {
+    return <ListEmptyState title="No customers yet" onCreate={() => { setCreateMode(true); setSelectMode(false); }} createLabel="New Customer" />;
+  }
+
+  /* ── Profile fields from detail doc ─────────────── */
+  const profile = doc?.businessProfile ?? {};
+  const billing = profile.billing_address ?? {};
+  const shipping = profile.shipping_address ?? {};
+  const billingLines = [billing.address_line_1, billing.address_line_2, [billing.city, billing.zip_code].filter(Boolean).join(" "), billing.state, billing.country].filter(Boolean);
+  const shippingLines = [shipping.address_line_1, shipping.address_line_2, [shipping.city, shipping.zip_code].filter(Boolean).join(" "), shipping.state, shipping.country].filter(Boolean);
+
+  const stmtSummary = { amount: money(0), paid: money(0), balance: money(0) };
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
               {allSelected && <Check className="w-3.5 h-3.5 text-white" />}
             </button>
             <div className="flex items-center gap-0.5">
-              <button
-                title="Merge"
-                onClick={() => (checked.size < 2 ? showToast("Select at least two customers to merge", "warning") : setSelAction("merge"))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"
-              ><Merge className="w-4 h-4" /></button>
-              <button
-                title="Archive"
-                onClick={() => (checked.size === 0 ? showToast("Select customers to archive", "warning") : setSelAction("archive"))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"
-              ><Archive className="w-4 h-4" /></button>
-              <button
-                title="Delete"
-                onClick={() => (checked.size === 0 ? showToast("Select customers to delete", "warning") : setSelAction("delete"))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"
-              ><Trash2 className="w-4 h-4" /></button>
+              <button title="Merge" onClick={() => (checked.size < 2 ? showToast("Select at least two customers to merge", "warning") : setSelAction("merge"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Merge className="w-4 h-4" /></button>
+              <button title="Archive" onClick={() => (checked.size === 0 ? showToast("Select customers to archive", "warning") : setSelAction("archive"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Archive className="w-4 h-4" /></button>
+              <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select customers to delete", "warning") : setSelAction("delete"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
               <button title="Done" onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Check className="w-4 h-4" /></button>
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Customers</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Customers</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select customers"><Pencil className="w-4 h-4 text-gray-500" /></button>
-              <Dropdown align="right" trigger={<span className="p-1.5 hover:bg-gray-100 rounded-md inline-flex cursor-pointer"><MoreVertical className="w-4 h-4 text-gray-500" /></span>}>{(close) => (<><button onClick={(e) => { const t = (e.currentTarget.closest("aside")?.querySelector("h2")?.textContent || "Records").trim(); window.dispatchEvent(new CustomEvent("demo:import", { detail: t })); close(); }} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Import</button><button onClick={close} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Export</button></>)}</Dropdown>
+              <Dropdown align="right" trigger={<span className="p-1.5 hover:bg-gray-100 rounded-md inline-flex cursor-pointer"><MoreVertical className="w-4 h-4 text-gray-500" /></span>}>{(close) => (<><button onClick={close} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Import</button><button onClick={close} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Export</button></>)}</Dropdown>
             </div>
           </div>
         )}
 
         {/* search */}
-        <div className="px-3 py-2 border-b border-gray-200">
+        <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search customers..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
+            />
           </div>
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-200">
+        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
-              <button key={o} onClick={() => { setSortBy(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={o} onClick={() => { setSortBy(o); setPage(1); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 cursor-pointer hover:border-gray-400"><Plus className="w-3 h-3" />Status</span>
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Created On | {createdOn}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => createdOptions.map((o) => (
-              <button key={o} onClick={() => { setCreatedOn(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === createdOn && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={o} onClick={() => { setCreatedOn(o); setPage(1); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === createdOn && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
         </div>
 
         {/* rows */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {filtered.map((c) => {
-            const active = !selectMode && c.id === selectedId;
-            const isChecked = checked.has(c.id);
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+          {(isLoading || isFetching) && (
+            <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500 animate-pulse" />
+          )}
+          {rows.map((c) => {
+            const active = !selectMode && c._id === selectedId;
+            const isChecked = checked.has(c._id);
             return (
-              <button key={c.id} onClick={() => (selectMode ? toggleRow(c.id) : (setSelectedId(c.id), setEditMode(false)))}
-                className={`w-full text-left px-4 py-3 border-b border-gray-200 flex items-center gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+              <button key={c._id} onClick={() => (selectMode ? toggleRow(c._id) : (setSelectedId(c._id), setEditMode(false)))}
+                className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-center gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
                 )}
@@ -937,22 +1015,38 @@ export const Customers: React.FC = () => {
               </button>
             );
           })}
-          {/* FAB → Add Customer (live → shared datastore) */}
-          {!selectMode && (
-            <button onClick={() => { setCreateMode(true); setSelectMode(false); }} className="absolute bottom-20 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
-          )}
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listDue)} <span className="font-normal text-gray-500">Due</span></div>
-          <div className="text-xs text-gray-500">{filtered.length} Contacts</div>
+        {/* FAB - Fixed outside scroll area, right above footer */}
+        {!selectMode && (
+          <button onClick={() => { setCreateMode(true); setSelectMode(false); }} className="absolute bottom-[4.5rem] right-5 z-20 flex w-[42px] h-[42px] items-center justify-center rounded-full bg-orange-500 text-white shadow hover:bg-orange-600 transition-colors"><Plus className="w-6 h-6" strokeWidth={2} /></button>
+        )}
+
+        {/* footer with pagination */}
+        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
+          <div className="text-sm font-semibold text-gray-900 text-center">{money(listDue)} <span className="font-normal text-gray-500">Due</span></div>
+          <div className="text-xs text-gray-500 text-center">{pagination?.totalData ?? rows.length} Contacts</div>
+          {pagination && pagination.totalPage > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
+              ><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-xs text-gray-600">{page} / {pagination.totalPage}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(pagination.totalPage, p + 1))}
+                disabled={page >= pagination.totalPage}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
+              ><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
         </div>
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Contact" : "Contacts"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -963,19 +1057,29 @@ export const Customers: React.FC = () => {
           </div>
         </section>
       ) : createMode ? (
-        <EditCustomer key="create" mode="create" customer={{}} onClose={() => setCreateMode(false)} onSaved={(id) => setSelectedId(id)} />
-      ) : editMode ? (
-        <EditCustomer key={selectedId} customer={selectedDb} onClose={() => setEditMode(false)} />
-      ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+        <EditCustomer
+          key="create"
+          doc={null}
+          onClose={() => setCreateMode(false)}
+          onSaved={(row) => setSelectedId(row._id)}
+        />
+      ) : editMode && doc ? (
+        <EditCustomer
+          key={selectedId}
+          doc={doc}
+          onClose={() => setEditMode(false)}
+          onSaved={(row) => setSelectedId(row._id)}
+        />
+      ) : selected ? (
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
           {/* detail header */}
-          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
-            <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
+          <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
+            <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-0.5">
-              <button onClick={() => setEditMode(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Edit"><Pencil className="w-4 h-4" /></button>
-              <button onClick={() => setModal("payment")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Add Payment"><DollarSign className="w-4 h-4" /></button>
-              <button onClick={() => setModal("statement")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Statement"><FileText className="w-4 h-4" /></button>
-              <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
+              <button onClick={() => setEditMode(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Edit"><Pencil className="w-4 h-4" /></button>
+              <button onClick={() => setModal("payment")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Add Payment"><DollarSign className="w-4 h-4" /></button>
+              <button onClick={() => setModal("statement")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Statement"><FileText className="w-4 h-4" /></button>
+              <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><MoreVertical className="w-4 h-4" /></span>}>
                 {(close) => (
                   <DetailMoreMenu close={close} onArchive={archiveSelectedOne} onTrash={removeSelected} onDuplicate={handleDuplicate} />
                 )}
@@ -984,13 +1088,12 @@ export const Customers: React.FC = () => {
           </div>
 
           {/* tabs */}
-          <div className="flex items-center justify-center gap-8 border-b border-gray-200">
+          <div className="flex items-center justify-center gap-8 border-b border-gray-300">
             {tabs.map((t) => (
               <button key={t} onClick={() => switchTab(t)} className={`py-3 text-sm transition-colors border-b-2 -mb-px ${tab === t ? "text-gray-900 font-medium border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>{t}</button>
             ))}
           </div>
 
-          {/* tab body — directional push transition */}
           <TabSlide tabKey={tab} dir={tabDir}>
 
           {/* ── Overview ── */}
@@ -998,9 +1101,9 @@ export const Customers: React.FC = () => {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: "Outstanding", value: money(-custDue), color: "text-red-500" },
-                  { label: "Net Profit", value: money(custPaid), color: "text-gray-900" },
-                  { label: "Sales", value: money(custTotal), color: "text-gray-900" },
+                  { label: "Outstanding", value: money(selected.amount < 0 ? Math.abs(selected.amount) : 0), color: "text-red-500" },
+                  { label: "Net Profit", value: money(0), color: "text-gray-900" },
+                  { label: "Sales", value: money(0), color: "text-gray-900" },
                 ].map((c) => (
                   <div key={c.label} className="text-center py-2">
                     <div className={`text-xs font-medium mb-1 ${c.label === "Outstanding" ? "text-red-500" : "text-gray-500"}`}>{c.label}</div>
@@ -1047,97 +1150,129 @@ export const Customers: React.FC = () => {
           )}
 
           {/* ── Details ── */}
-          {tab === "Details" && (() => {
-            const billing = [selectedDb.street1, selectedDb.street2, [selectedDb.city, selectedDb.zip].filter(Boolean).join(" "), selectedDb.state, selectedDb.country].filter(Boolean);
-            const shipping = [selectedDb.shipStreet1, selectedDb.shipStreet2, [selectedDb.shipCity, selectedDb.shipZip].filter(Boolean).join(" "), selectedDb.shipState, selectedDb.shipCountry].filter(Boolean);
-            return (
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                  {[
-                    ["Company", selectedDb.name || selected.name], ["Reg. No", selectedDb.regNo || "—"], ["Tax ID", selectedDb.taxId || "—"],
-                    ["Business Phone", selectedDb.phone || "—"], ["Fax", selectedDb.fax || "—"], ["Email", selectedDb.email || "—"],
-                    ["First Name", (selectedDb.contact || "").split(" ")[0] || "—"], ["Last Name", (selectedDb.contact || "").split(" ").slice(1).join(" ") || "—"], ["Mobile Number", selectedDb.mobile || "—"],
-                    ["Home Phone", selectedDb.homePhone || "—"], ["Birthday", selectedDb.birthday || "—"], ["Anniversary", selectedDb.anniversary || "—"],
-                  ].map(([k, v]) => (
-                    <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{v}</div></div>
-                  ))}
+          {tab === "Details" && (
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                {[
+                  ["Company", profile.companyName || selected.name],
+                  ["Reg. No", profile.registration_number || "—"],
+                  ["Tax ID", profile.tax_number || "—"],
+                  ["Business Phone", profile.business_phone || "—"],
+                  ["Fax", profile.fax || "—"],
+                  ["Email", doc?.email || "—"],
+                  ["First Name", (doc?.name ?? "").split(" ")[0] || "—"],
+                  ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"],
+                  ["Mobile Number", doc?.phone || "—"],
+                  ["Home Phone", profile.home_phone || "—"],
+                  ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"],
+                  ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"],
+                ].map(([k, v]) => (
+                  <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{v}</div></div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Billing Address</div>
+                  <div className="text-sm text-gray-800 leading-relaxed">{billingLines.length ? billingLines.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">Billing Address</div>
-                    <div className="text-sm text-gray-800 leading-relaxed">{billing.length ? billing.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
-                    <div className="text-sm text-gray-800 leading-relaxed">{shipping.length ? shipping.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-gray-200">
-                  <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-                  {selectedDb.bank
-                    ? <div className="text-sm text-gray-800 leading-relaxed [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: selectedDb.bank }} />
-                    : <div className="text-sm text-gray-400">—</div>}
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
+                  <div className="text-sm text-gray-800 leading-relaxed">{shippingLines.length ? shippingLines.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
                 </div>
               </div>
-            );
-          })()}
+              <div className="pt-4 border-t border-gray-200">
+                <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
+                {profile.bank_details
+                  ? <div className="text-sm text-gray-800 leading-relaxed [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
+                  : <div className="text-sm text-gray-400">—</div>}
+              </div>
+            </div>
+          )}
 
           {/* ── Settings ── */}
           {tab === "Settings" && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[
-                  ["Currency", selectedDb.currency || "$ USD"],
-                  ["Default Taxes (Service)", selectedDb.defaultTaxService || "None"],
-                  ["Default Taxes (Product)", selectedDb.defaultTaxProduct || "None"],
-                  ["Hourly Rate", selectedDb.hourlyRate ? money(selectedDb.hourlyRate) : "—"],
-                  ["Payment Terms (Sales)", selectedDb.paymentTerms || "Default Company"],
-                  ["Opening Balance", selectedDb.openingBalance ? money(selectedDb.openingBalance) : "—"],
-                  ["Opening Balance Date", selectedDb.openingBalanceDate || "—"],
+                  ["Currency", doc?.currency || "$ USD"],
+                  ["Default Taxes (Service)", typeof profile.default_tax_service_id === "object" ? (profile.default_tax_service_id as any)?.name ?? "None" : "None"],
+                  ["Default Taxes (Product)", typeof profile.default_tax_product_id === "object" ? (profile.default_tax_product_id as any)?.name ?? "None" : "None"],
+                  ["Hourly Rate", profile.hourly_rate ? money(profile.hourly_rate) : "—"],
+                  ["Payment Terms (Sales)", profile.payment_terms || "Default Company"],
+                  ["Opening Balance", profile.opening_balance ? money(profile.opening_balance) : "—"],
+                  ["Opening Balance Date", profile.opening_balance_date ? String(profile.opening_balance_date).slice(0, 10) : "—"],
                 ].map(([k, v]) => (
                   <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
                 ))}
               </div>
-              {selectedDb.notes && (
+              {profile.notes && (
                 <div className="pt-4 border-t border-gray-200">
                   <div className="text-xs text-gray-500 mb-1">Notes</div>
-                  <div className="text-sm text-gray-800">{selectedDb.notes}</div>
+                  <div className="text-sm text-gray-800">{profile.notes}</div>
                 </div>
               )}
               <div className="space-y-4 pt-4 border-t border-gray-200">
                 <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Payment Reminder</span>
-                  <Toggle on={selectedDb.paymentReminder !== false} onChange={() => repo.update("customers", selectedDb.id, { paymentReminder: selectedDb.paymentReminder === false })} />
+                  <Toggle
+                    on={profile.payment_reminder !== false}
+                    onChange={() => {
+                      if (!selected._id) return;
+                      updateCustomer(selected._id, { ...docToForm(doc!), paymentReminder: !(profile.payment_reminder !== false) })
+                        .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
+                    }}
+                  />
                 </div>
                 <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Contact Login</span>
-                  <Toggle on={contactLogin} onChange={() => setContactLogin((v) => !v)} />
+                  <Toggle
+                    on={profile.is_login_required ?? false}
+                    onChange={() => {
+                      if (!selected._id) return;
+                      updateCustomer(selected._id, { ...docToForm(doc!), isLoginRequired: !(profile.is_login_required ?? false) })
+                        .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
+                    }}
+                  />
                 </div>
               </div>
             </div>
           )}
           </TabSlide>
         </section>
+      ) : (
+        /* Loading skeleton for right panel */
+        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
+          {isLoading ? "Loading…" : "Select a customer"}
+        </section>
       )}
 
       {/* ════════ MODALS ════════ */}
-      {modal === "payment" && <PaymentModal onClose={() => setModal(null)} customer={selected.name} />}
+      {modal === "payment" && selected && <PaymentModal onClose={() => setModal(null)} customer={selected.name} />}
       {modal === "statement" && <StatementModal onClose={() => setModal(null)} onGo={() => setModal("preview")} />}
-      {modal === "preview" && (
+      {modal === "preview" && selected && (
         <StatementPreview
           onClose={() => setModal(null)}
           name={selected.name}
           partyId={selected.id}
           onOpenSettings={() => setModal("pdfSettings")}
-          onDownload={async () => downloadDocPdf({ filename: `${selected.name} Statement`, docTitle: "STATEMENT", partyLabel: "Statement To", partyLines: [selected.name, selectedDb.contact, selectedDb.email, selectedDb.phone].filter(Boolean) as string[], meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance], ["From", "Apr 27, 2026"], ["To", "Jun 22, 2026"]], itemHead: ["Date", "Details", "Amount", "Paid", "Balance"], itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"], ...stmtRows.map((r) => [r.date, r.details, r.amount, r.paid, r.balance]), ["", "Total", stmtSummary.amount, stmtSummary.paid, stmtSummary.balance]], settings: await getPdfSettings("statement", "normal") })}
+          onDownload={async () => downloadDocPdf({
+            filename: `${selected.name} Statement`,
+            docTitle: "STATEMENT",
+            partyLabel: "Statement To",
+            partyLines: [selected.name, doc?.email, doc?.phone].filter(Boolean) as string[],
+            meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance]],
+            itemHead: ["Date", "Details", "Amount", "Paid", "Balance"],
+            itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"]],
+            settings: await getPdfSettings("statement", "normal"),
+          })}
         />
       )}
-      {modal === "pdfSettings" && (
+      {modal === "pdfSettings" && selected && (
         <PdfPrintSettingsModal onClose={() => setModal("preview")} initialDocType="statement" partyId={selected.id} />
       )}
       {(selAction === "merge" || selAction === "mergeConfirm") && (
         <MergeCustomersModal
-          customers={customers.filter((c) => checked.has(c.id))}
+          customers={rows.filter((r) => checked.has(r._id))}
           onClose={() => { setSelAction(null); setMergeTargetId(null); }}
           onMerge={(id) => { setMergeTargetId(id); setSelAction("mergeConfirm"); }}
         />
@@ -1150,10 +1285,10 @@ export const Customers: React.FC = () => {
         />
       )}
       {selAction === "archive" && (
-        <ConfirmAlert message="Are you sure want to archive these customers?" onNo={() => setSelAction(null)} onYes={bulkArchive} />
+        <ConfirmAlert message="Are you sure want to archive these customers?" onNo={() => setSelAction(null)} onYes={() => bulkArchiveMut.mutate(checkedIds)} />
       )}
       {selAction === "delete" && (
-        <ConfirmAlert message="Are you sure want to delete these customers?" onNo={() => setSelAction(null)} onYes={bulkDelete} />
+        <ConfirmAlert message="Are you sure want to delete these customers?" onNo={() => setSelAction(null)} onYes={() => bulkDeleteMut.mutate(checkedIds)} />
       )}
       {dupConfirm && (
         <Overlay onClose={() => setDupConfirm(null)}>

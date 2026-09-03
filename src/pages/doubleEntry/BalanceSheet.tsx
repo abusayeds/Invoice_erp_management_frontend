@@ -116,7 +116,7 @@ export const BalanceSheet: React.FC = () => {
         current={`Balance Sheet - ${sheet.date}`}
         onNavigate={navigate}
       />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Balance Sheet - {sheet.date}</h2>
         <button
           onClick={() => setModal("generate")}
@@ -290,7 +290,7 @@ export const BalanceSheet: React.FC = () => {
       {modal === "compare" && (
         <ModalShell title="Compare Balance Sheets" onClose={() => setModal(null)} onSubmit={() => setModal(null)} submitLabel="Done" wide>
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
+            <thead className="border-b border-gray-300">
               <tr>
                 {["Date", "Financial Year", "Total Assets", "Total Liabilities", "Total Equity", "Status"].map((h) => (
                   <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-600">{h}</th>

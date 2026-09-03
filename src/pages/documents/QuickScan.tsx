@@ -78,13 +78,13 @@ export const QuickScan: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       {/* Top Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-300 px-6 py-4">
         <h1 className="text-lg font-semibold text-gray-900">Quick Scan</h1>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="w-full">
           {/* Upload Area */}
           <div
             className={`border-2 border-dashed rounded-lg mb-6 transition-colors ${
@@ -157,7 +157,7 @@ export const QuickScan: React.FC = () => {
                     key={file.id}
                     className={`flex items-center justify-between p-4 ${
                       index !== filteredFiles.length - 1
-                        ? "border-b border-gray-200"
+                        ? "border-b border-gray-300"
                         : ""
                     }`}
                   >

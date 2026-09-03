@@ -189,7 +189,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "categories" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Categories
               </h2>
@@ -210,7 +210,7 @@ export const SettingsDropdown: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-              <div className="flex gap-4 mb-4 border-b border-gray-200">
+              <div className="flex gap-4 mb-4 border-b border-gray-300">
                 <button className="pb-2 text-sm font-medium text-gray-900 border-b-2 border-blue-600">
                   All Category
                 </button>
@@ -321,7 +321,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "edit-titles" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Edit Titles
               </h2>
@@ -378,7 +378,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "notifications" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Notification Setting
               </h2>
@@ -483,7 +483,7 @@ export const SettingsDropdown: React.FC = () => {
       {/* Generate Barcode */}
       {activePage === "barcode" && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto">
-          <div className="max-w-6xl mx-auto p-6">
+          <div className="w-full p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-gray-900">
                 Generate Barcode
@@ -518,7 +518,7 @@ export const SettingsDropdown: React.FC = () => {
 
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">
                       Item Name
@@ -605,7 +605,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "product-library" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Product Library
               </h2>
@@ -705,7 +705,7 @@ export const SettingsDropdown: React.FC = () => {
 
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-gray-50 border-b border-gray-300">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">
                           Products
@@ -773,7 +773,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "pdf-print" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 PDF & Print Settings
               </h2>
@@ -905,7 +905,7 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "email-templates" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Email Templates
               </h2>

@@ -27,7 +27,7 @@ export const MainLayout: React.FC = () => {
         <Header onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
 
         {/* Content - Dynamic (Outlet renders child routes here) */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto flex flex-col w-full h-full">
           <Outlet />
         </main>
       </div>

@@ -70,7 +70,7 @@ interface CustomPage {
 // ─── Shared: AppHeader ────────────────────────────────────────────────────────
 
 const AppHeader: React.FC<{ section: string }> = ({ section }) => (
-  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
     <div className="flex items-center gap-2 text-sm text-gray-500">
       <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
       <span className="text-gray-400">›</span>
@@ -224,7 +224,7 @@ const CategoriesPanel: React.FC = () => {
 
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                 Category
@@ -275,7 +275,7 @@ const CategoriesPanel: React.FC = () => {
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
               <h3 className="text-base font-semibold text-gray-900">
                 {modal === "add" ? "Add Category" : "Edit Category"}
               </h3>
@@ -412,7 +412,7 @@ const KbCategoryPanel: React.FC = () => {
 
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                 Category
@@ -451,7 +451,7 @@ const KbCategoryPanel: React.FC = () => {
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
               <h3 className="text-base font-semibold text-gray-900">
                 {modal === "add" ? "Add KB Category" : "Edit KB Category"}
               </h3>
@@ -645,7 +645,7 @@ const CustomPagesPanel: React.FC = () => {
 
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                 Title
@@ -697,7 +697,7 @@ const CustomPagesPanel: React.FC = () => {
       {modal && editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
               <h3 className="text-base font-semibold text-gray-900">
                 Edit Custom Page
               </h3>
@@ -1312,7 +1312,7 @@ export const STsystemSetup: React.FC = () => {
       <AppHeader section={current.section} />
 
       {/* Page title */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-6 py-3">
         <h1 className="text-xl font-semibold text-gray-900">System Setup</h1>
       </div>
 

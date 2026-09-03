@@ -154,7 +154,7 @@ export const Team: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col bg-[#FAFBFC] overflow-hidden">
       {/* Top Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">Team</h1>
           <button
@@ -172,7 +172,7 @@ export const Team: React.FC = () => {
         <div className="overflow-x-auto">
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden min-w-[500px]">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Name
@@ -242,7 +242,7 @@ export const Team: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-300">
               <h2 className="text-lg font-semibold text-gray-900">
                 Invite Team
               </h2>
@@ -304,7 +304,7 @@ export const Team: React.FC = () => {
                       {permissions.map((perm) => (
                         <tr
                           key={perm.id}
-                          className="border-b border-gray-200 last:border-b-0"
+                          className="border-b border-gray-300 last:border-b-0"
                         >
                           <td className="px-4 py-3 text-sm text-gray-900 w-1/3">
                             {perm.name}

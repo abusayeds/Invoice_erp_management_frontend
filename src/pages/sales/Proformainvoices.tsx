@@ -242,7 +242,7 @@ const PreviewModal: React.FC<{ onClose: () => void; pf: Proforma }> = ({ onClose
 const EmailModal: React.FC<{ onClose: () => void; pf: Proforma }> = ({ onClose, pf }) => (
   <Overlay onClose={onClose}>
     <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
         <h3 className="text-base font-medium text-gray-900">Proforma Invoice {pf.number} from info</h3>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -251,12 +251,12 @@ const EmailModal: React.FC<{ onClose: () => void; pf: Proforma }> = ({ onClose, 
         </div>
       </div>
       <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
           <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
           <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
         </div>
-        <input defaultValue={`Proforma Invoice ${pf.number} from info`} className="w-full border-b border-gray-200 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-200 pb-2">From: info@inovoic.com</div>
+        <input defaultValue={`Proforma Invoice ${pf.number} from info`} className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
+        <div className="text-sm text-gray-700 border-b border-gray-300 pb-2">From: info@inovoic.com</div>
         <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
           <p>Dear {pf.name}</p>
           <p>Proforma Invoice {pf.number}<br />Total Amount: {pf.amount}</p>
@@ -414,11 +414,11 @@ export const ProformaInvoices: React.FC = () => {
   if (!selected && !createOpen) return <ListEmptyState title="No proforma invoices yet" onCreate={() => setCreateOpen(true)} createLabel="New Proforma Invoice" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select proforma invoices to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
@@ -429,8 +429,8 @@ export const ProformaInvoices: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Proforma Invoices</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Proforma Invoices</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -440,7 +440,7 @@ export const ProformaInvoices: React.FC = () => {
         )}
 
         {/* search */}
-        <div className="px-3 py-2 border-b border-gray-200">
+        <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search proforma invoices..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
@@ -448,7 +448,7 @@ export const ProformaInvoices: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-200">
+        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
               <button key={o} onClick={() => { setSortBy(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -478,7 +478,7 @@ export const ProformaInvoices: React.FC = () => {
             const isChecked = checked.has(p.id);
             return (
               <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : setSelectedId(p.id))}
-                className={`w-full text-left px-4 py-3 border-b border-gray-200 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+                className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
                 )}
@@ -497,7 +497,7 @@ export const ProformaInvoices: React.FC = () => {
           })}
           {/* FAB */}
           {!selectMode && (
-            <button onClick={() => setCreateOpen(true)} className="absolute bottom-20 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
+            <button onClick={() => setCreateOpen(true)} className="absolute bottom-[4.5rem] right-5 z-20 flex w-[42px] h-[42px] items-center justify-center rounded-full bg-orange-500 text-white shadow hover:bg-orange-600 transition-colors"><Plus className="w-6 h-6" strokeWidth={2} /></button>
           )}
         </div>
 
@@ -514,7 +514,7 @@ export const ProformaInvoices: React.FC = () => {
       ) : editRecord ? (
         <CreateDocForm collection="proformas" title="Edit Proforma Invoice" party="customers" record={editRecord} onClose={() => setEditRecord(null)} onSaved={(id) => { setEditRecord(null); setSelectedId(id); }} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} Proforma {checked.size === 1 ? "Invoice" : "Invoices"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -523,12 +523,11 @@ export const ProformaInvoices: React.FC = () => {
           </div>
         </section>
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="relative m-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {/* header */}
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+          <div className="relative flex-1 flex flex-col min-h-0">
+            <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
+                <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
                 <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -576,7 +575,7 @@ export const ProformaInvoices: React.FC = () => {
             {expanded && (
             <>
             {/* meta row */}
-            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-300">
               <div className="flex items-center gap-10">
                 <div><div className="text-xs text-gray-500">{selected.number}</div><div className="text-sm font-semibold text-gray-900">{selected.amount}</div></div>
                 <div><div className="text-xs text-gray-500">Proforma Invoice date</div><div className="text-sm font-semibold text-gray-900">{selected.date}</div></div>
@@ -585,7 +584,7 @@ export const ProformaInvoices: React.FC = () => {
             </div>
 
             {/* billing + shipping addresses (live from the customer) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-5 py-4 border-b border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-5 py-4 border-b border-gray-300">
               <div>
                 <div className="text-xs text-gray-500 mb-1">Billing Address</div>
                 {[selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean).length
@@ -605,7 +604,7 @@ export const ProformaInvoices: React.FC = () => {
             </div>
 
             {/* sub meta */}
-            <div className="grid grid-cols-2 gap-6 px-5 py-3 border-b border-gray-200">
+            <div className="grid grid-cols-2 gap-6 px-5 py-3 border-b border-gray-300">
               <div>
                 <div className="text-xs text-gray-500">Sub Title</div>
                 <div className="text-sm font-semibold text-gray-900">{selectedDb.subTitle || selectedCustomer.subtitle || "—"}</div>
@@ -638,7 +637,7 @@ export const ProformaInvoices: React.FC = () => {
                     <tr><td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-400">No items</td></tr>
                   )}
                   {(selectedDb.items || []).map((it: any, idx: number) => (
-                    <tr key={idx} className="border-b border-gray-200 align-top">
+                    <tr key={idx} className="border-b border-gray-300 align-top">
                       <td className="px-5 py-3 text-gray-700">{idx + 1}</td>
                       <td className="px-2 py-3"><div className="font-semibold text-gray-900">{it.name}</div>{it.description && <div className="text-xs text-gray-500 mt-1">{it.description}</div>}</td>
                       <td className="px-2 py-3 text-right text-gray-800">{it.qty ?? 1}</td>
@@ -714,7 +713,7 @@ export const ProformaInvoices: React.FC = () => {
       {activityOpen && (
         <Overlay onClose={() => setActivityOpen(false)}>
           <div className="w-full max-w-md my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
               <h3 className="text-base font-semibold text-gray-900">Activity Log — Proforma Invoice {selectedDb.number}</h3>
               <button onClick={() => setActivityOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><X className="w-4 h-4" /></button>
             </div>

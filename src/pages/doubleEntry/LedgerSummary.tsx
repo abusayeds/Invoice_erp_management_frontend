@@ -81,7 +81,7 @@ export const LedgerSummary: React.FC = () => {
       filterLabel="Reference"
     >
       <table className="w-full text-sm min-w-[980px]">
-        <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+        <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
           <tr>
             <SortTh field="date" label="Date" />
             <SortTh field="code" label="Account Code" />

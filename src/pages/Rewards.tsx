@@ -137,7 +137,7 @@ export const Rewards: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      <div className="w-full p-4 sm:p-6">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
           {/* header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">

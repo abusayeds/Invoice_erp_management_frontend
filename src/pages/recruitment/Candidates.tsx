@@ -817,7 +817,7 @@ export const Candidates: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
@@ -828,14 +828,14 @@ export const Candidates: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Manage Candidates</h2>
           <button onClick={openCreateModal} className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"><Plus className="w-5 h-5" /></button>
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" placeholder="Search Candidates..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full sm:w-80 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md" /></div>
@@ -860,7 +860,7 @@ export const Candidates: React.FC = () => {
       <div className="flex-1 overflow-auto">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[1100px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
               <tr>
                 <SortHeader field="trackingId" label="Tracking ID" />
                 <SortHeader field="firstName" label="Name" />

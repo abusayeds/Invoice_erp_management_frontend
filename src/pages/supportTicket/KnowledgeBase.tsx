@@ -249,7 +249,7 @@ const RichToolbar: React.FC = () => {
   const btn = "p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors";
   const ic = "w-3.5 h-3.5";
   return (
-    <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5 border-b border-gray-200 bg-white">
+    <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5 border-b border-gray-300 bg-white">
       <button className={btn}>
         <Bold className={ic} />
       </button>
@@ -332,7 +332,7 @@ const KbModal: React.FC<ModalProps> = ({ mode, article, onClose, onSave }) => {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
           <h2 className="text-base font-semibold text-gray-900">
             {mode === "edit" ? "Edit Knowledge Base" : "Add Knowledge Base"}
           </h2>
@@ -534,7 +534,7 @@ export const KnowledgeBase: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
           <span className="text-gray-400">›</span>
@@ -551,7 +551,7 @@ export const KnowledgeBase: React.FC = () => {
       </div>
 
       {/* Page title */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Manage Knowledge Base
         </h1>
@@ -612,7 +612,7 @@ export const KnowledgeBase: React.FC = () => {
         {/* Table */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
+            <thead className="border-b border-gray-300">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                   <span className="flex items-center gap-1 cursor-pointer select-none">

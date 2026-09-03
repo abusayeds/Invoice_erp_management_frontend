@@ -150,8 +150,8 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
   const custName = customerId ? customers.find((c) => c.id === customerId)?.name || custQuery : custQuery;
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Invoice" : "Create Invoice"}</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -188,7 +188,7 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
 
         {/* ── Address panel (Billing | Shipping — mirrored field alignment) ── */}
         {addrOpen && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 border-b border-gray-200 pb-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 border-b border-gray-300 pb-5">
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" defaultChecked className="accent-blue-600" /> Billing</label>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={updateToCustomer} onChange={() => setUpdateToCustomer((v) => !v)} className="accent-blue-600" /> Update to customer</label>

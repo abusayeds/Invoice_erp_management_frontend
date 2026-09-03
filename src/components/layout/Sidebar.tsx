@@ -467,14 +467,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         className={`
           fixed lg:relative inset-y-0 left-0 z-50
-          h-screen w-72 max-w-[85vw] lg:max-w-none bg-[#212a33] border-r border-black/20 flex flex-col
+          h-screen w-72 max-w-[85vw] lg:max-w-none bg-[#1e293b] border-r border-black/20 flex flex-col
           transition-all duration-300 ease-in-out
           ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
         style={isDesktop ? { width: sidebarWidth } : undefined}
       >
         {/* Logo Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-white/10 bg-[#1b232b]">
+        <div className="h-14 flex items-center justify-between px-4 border-b border-white/10 bg-[#0f172a]">
           {!collapsed && (
             <Link
               to="/"

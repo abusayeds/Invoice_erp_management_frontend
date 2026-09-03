@@ -242,7 +242,7 @@ export const Attendances: React.FC = () => {
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Attendances" onNavigate={navigate} />
 
       {/* toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
@@ -348,7 +348,7 @@ export const Attendances: React.FC = () => {
       <div className="flex-1 overflow-auto">
         <table className="text-sm border-collapse w-full">
           <thead className="sticky top-0 z-20">
-            <tr className="bg-white border-b border-gray-200">
+            <tr className="bg-white border-b border-gray-300">
               <th className="sticky left-0 z-10 bg-white px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide min-w-[190px] border-r border-gray-100">
                 Employee
               </th>

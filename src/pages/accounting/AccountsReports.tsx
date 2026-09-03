@@ -81,7 +81,7 @@ const ResultView: React.FC<{ data: any }> = ({ data }) => {
     return (
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>{columns.map((c) => (<th key={c} className="px-3 py-2 text-left text-xs font-medium text-gray-600 whitespace-nowrap">{prettyKey(c)}</th>))}</tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -164,7 +164,7 @@ export const AccountsReports: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2 sticky top-0 z-10">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
           <span>›</span><span className="text-gray-900 font-medium">Accounting Reports</span>

@@ -70,7 +70,7 @@ export const PosOrderDetail: React.FC = () => {
         current="POS Sale Details"
         onNavigate={navigate}
       />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">POS Sale</h2>
         <button
           onClick={() => navigate("/pos/orders")}
@@ -127,7 +127,7 @@ export const PosOrderDetail: React.FC = () => {
           <h4 className="text-base font-semibold text-gray-900 mb-4">Sale Items</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
-              <thead className="border-b border-gray-200">
+              <thead className="border-b border-gray-300">
                 <tr>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Product</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">Qty</th>

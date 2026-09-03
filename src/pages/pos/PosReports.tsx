@@ -93,7 +93,7 @@ function ReportShell({ title, children }: { title: string; children: React.React
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "POS" }]} current={title} onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
       </div>
       <div className="p-4 sm:p-6 space-y-6">{children}</div>
@@ -118,7 +118,7 @@ function PerfTable({ title, icon: Icon, head, rows }: { title: string; icon: Rea
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[760px]">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               {head.map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>

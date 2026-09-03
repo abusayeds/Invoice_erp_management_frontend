@@ -1911,7 +1911,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "branches":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Branches</h3>
               <button
                 onClick={openCreateModal}
@@ -1923,7 +1923,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Branch Name
@@ -1992,7 +1992,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "departments":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Departments</h3>
               <button
                 onClick={openCreateModal}
@@ -2004,7 +2004,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Department Name
@@ -2073,7 +2073,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "designations":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Designations</h3>
               <button
                 onClick={openCreateModal}
@@ -2085,7 +2085,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Designation Name
@@ -2154,7 +2154,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "documentTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Document Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2166,7 +2166,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Document Name
@@ -2229,7 +2229,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "awardTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Award Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2241,7 +2241,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Name
@@ -2294,7 +2294,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "terminationTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Termination Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2306,7 +2306,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Name
@@ -2359,7 +2359,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "warningTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Warning Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2371,7 +2371,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Warning Type Name
@@ -2428,7 +2428,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "complaintTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Complaint Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2440,7 +2440,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Complaint Type
@@ -2487,7 +2487,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "holidayTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Holiday Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2499,7 +2499,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Holiday Type
@@ -2546,7 +2546,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "documentCategories":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">
                 Document Categories
               </h3>
@@ -2560,7 +2560,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Document Type
@@ -2619,7 +2619,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "announcementCategories":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">
                 Announcement Categories
               </h3>
@@ -2633,7 +2633,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Announcement Category
@@ -2686,7 +2686,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "eventTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Event Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2698,7 +2698,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Event Type
@@ -2745,7 +2745,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "allowanceTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Allowance Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2757,7 +2757,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Name
@@ -2810,7 +2810,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "deductionTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Deduction Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2822,7 +2822,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Name
@@ -2875,7 +2875,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "loanTypes":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">Loan Types</h3>
               <button
                 onClick={openCreateModal}
@@ -2887,7 +2887,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       Name
@@ -3047,7 +3047,7 @@ export const HRMSystemSetup: React.FC = () => {
       case "ipRestricts":
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
               <h3 className="font-semibold text-gray-900">IP Restricts</h3>
               <button
                 onClick={openCreateModal}
@@ -3059,7 +3059,7 @@ export const HRMSystemSetup: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                       IP Address
@@ -4196,7 +4196,7 @@ export const HRMSystemSetup: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button
             onClick={() => navigate("/")}

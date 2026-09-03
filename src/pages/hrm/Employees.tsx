@@ -104,7 +104,7 @@ export const Employees: React.FC = () => {
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Employees" onNavigate={navigate} />
 
       {/* title row */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Manage Employees</h2>
           <button
@@ -118,7 +118,7 @@ export const Employees: React.FC = () => {
       </div>
 
       {/* toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
@@ -208,7 +208,7 @@ export const Employees: React.FC = () => {
         {view === "list" ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[1000px]">
-              <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+              <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
                 <tr>
                   <SortHeader field="employeeId" label="Employee Id" />
                   <SortHeader field="name" label="Employee Name" />

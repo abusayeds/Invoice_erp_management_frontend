@@ -135,7 +135,7 @@ const InOutModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     <Overlay onClose={onClose}>
       <div className="w-[420px] my-24 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
         {/* In/Out toggle + actions */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
           <div className="flex rounded-md overflow-hidden border border-blue-600">
             {(["In", "Out"] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)} className={`px-6 py-1.5 text-sm font-medium ${mode === m ? "bg-blue-600 text-white" : "text-blue-600 bg-white"}`}>{m}</button>
@@ -190,8 +190,8 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
   const [notes, setNotes] = useState(log?.notes ?? "");
   const handleSave = () => { onSave?.({ project, task, notes, hours: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}` }); onClose(); };
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="flex-1 overflow-y-auto custom-scrollbar bg-white border-l border-gray-300">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Time Log" : "Edit Time Log"}</h1>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -201,7 +201,7 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
       </div>
 
       {/* big hh:mm display + In/Out */}
-      <div className="relative px-6 py-10 border-b border-gray-200">
+      <div className="relative px-6 py-10 border-b border-gray-300">
         <div className="text-center">
           <div className="text-6xl font-light text-gray-900 tracking-wide">{hh} : {mm}</div>
           <div className="text-sm text-gray-500 mt-1">hh : mm</div>
@@ -292,12 +292,12 @@ export const TimeLogs: React.FC = () => {
   if (!selected && mode !== "create") return <ListEmptyState title="No time logs yet" onCreate={() => setMode("create")} createLabel="New Time Log" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {/* header */}
-        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-900">Time Logs</h2>
+        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+          <h2 className="text-base font-semibold text-gray-900 tracking-tight">Time Logs</h2>
           <div className="flex items-center gap-0.5">
             <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
             <button onClick={() => setMode("create")} className="p-1.5 hover:bg-gray-100 rounded-md" title="New"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -306,7 +306,7 @@ export const TimeLogs: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-200 overflow-x-auto custom-scrollbar">
+        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
               <button key={o} onClick={() => { setSortBy(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -322,7 +322,7 @@ export const TimeLogs: React.FC = () => {
         </div>
 
         {/* Timer header row */}
-        <div className="border-b border-gray-200">
+        <div className="border-b border-gray-300">
           <div className="flex items-center justify-between px-4 py-2.5">
             <span className="text-sm font-semibold text-gray-900">Timer</span>
             <button onClick={() => setMode("create")} className="p-1 rounded-md hover:bg-gray-100 text-gray-600"><Plus className="w-4 h-4" /></button>
@@ -349,7 +349,7 @@ export const TimeLogs: React.FC = () => {
           <div className="flex-1 overflow-y-auto custom-scrollbar">
           {groups.map((g) => (
             <div key={g.month}>
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-300">
                 <span className="text-sm font-bold text-gray-900">{g.month} ({g.rows.length})</span>
                 <span className="text-sm font-bold text-gray-900 tabular-nums">{g.total}</span>
               </div>
@@ -358,7 +358,7 @@ export const TimeLogs: React.FC = () => {
                 const liveHours = timer && timer.id === l.id ? fmtHMS(timer.sec) : l.hours;
                 return (
                   <button key={l.id} onClick={() => { setSelectedId(l.id); setMode("view"); }}
-                    className={`w-full text-left px-4 py-3 border-b border-gray-200 transition-colors ${activeRow ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+                    className={`w-full text-left px-4 py-3 border-b border-gray-300 transition-colors ${activeRow ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                     {l.project ? (
                       <>
                         <div className="flex items-center justify-between gap-2">
@@ -400,12 +400,12 @@ export const TimeLogs: React.FC = () => {
       ) : mode === "edit" ? (
         <TimeLogForm mode="edit" log={selected} onClose={() => setMode("view")} onSave={async (d) => { await repo.update("timelogs", selected.id, { project: d.project, task: d.task, hours: d.hours, notes: d.notes }); }} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
           {/* detail header */}
-          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
-            <h1 className="text-lg font-semibold text-gray-900">Time Log Details</h1>
+          <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
+            <h1 className="text-base font-semibold text-gray-900 tracking-tight">Time Log Details</h1>
             <div className="flex items-center gap-2">
-              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
+              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Settings"><Settings className="w-4 h-4" /></button>
 
               {/* timer controls */}
               {active ? (
@@ -417,10 +417,10 @@ export const TimeLogs: React.FC = () => {
                 <button onClick={stopTimer} className={`${ctrlBtn} bg-red-600`} title="Stop"><Square className="w-3 h-3 fill-current" /></button>
               )}
 
-              <button onClick={() => setMode("edit")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Edit"><Pencil className="w-4 h-4" /></button>
-              {!isThis && <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Notes"><ClipboardList className="w-4 h-4" /></button>}
+              <button onClick={() => setMode("edit")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Edit"><Pencil className="w-4 h-4" /></button>
+              {!isThis && <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Notes"><ClipboardList className="w-4 h-4" /></button>}
 
-              <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
+              <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><MoreVertical className="w-4 h-4" /></span>}>
                 {(close) => (
                   <>
                     <button onClick={() => { markInvoiced(); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><CheckCircle2 className="w-4 h-4 text-gray-400" /> Mark as Invoiced</button>

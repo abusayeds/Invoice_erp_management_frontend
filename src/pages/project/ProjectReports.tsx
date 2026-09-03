@@ -81,7 +81,7 @@ export const ProjectReports: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>
@@ -117,7 +117,7 @@ export const ProjectReports: React.FC = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[860px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   <SortH f="name" label="Project Name" />
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Tasks</th>
@@ -205,7 +205,7 @@ export const ProjectReportDetail: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>
@@ -294,7 +294,7 @@ export const ProjectReportDetail: React.FC = () => {
             <div className="flex items-center gap-2 text-base font-semibold text-gray-900 mb-3"><UsersIcon className="w-4 h-4 text-blue-500" /> Users</div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-gray-200">
+                <thead className="border-b border-gray-300">
                   <tr>
                     <th className="px-2 py-2 text-left text-xs font-semibold text-gray-500">NAME</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold text-gray-500">ASSIGNED TASKS</th>
@@ -319,7 +319,7 @@ export const ProjectReportDetail: React.FC = () => {
             <div className="text-base font-semibold text-gray-900 mb-3">Milestones</div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[560px]">
-                <thead className="border-b border-gray-200">
+                <thead className="border-b border-gray-300">
                   <tr>
                     {["NAME", "PROGRESS", "COST", "STATUS", "START DATE", "END DATE"].map((h) => (
                       <th key={h} className="px-2 py-2 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>

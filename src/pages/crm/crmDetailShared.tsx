@@ -124,7 +124,7 @@ export const RichEditor: React.FC<{
 
   return (
     <div className="border border-gray-300 rounded-md overflow-hidden bg-white">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-200 px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-300 px-2 py-1.5">
         <Btn cmd="bold" title="Bold"><Bold className="w-4 h-4" /></Btn>
         <Btn cmd="italic" title="Italic"><Italic className="w-4 h-4" /></Btn>
         <Btn cmd="underline" title="Underline"><Underline className="w-4 h-4" /></Btn>

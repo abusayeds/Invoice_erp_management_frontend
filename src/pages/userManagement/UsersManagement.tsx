@@ -1343,7 +1343,7 @@ export const UsersManagement: React.FC = () => {
                     ) : (
                       <>
                         {/* Add-on Tabs */}
-                        <div className="border-b border-gray-200 overflow-x-auto mb-4">
+                        <div className="border-b border-gray-300 overflow-x-auto mb-4">
                           <div className="flex gap-1 min-w-max">
                             {permCatalog.map((addOn) => (
                               <button

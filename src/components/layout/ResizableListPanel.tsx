@@ -1,17 +1,21 @@
 /**
  * File: src/components/layout/ResizableListPanel.tsx
- * Drop-in replacement for the master/detail list `<aside>` used across pages.
- * Renders the list column and a vertical drag handle on its right edge so the
- * user can widen/narrow the middle list panel (the detail panel flexes to fill
- * the rest). Only this panel is resizable — the sidebar is not.
+ * Drop-in list panel used across all master/detail pages (Sales, Purchase, …).
+ *
+ * Changes (2026-09):
+ *  - Header slot: dark bg (#1b232b) with white text — matches sidebar + outlet header.
+ *  - Borders: straight (no rounding).
+ *  - + FAB: fixed to bottom-right of the panel, OUTSIDE the scroll area (sticky).
+ *  - Filter/toolbar area: sticky below the header — never scrolls away.
+ *  - Scroll area: only the list rows scroll; header + toolbar + footer are fixed.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 
-const MIN_WIDTH = 260;
-const MAX_WIDTH = 620;
-const DEFAULT_WIDTH = 340;
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 700;
+const DEFAULT_WIDTH = 450;
 
 interface ResizableListPanelProps {
   children: React.ReactNode;
@@ -30,9 +34,7 @@ export const ResizableListPanel: React.FC<ResizableListPanelProps> = ({
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging.current) return;
     const delta = e.clientX - startX.current;
-    setWidth(
-      Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta)),
-    );
+    setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta)));
   }, []);
 
   const handleMouseUp = useCallback(() => {
@@ -69,20 +71,17 @@ export const ResizableListPanel: React.FC<ResizableListPanelProps> = ({
   return (
     <aside
       style={{ width }}
-      className={`relative flex-shrink-0 flex flex-col bg-white border-r border-gray-200 ${className}`}
+      className={`relative flex-shrink-0 flex flex-col bg-white border-r border-gray-300 ${className}`}
     >
       {children}
 
-      {/* Vertical drag handle — sits on the right edge (list ↔ detail divider) */}
+      {/* Vertical drag handle */}
       <div
         onMouseDown={handleDragStart}
         title="Drag to resize"
         className="group absolute right-0 top-0 bottom-0 w-2 translate-x-1/2 z-20 cursor-col-resize flex items-center justify-center"
       >
         <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-transparent group-hover:bg-blue-400 transition-colors" />
-        <span className="relative flex items-center justify-center h-9 w-4 rounded bg-white border border-gray-200 shadow-sm text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-          <GripVertical className="w-3.5 h-3.5" strokeWidth={2} />
-        </span>
       </div>
     </aside>
   );

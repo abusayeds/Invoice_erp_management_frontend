@@ -48,7 +48,7 @@ export const TrialBalance: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "Double Entry" }]} current="Trial Balance" onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">Trial Balance</h2>
       </div>
 
@@ -92,7 +92,7 @@ export const TrialBalance: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
-              <thead className="border-b border-gray-200">
+              <thead className="border-b border-gray-300">
                 <tr>
                   <th className="px-6 py-3.5 text-left text-sm font-semibold text-gray-900">Account Code</th>
                   <th className="px-6 py-3.5 text-left text-sm font-semibold text-gray-900">Account Name</th>

@@ -409,7 +409,7 @@ const SortIcon = () => (
 const AppHeader: React.FC<{
   breadcrumbs: { label: string; onClick?: () => void }[];
 }> = ({ breadcrumbs }) => (
-  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
     <div className="flex items-center gap-2 text-sm text-gray-500">
       {breadcrumbs.map((crumb, idx) => (
         <React.Fragment key={idx}>
@@ -441,7 +441,7 @@ const RichToolbar: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const sz = compact ? "w-3.5 h-3.5" : "w-4 h-4";
   return (
     <div
-      className={`flex items-center flex-wrap gap-0.5 p-2 border-b border-gray-200 bg-gray-50 ${compact ? "rounded-t-md" : ""}`}
+      className={`flex items-center flex-wrap gap-0.5 p-2 border-b border-gray-300 bg-gray-50 ${compact ? "rounded-t-md" : ""}`}
     >
       <button className={btn}>
         <Bold className={sz} />
@@ -694,7 +694,7 @@ const ManageTickets: React.FC<{
       />
 
       {/* Page header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Manage Tickets</h1>
         <button onClick={() => setShowCreate(true)} title="Create Ticket" className="w-9 h-9 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center transition-colors">
           <Plus className="w-5 h-5" />
@@ -765,7 +765,7 @@ const ManageTickets: React.FC<{
         {/* Table */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
+            <thead className="border-b border-gray-300">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 w-10">
                   No
@@ -931,7 +931,7 @@ const EditReply: React.FC<{
       />
 
       {/* Page header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Ticket - {ticket.ticketId}
         </h1>
@@ -1226,7 +1226,7 @@ const PublicView: React.FC<{ ticket: Ticket; onBack: () => void }> = ({
           backgroundColor: "#f0fdf4",
         }}
       >
-        <div className="max-w-5xl mx-auto px-6 py-10">
+        <div className="w-full px-6 py-10">
           {/* Ticket pill */}
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center gap-2 bg-emerald-700 text-white px-5 py-2 rounded-full text-sm font-medium">

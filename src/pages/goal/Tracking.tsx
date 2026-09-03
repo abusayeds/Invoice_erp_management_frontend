@@ -136,7 +136,7 @@ export const Tracking: React.FC = () => {
       >
         {view === "list" ? (
           <table className="w-full text-sm min-w-[1000px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Goal</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">

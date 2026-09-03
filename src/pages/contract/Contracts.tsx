@@ -546,7 +546,7 @@ const SortIcon = () => (
 const AppHeader: React.FC<{
   crumbs: { label: string; onClick?: () => void }[];
 }> = ({ crumbs }) => (
-  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
     <div className="flex items-center gap-2 text-sm text-gray-500">
       {crumbs.map((c, i) => (
         <React.Fragment key={i}>
@@ -582,7 +582,7 @@ const EditModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300">
           <h2 className="text-base font-semibold text-gray-900">
             {title ?? "Edit Contract"}
           </h2>
@@ -744,7 +744,7 @@ const EditModal: React.FC<{
 // ─── Contract Header Card (shared across detail tabs) ─────────────────────────
 
 const ContractHeaderCard: React.FC<{ contract: Contract }> = ({ contract }) => (
-  <div className="bg-white border-b border-gray-200 px-6 py-5">
+  <div className="bg-white border-b border-gray-300 px-6 py-5">
     <div className="flex items-start justify-between">
       <div className="flex items-start gap-4">
         <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
@@ -959,7 +959,7 @@ const AttachmentsTab: React.FC = () => {
         </div>
       </div>
       <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-gray-50 border-b border-gray-300">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 w-12">
               Preview
@@ -1249,7 +1249,7 @@ const RenewalsTab: React.FC = () => {
         </div>
       </div>
       <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-gray-50 border-b border-gray-300">
           <tr>
             {[
               "Start Date",
@@ -1381,7 +1381,7 @@ const DetailsContract: React.FC<{
           { label: contract.number },
         ]}
       />
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Details Contract
         </h1>
@@ -1405,7 +1405,7 @@ const DetailsContract: React.FC<{
       </div>
       <ContractHeaderCard contract={contract} />
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white border-b border-gray-300">
         <div className="flex">
           {tabs.map((t) => (
             <button
@@ -1447,7 +1447,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
         { label: "Preview" },
       ]}
     />
-    <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
       <h1 className="text-xl font-semibold text-gray-900">Contract Preview</h1>
       <div className="flex items-center gap-2">
         <button
@@ -1467,7 +1467,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
     <div className="flex-1 overflow-y-auto p-6 flex justify-center">
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm w-full max-w-3xl">
         {/* Title area */}
-        <div className="text-center py-8 border-b border-gray-200">
+        <div className="text-center py-8 border-b border-gray-300">
           <h2 className="text-2xl font-bold text-gray-900">
             {contract.subject}
           </h2>
@@ -1476,7 +1476,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
           </p>
         </div>
         {/* Info grid */}
-        <div className="grid grid-cols-2 gap-0 border-b border-gray-200">
+        <div className="grid grid-cols-2 gap-0 border-b border-gray-300">
           {/* Left: Contract Information */}
           <div className="p-8 border-r border-gray-200">
             <h3 className="text-base font-semibold text-gray-900 mb-5">
@@ -1520,7 +1520,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
           </div>
         </div>
         {/* Description */}
-        <div className="p-8 border-b border-gray-200">
+        <div className="p-8 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900 mb-3">
             Description
           </h3>
@@ -1529,7 +1529,7 @@ const ContractPreview: React.FC<{ contract: Contract; onBack: () => void }> = ({
           </p>
         </div>
         {/* Signatures */}
-        <div className="p-8 border-b border-gray-200">
+        <div className="p-8 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900 mb-5">
             Signatures
           </h3>
@@ -1708,7 +1708,7 @@ const ManageContractsList: React.FC<{
   return (
     <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
       <AppHeader crumbs={[{ label: "Dashboard" }, { label: "Contracts" }]} />
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Manage Contracts
         </h1>
@@ -1770,7 +1770,7 @@ const ManageContractsList: React.FC<{
         {/* Table */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
+            <thead className="border-b border-gray-300">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                   <span className="flex items-center gap-1 cursor-pointer select-none">

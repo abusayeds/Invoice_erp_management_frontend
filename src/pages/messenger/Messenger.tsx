@@ -515,7 +515,7 @@ export const Messenger: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[#FAFBFC]">
       {/* Breadcrumb header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300 flex-shrink-0">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
           <span className="text-gray-400">›</span>
@@ -528,7 +528,7 @@ export const Messenger: React.FC = () => {
       </div>
 
       {/* Page title */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex-shrink-0">
         <h1 className="text-xl font-semibold text-gray-900">Messenger</h1>
       </div>
 
@@ -660,7 +660,7 @@ export const Messenger: React.FC = () => {
           ) : (
             <>
               {/* Chat header */}
-              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-200 flex-shrink-0">
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-300 flex-shrink-0">
                 <div className="relative">
                   <AvatarCircle conv={activeConv} size={42} />
                   {activeConv.online && (

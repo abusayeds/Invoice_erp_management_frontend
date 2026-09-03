@@ -403,7 +403,7 @@ const EditNotifTemplate: React.FC<{
   return (
     <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
       {/* Breadcrumb */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span className="hover:text-gray-700 cursor-pointer" onClick={onBack}>
             Dashboard
@@ -424,7 +424,7 @@ const EditNotifTemplate: React.FC<{
       </div>
 
       {/* Page title + Back */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-300 px-6 py-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">
           Edit Notification Template : {template.subject}
         </h1>
@@ -462,7 +462,7 @@ const EditNotifTemplate: React.FC<{
           {/* ── Right: Content ── */}
           <div className="flex-1 bg-white border border-gray-200 rounded-lg overflow-hidden">
             {/* Panel header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-300">
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                 <span className="text-[10px] font-bold text-gray-500 border border-gray-300 rounded px-1.5 py-0.5 leading-none">
                   GB
@@ -548,7 +548,7 @@ const NotifTemplatesList: React.FC<{ onEdit: (t: NotifTemplate) => void }> = ({
   return (
     <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
       {/* Breadcrumb */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-300">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
           <span className="text-gray-400">›</span>
@@ -563,7 +563,7 @@ const NotifTemplatesList: React.FC<{ onEdit: (t: NotifTemplate) => void }> = ({
       </div>
 
       {/* Page title + Tab strip */}
-      <div className="bg-white border-b border-gray-200 px-6 pt-4 pb-0">
+      <div className="bg-white border-b border-gray-300 px-6 pt-4 pb-0">
         <h1 className="text-xl font-semibold text-gray-900 mb-3">
           Manage Notification Templates
         </h1>
@@ -624,7 +624,7 @@ const NotifTemplatesList: React.FC<{ onEdit: (t: NotifTemplate) => void }> = ({
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
+            <thead className="border-b border-gray-300 bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">
                   <span className="flex items-center gap-1 cursor-pointer select-none">

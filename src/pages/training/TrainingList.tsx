@@ -1116,7 +1116,7 @@ export const TrainingList: React.FC = () => {
   if (showTasksView && selectedTraining) {
     return (
       <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+        <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <button
@@ -1151,7 +1151,7 @@ export const TrainingList: React.FC = () => {
           </div>
         </div>
         <div className="flex-1 overflow-auto p-6">
-          <div className="max-w-6xl mx-auto">
+          <div className="w-full">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">
@@ -1169,7 +1169,7 @@ export const TrainingList: React.FC = () => {
               </button>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-              <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50/40">
+              <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50/40">
                 <h2 className="font-semibold text-gray-900">Tasks</h2>
                 <button
                   onClick={openCreateTaskModal}
@@ -1180,7 +1180,7 @@ export const TrainingList: React.FC = () => {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-50 border-b border-gray-300">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                         Title
@@ -1283,7 +1283,7 @@ export const TrainingList: React.FC = () => {
   // Main training list view
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <button
@@ -1308,7 +1308,7 @@ export const TrainingList: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Training List
@@ -1323,7 +1323,7 @@ export const TrainingList: React.FC = () => {
           </button>
         </div>
       </div>
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
@@ -1433,7 +1433,7 @@ export const TrainingList: React.FC = () => {
       <div className="flex-1 overflow-auto">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[1200px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
               <tr>
                 <SortHeader field="title" label="Title" />
                 <SortHeader field="trainingTypeName" label="Training Type" />

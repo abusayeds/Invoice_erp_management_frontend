@@ -35,7 +35,7 @@ const StageModal: React.FC<{
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40" onMouseDown={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900">{initial ? `Edit ${kindLabel}` : `Create ${kindLabel}`}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><X className="w-4 h-4" /></button>
         </div>
@@ -138,7 +138,7 @@ export const ProjectSystemSetup: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>

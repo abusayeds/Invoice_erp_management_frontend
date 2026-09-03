@@ -110,7 +110,7 @@ const Modal: React.FC<{
         className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[90vh] ${wide ? "max-w-2xl h-[560px]" : "max-w-md h-[440px]"}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-300 flex-shrink-0">
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><X className="w-4 h-4" /></button>
         </div>
@@ -524,7 +524,7 @@ export const Projects: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
           <span>›</span><span className="text-gray-900 font-medium">Projects</span>
@@ -569,7 +569,7 @@ export const Projects: React.FC = () => {
           {view === "list" ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[900px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-300">
                   <tr>
                     <SortH f="name" label="Name" />
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Users</th>
@@ -704,7 +704,7 @@ export const ProjectDetail: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>
@@ -805,7 +805,7 @@ export const ProjectDetail: React.FC = () => {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[820px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   {["Title", "Cost", "Start Date", "End Date", "Status", "Progress", "Action"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600">{h}</th>
@@ -894,7 +894,7 @@ export const ProjectBugs: React.FC = () => {
 
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>

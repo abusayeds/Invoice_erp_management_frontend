@@ -121,7 +121,7 @@ export const Holidays: React.FC = () => {
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Holidays" onNavigate={navigate} />
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Manage Holidays</h2>
           <button
@@ -138,7 +138,7 @@ export const Holidays: React.FC = () => {
       </div>
 
       {/* toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
@@ -204,7 +204,7 @@ export const Holidays: React.FC = () => {
       <div className="flex-1 overflow-auto">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <thead className="bg-white sticky top-0 z-10 border-b border-gray-300">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                   <button onClick={() => setSortAsc(!sortAsc)} className="flex items-center gap-1 hover:text-gray-900">

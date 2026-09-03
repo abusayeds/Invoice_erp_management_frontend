@@ -318,7 +318,7 @@ export const SystemSetup: React.FC = () => {
 
   const renderCategoriesTab = () => (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="p-4 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -340,7 +340,7 @@ export const SystemSetup: React.FC = () => {
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Category</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Color</th>
@@ -416,7 +416,7 @@ export const SystemSetup: React.FC = () => {
 
   const renderTaxesTab = () => (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="p-4 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -438,7 +438,7 @@ export const SystemSetup: React.FC = () => {
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-300">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Tax Name</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Rate (%)</th>
@@ -515,7 +515,7 @@ export const SystemSetup: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">
             Dashboard
@@ -530,12 +530,12 @@ export const SystemSetup: React.FC = () => {
       </div>
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">System Setup</h2>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6">
         <div className="flex gap-6">
           <button
             onClick={() => setActiveTab("categories")}

@@ -120,7 +120,7 @@ export const PrintBarcode: React.FC = () => {
   return (
     <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "POS" }]} current="Product Barcode" onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4">
         <h2 className="text-lg font-semibold text-gray-900">Manage Product Barcode</h2>
       </div>
 
@@ -179,7 +179,7 @@ export const PrintBarcode: React.FC = () => {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[860px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-300">
                 <tr>
                   <th className="px-4 py-3 w-10">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all products" className="w-4 h-4 accent-blue-600" />

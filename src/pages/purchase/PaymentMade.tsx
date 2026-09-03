@@ -114,7 +114,7 @@ const BillsChooser: React.FC<{ onClose: () => void; onDone: () => void; vendor: 
   return (
     <Overlay onClose={onClose}>
       <div className="w-full max-w-xl my-10 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: 420 }}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900">Bills</h3>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -122,7 +122,7 @@ const BillsChooser: React.FC<{ onClose: () => void; onDone: () => void; vendor: 
           </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <button onClick={() => setPicked((p) => !p)} className="w-full flex items-start gap-3 px-5 py-3 border-b border-gray-200 hover:bg-gray-50 text-left">
+          <button onClick={() => setPicked((p) => !p)} className="w-full flex items-start gap-3 px-5 py-3 border-b border-gray-300 hover:bg-gray-50 text-left">
             <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${picked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{picked && <Check className="w-3.5 h-3.5 text-white" />}</span>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-gray-900">{vendor}</div>
@@ -154,7 +154,7 @@ const EditModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p }
   return (
     <Overlay onClose={onClose}>
       <div className="w-full max-w-lg my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900">Edit Payment</h3>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -244,7 +244,7 @@ const PreviewModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, 
 const EmailModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p }) => (
   <Overlay onClose={onClose}>
     <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
         <h3 className="text-base font-medium text-gray-900">Payment Made {p.number} from info</h3>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -253,12 +253,12 @@ const EmailModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p 
         </div>
       </div>
       <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
           <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
           <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
         </div>
-        <input defaultValue={`Payment Made ${p.number} from info`} className="w-full border-b border-gray-200 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-200 pb-2">From: info@inovoic.com</div>
+        <input defaultValue={`Payment Made ${p.number} from info`} className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
+        <div className="text-sm text-gray-700 border-b border-gray-300 pb-2">From: info@inovoic.com</div>
         <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
           <p>Dear {p.name}</p>
           <p>Payment Made {p.number}<br />Amount: {p.amount} ({p.method})</p>
@@ -300,7 +300,7 @@ const RecordPaymentMadeModal: React.FC<{ onClose: () => void; onSaved: (id: numb
   return (
     <Overlay onClose={onClose}>
       <div className="w-full max-w-lg my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
           <h3 className="text-base font-semibold text-gray-900">Record Payment</h3>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
@@ -400,11 +400,11 @@ export const PaymentMade: React.FC = () => {
   if (!selected && !createOpen) return <ListEmptyState title="No payments made yet" onCreate={() => setCreateOpen(true)} createLabel="New Payment" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               {[Trash2, MessageCircle, Mail, Eye, Check].map((Ic, i) => (
@@ -413,8 +413,8 @@ export const PaymentMade: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Payment Made</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Payment Made</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -426,7 +426,7 @@ export const PaymentMade: React.FC = () => {
         )}
 
         {/* search */}
-        <div className="px-3 py-2 border-b border-gray-200">
+        <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search payments..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
@@ -434,7 +434,7 @@ export const PaymentMade: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-200">
+        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 border-b border-gray-300 overflow-x-auto hover-scrollbar" onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; }}>
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => (
               <>
@@ -481,7 +481,7 @@ export const PaymentMade: React.FC = () => {
             const isChecked = checked.has(p.id);
             return (
               <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : setSelectedId(p.id))}
-                className={`w-full text-left px-4 py-3 border-b border-gray-200 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+                className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
                 )}
@@ -514,7 +514,7 @@ export const PaymentMade: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="flex-1 flex items-center justify-center bg-white border-l border-gray-300">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Payment" : "Payments"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -523,16 +523,15 @@ export const PaymentMade: React.FC = () => {
           </div>
         </section>
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="relative m-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {/* header */}
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
-              <h1 className="text-lg font-semibold text-gray-900 truncate min-w-0">{selected.name}</h1>
+        <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col bg-white border-l border-gray-300">
+          <div className="relative flex-1 flex flex-col min-h-0">
+            <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
+              <h1 className="text-base tracking-tight font-semibold text-gray-900 truncate min-w-0">{selected.name}</h1>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (
-                  <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><a.icon className="w-4 h-4" /></button>
+                  <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><a.icon className="w-4 h-4" /></button>
                 ))}
-                <Dropdown align="right" panelClass="w-48" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
+                <Dropdown align="right" panelClass="w-48" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <>
                       <button onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
@@ -544,7 +543,7 @@ export const PaymentMade: React.FC = () => {
             </div>
 
             {/* meta row */}
-            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-300">
               <div><div className="text-xs text-gray-500">{selected.number}</div><div className="text-sm font-semibold text-gray-900">{selected.amount}</div></div>
               <div className="flex items-center gap-12">
                 <div><div className="text-xs text-gray-500">Payment date</div><div className="text-sm font-semibold text-gray-900">{selected.date}</div></div>
@@ -553,7 +552,7 @@ export const PaymentMade: React.FC = () => {
             </div>
 
             {/* Bills section */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-300">
               <div className="px-5 py-2.5 bg-gray-50 text-sm font-semibold text-gray-900">Bills</div>
               <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200">
                 <span className="text-sm text-gray-800">{selected.billNo}</span>
@@ -562,7 +561,7 @@ export const PaymentMade: React.FC = () => {
             </div>
 
             {/* Notes | Internal Notes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-300">
               <div className="px-5 py-3 border-r border-gray-200">
                 <div className="text-sm font-semibold text-gray-900 mb-2">Notes</div>
                 <div className="text-sm text-gray-600">No Notes</div>
