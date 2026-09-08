@@ -6,14 +6,26 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Settings, Pencil, ChevronDown, Calendar, X, Plus } from "lucide-react";
 import { useCollection, repo, nextNumber, money, CreateContactModal } from "@/lib/db";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { fetchCustomer, fetchCustomers } from "@/services/customersApi";
+import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 
 const TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
 type DraftRow = { key: string; kind: "product" | "service"; name: string; description: string; qty: number; rate: number; taxId: number; discount: number };
 const fcc = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const text = (value: unknown) => (typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "");
+const mapAddr = (address?: { address_line_1?: string; address_line_2?: string; city?: string; state?: string; zip_code?: string; country?: string }) => ({
+  street1: text(address?.address_line_1),
+  street2: text(address?.address_line_2),
+  city: text(address?.city),
+  state: text(address?.state),
+  zip: text(address?.zip_code),
+  country: text(address?.country),
+});
 
 export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: number) => void; invoice?: any }> = ({ onClose, onSaved, invoice }) => {
   const isEdit = !!invoice?.id;
@@ -30,6 +42,7 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
 
   const [custQuery, setCustQuery] = useState("");
   const [customerId, setCustomerId] = useState<number | "">(invoice?.customerId ?? "");
+  const [customerBackendId, setCustomerBackendId] = useState<string>("");
   const [custOpen, setCustOpen] = useState(false);
   const [addContact, setAddContact] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -39,7 +52,17 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const matches = customers.filter((c) => c.name.toLowerCase().includes(custQuery.toLowerCase()));
+  const customerSearch = useQuery({
+    queryKey: ["invoice-form-customers", custQuery],
+    queryFn: () => fetchCustomers({ page: 1, limit: 50, searchTerm: custQuery.trim() || undefined }),
+    placeholderData: (prev) => prev,
+    staleTime: 20_000,
+  });
+  const matches = useMemo(() => {
+    const remoteRows = customerSearch.data?.rows ?? [];
+    if (remoteRows.length > 0 || custQuery.trim()) return remoteRows;
+    return customers.map((c) => ({ id: c.id, _id: c._id || String(c.id), name: c.name, contact: "", amount: 0, status: "Active" }));
+  }, [customerSearch.data, custQuery, customers]);
 
   /* ── Address expander (mirrors the shared CreateDocForm / Proforma) ── */
   const emptyAddr = { street1: "", street2: "", city: "", state: "", zip: "", country: "" };
@@ -48,6 +71,12 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
   const [shipping, setShipping] = useState({ ...emptyAddr });
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [updateToCustomer, setUpdateToCustomer] = useState(false);
+  const { data: paymentMethodOptions = [] } = useQuery({
+    queryKey: ["invoice-form-payment-methods"],
+    queryFn: fetchPaymentMethods,
+    staleTime: 60_000,
+  });
+  const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>(invoice?.payment_method ?? invoice?.paymentMethod ?? []);
   // Prefill from the selected customer (existing invoice's customer on edit).
   useEffect(() => {
     const p: any = customers.find((c) => c.id === customerId);
@@ -55,6 +84,44 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
     setBilling({ street1: p.street1 || "", street2: p.street2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", country: p.country || "" });
     setShipping({ street1: p.shipStreet1 || "", street2: p.shipStreet2 || "", city: p.shipCity || "", state: p.shipState || "", zip: p.shipZip || "", country: p.shipCountry || "" });
   }, [customerId, customers]);
+  useEffect(() => {
+    if (!customerBackendId) return;
+    let active = true;
+    fetchCustomer(customerBackendId).then(async (doc) => {
+      if (!active || !doc) return;
+      const billingAddr = mapAddr(doc.businessProfile?.billing_address);
+      const shippingAddr = mapAddr(doc.businessProfile?.shipping_address);
+      setBilling(billingAddr);
+      setShipping(shippingAddr);
+      const existingLocal = customers.find((item) => item._id === doc._id);
+      if (existingLocal) {
+        setCustomerId(existingLocal.id);
+        return;
+      }
+      const localId = await repo.add("customers", {
+        _id: doc._id,
+        name: doc.businessProfile?.companyName || doc.name || "(No name)",
+        contact: doc.name || "",
+        email: doc.email || "",
+        street1: billingAddr.street1,
+        street2: billingAddr.street2,
+        city: billingAddr.city,
+        state: billingAddr.state,
+        zip: billingAddr.zip,
+        country: billingAddr.country,
+        shipStreet1: shippingAddr.street1,
+        shipStreet2: shippingAddr.street2,
+        shipCity: shippingAddr.city,
+        shipState: shippingAddr.state,
+        shipZip: shippingAddr.zip,
+        shipCountry: shippingAddr.country,
+      });
+      setCustomerId(localId as number);
+    });
+    return () => {
+      active = false;
+    };
+  }, [customerBackendId, customers]);
   const shipVal = (k: keyof typeof emptyAddr) => (sameAsBilling ? billing[k] : shipping[k]);
 
   const [date, setDate] = useState(invoice?.date || "Jun 22, 2026");
@@ -123,6 +190,8 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
       items, subTotal: +subTotal.toFixed(2), tax: +taxTotal.toFixed(2), shipping: 0,
       total: +total.toFixed(2), amountPaid: status === "Paid" ? +total.toFixed(2) : 0,
       amountDue: status === "Paid" ? 0 : +total.toFixed(2), notes, terms,
+      paymentMethod: selectedPaymentMethods,
+      payment_method: selectedPaymentMethods,
       inlineDiscount: +inlineDiscount.toFixed(2),
       // billing + shipping captured from the address expander
       street1: billing.street1, street2: billing.street2, city: billing.city, state: billing.state, zip: billing.zip, country: billing.country,
@@ -148,6 +217,8 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
   };
 
   const custName = customerId ? customers.find((c) => c.id === customerId)?.name || custQuery : custQuery;
+  const togglePaymentMethod = (name: string) =>
+    setSelectedPaymentMethods((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
 
   return (
     <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
@@ -171,7 +242,7 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
             </div>
             {custOpen && (
               <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-xl py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                {matches.map((c) => <button key={c.id} onClick={() => { setCustomerId(c.id); setCustQuery(c.name); setCustOpen(false); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">{c.name}</button>)}
+                {matches.map((c) => <button key={c._id} onClick={() => { setCustomerBackendId(c._id); setCustomerId(customers.find((item) => item._id === c._id)?.id ?? ""); setCustQuery(c.name); setCustOpen(false); setAddrOpen(true); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">{c.name}</button>)}
                 {matches.length === 0 && <div className="px-3 py-2.5 text-sm text-gray-400">No customer found — click the pencil to add</div>}
               </div>
             )}
@@ -184,6 +255,27 @@ export const CreateInvoiceForm: React.FC<{ onClose: () => void; onSaved: (id: nu
           </div>
           <div className="relative fl-wrap"><label className="fl-label">Invoice #</label><input defaultValue={invoice?.number?.replace?.("#", "") || "17"} placeholder=" " className={fcc} /></div>
           <div className="relative fl-wrap"><label className="fl-label">Currency</label><input defaultValue="$ USD" placeholder=" " className={fcc} /></div>
+          <div className="md:col-span-2 relative">
+            <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Payment Method</label>
+            <div className="min-h-[46px] rounded-md border border-gray-300 bg-white px-3 py-2.5">
+              <div className="flex flex-wrap gap-2">
+                {paymentMethodOptions.map((option) => {
+                  const active = selectedPaymentMethods.includes(option.name);
+                  return (
+                    <button
+                      key={option._id}
+                      type="button"
+                      onClick={() => togglePaymentMethod(option.name)}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${active ? "border-blue-600 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600 hover:border-gray-400"}`}
+                    >
+                      {option.name}
+                    </button>
+                  );
+                })}
+                {paymentMethodOptions.length === 0 && <span className="text-sm text-gray-400">No payment methods found</span>}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── Address panel (Billing | Shipping — mirrored field alignment) ── */}

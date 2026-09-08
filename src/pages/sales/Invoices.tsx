@@ -188,8 +188,8 @@ const PaymentMethodBadges: React.FC<{
             ) : (
               <span className="font-medium">{name}</span>
             )}
-          </div>
-        );
+    </div>
+  );
       })}
     </div>
   );
@@ -220,7 +220,7 @@ const InvoicePreviewModal: React.FC<{
             {isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
-              </div>
+        </div>
             ) : pdfUrl ? (
               <iframe
                 src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
@@ -230,7 +230,7 @@ const InvoicePreviewModal: React.FC<{
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-gray-500">
                 Could not load backend PDF preview.
-              </div>
+      </div>
             )}
           </div>
         </div>
@@ -347,7 +347,7 @@ export const Invoices: React.FC = () => {
         <div className="text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
             <FileText className="h-7 w-7 text-gray-400" />
-          </div>
+            </div>
           <h3 className="text-lg font-semibold text-gray-900">No invoices found</h3>
           <p className="mt-1 text-sm text-gray-500">Adjust search or filters to load invoices from the backend.</p>
         </div>
@@ -370,41 +370,41 @@ export const Invoices: React.FC = () => {
         <div className="flex items-center gap-1">
           <button onClick={() => setShowPaymentModal(true)} title="Add payment" className="rounded-md p-2 hover:bg-gray-200">
             <DollarSign className="h-5 w-5 text-gray-600" />
-          </button>
+                  </button>
           <button onClick={() => setShowPreview(true)} title="Preview PDF" className="rounded-md p-2 hover:bg-gray-200">
             <Eye className="h-5 w-5 text-gray-600" />
-          </button>
+                  </button>
           <button onClick={() => setShowPreview(true)} title="Print PDF" className="rounded-md p-2 hover:bg-gray-200">
             <Printer className="h-5 w-5 text-gray-600" />
-          </button>
+                  </button>
           <button onClick={() => showToast("Email flow not connected yet", "info")} title="Email" className="rounded-md p-2 hover:bg-gray-200">
             <Mail className="h-5 w-5 text-gray-600" />
-          </button>
+                  </button>
           <div className="relative">
             <button onClick={() => setShowMoreMenu((open) => !open)} title="More options" className="rounded-md p-2 hover:bg-gray-200">
               <MoreVertical className="h-5 w-5 text-gray-600" />
-            </button>
+                  </button>
             {showMoreMenu && selectedId && (
               <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
                 <button onClick={() => statusMut.mutate({ id: selectedId, status: "Paid" })} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
                   Mark as Paid
-                </button>
+                  </button>
                 <button onClick={() => statusMut.mutate({ id: selectedId, status: "Partial" })} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
                   Mark as Partial
-                </button>
+                  </button>
                 <button onClick={() => statusMut.mutate({ id: selectedId, status: "Void" })} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
                   Mark as Void
-                </button>
-                <button
+                  </button>
+                  <button
                   onClick={() => deleteMut.mutate(selectedId)}
                   className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                 >
                   <Trash2 className="h-4 w-4" />
                   Trash
-                </button>
-              </div>
-            )}
-          </div>
+                  </button>
+                </div>
+              )}
+            </div>
         </div>
       </div>
 
@@ -450,7 +450,7 @@ export const Invoices: React.FC = () => {
               className="rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700"
             >
               {sortFields.map((option) => <option key={option}>{option}</option>)}
-            </select>
+              </select>
             <select
               value={statusFilter}
               onChange={(e) => {
@@ -460,7 +460,7 @@ export const Invoices: React.FC = () => {
               className="rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700"
             >
               {statusOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
+              </select>
             <select
               value={customerFilter}
               onChange={(e) => {
@@ -483,7 +483,7 @@ export const Invoices: React.FC = () => {
               className="rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700"
             >
               {dateOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
+              </select>
           </div>
 
           <div className="relative flex-1 overflow-y-auto">
@@ -493,9 +493,9 @@ export const Invoices: React.FC = () => {
               return (
                 <button
                   key={row._id}
-                  onClick={() => {
+                onClick={() => {
                     setSelectedId(row._id);
-                    setShowMobileList(false);
+                  setShowMobileList(false);
                     setShowMoreMenu(false);
                   }}
                   className={`w-full border-b border-gray-300 px-4 py-3 text-left transition-colors ${active ? "bg-gray-100" : "hover:bg-gray-50"}`}
@@ -507,12 +507,12 @@ export const Invoices: React.FC = () => {
                     </div>
                     <span className={`rounded border px-2 py-0.5 text-[11px] ${statusColor(row.status)}`}>
                       {row.status}
-                    </span>
-                  </div>
+                  </span>
+                </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="truncate text-xs text-gray-500">{row.dateLabel}</span>
                     <span className="text-sm font-semibold text-gray-900">{formatMoney(row.amount, row.currency)}</span>
-                  </div>
+                </div>
                 </button>
               );
             })}
@@ -523,7 +523,7 @@ export const Invoices: React.FC = () => {
             <div className="text-center text-xs text-gray-500">{pagination?.totalData ?? rows.length} Invoices</div>
             {pagination && pagination.totalPage > 1 && (
               <div className="mt-2 flex items-center justify-center gap-2">
-                <button
+            <button
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   disabled={page <= 1}
                   className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
@@ -537,17 +537,17 @@ export const Invoices: React.FC = () => {
                   className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
                 >
                   <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+            </button>
           </div>
+            )}
+            </div>
         </ResizableListPanel>
 
         <section className={`${showMobileList ? "hidden" : "flex"} min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:flex`}>
           {!selectedInvoice ? (
             <div className="flex flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white text-sm text-gray-500">
               Select an invoice from the list.
-            </div>
+                </div>
           ) : (
             <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
               <div className="mb-6 grid grid-cols-1 gap-4 border-b border-gray-300 pb-4 md:grid-cols-4">
@@ -568,7 +568,7 @@ export const Invoices: React.FC = () => {
                   <div className="text-xs text-gray-500">Outstanding</div>
                   <div className="mt-1 text-sm font-semibold text-red-600">
                     {formatMoney(numberValue(selectedInvoice.balance_amount ?? selectedInvoice.total), text(selectedInvoice.currency))}
-                  </div>
+                </div>
                 </div>
               </div>
 
@@ -588,8 +588,8 @@ export const Invoices: React.FC = () => {
                     <span className="text-xs text-gray-500">Payment Methods</span>
                     <button onClick={() => navigate("/settings")} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" title="Edit payment methods">
                       <Pencil className="h-4 w-4" />
-                    </button>
-                  </div>
+                </button>
+              </div>
                   <PaymentMethodBadges
                     names={selectedInvoice.payment_method ?? []}
                     paymentMethods={methodOptions}
@@ -618,8 +618,8 @@ export const Invoices: React.FC = () => {
                   <div className="mb-2 text-xs text-gray-500">Shipping Address</div>
                   <div className="text-sm text-gray-900">
                     {shipping.map((line) => <div key={line}>{line}</div>)}
-                  </div>
                 </div>
+                  </div>
               )}
 
               <div className="mb-6 flex flex-col gap-6 xl:flex-row">

@@ -6,6 +6,7 @@ export interface BackendPaymentReceivedDoc {
   customer_id?: string | { _id?: string; name?: string; businessProfile?: { companyName?: string } } | null;
   invoice_id?: string | { _id?: string; invoice_number?: string } | null;
   invoice_number?: string;
+  payment_number?: string;
   currency?: string;
   date?: string;
   payment_method?: string[];
@@ -82,4 +83,98 @@ export async function createPaymentReceived(
 ): Promise<BackendPaymentReceivedDoc> {
   const res = await api.raw.post("/payment-received/create", payload);
   return (res.data?.data ?? res.data) as BackendPaymentReceivedDoc;
+}
+
+export interface UpdatePaymentReceivedPayload {
+  customer_id?: string;
+  invoice_id?: string;
+  invoice_number?: string;
+  currency?: string;
+  date?: string;
+  payment_method?: string[];
+  notes?: string;
+  internal_notes?: string;
+  Attachment?: string;
+  product?: [];
+  service?: [];
+  sub_total?: number;
+  total?: number;
+  status?: string;
+}
+
+export async function updatePaymentReceived(
+  id: string,
+  payload: UpdatePaymentReceivedPayload,
+): Promise<BackendPaymentReceivedDoc> {
+  const res = await api.raw.post(`/payment-received/edit/${id}`, payload);
+  return (res.data?.data ?? res.data) as BackendPaymentReceivedDoc;
+}
+
+export async function deletePaymentReceived(id: string): Promise<void> {
+  await api.raw.delete(`/payment-received/delete/${id}`);
+}
+
+export interface BackendInvoicePaymentDoc {
+  _id: string;
+  customer_id?: string;
+  invoice_id?: string;
+  payment_number?: string;
+  payment_date?: string;
+  payment_type?: string;
+  amount?: number;
+  notes?: string;
+  internal_notes?: string;
+  attachments?: string;
+  createdAt?: string;
+}
+
+export interface CreateInvoicePaymentPayload {
+  customer_id: string;
+  invoice_id: string;
+  payment_number?: string;
+  payment_date: string;
+  payment_type: string;
+  amount: number;
+  notes?: string;
+  internal_notes?: string;
+  type: "invoice";
+}
+
+export async function fetchInvoiceDirectPayments(invoice_id: string): Promise<BackendInvoicePaymentDoc[]> {
+  const res = await api.raw.get("/payment/all", {
+    params: { invoice_id, limit: 100, sort: "-payment_date" },
+  });
+  const body = res.data ?? {};
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+export async function createInvoicePayment(
+  payload: CreateInvoicePaymentPayload,
+): Promise<BackendInvoicePaymentDoc> {
+  const res = await api.raw.post("/payment/create", payload);
+  return (res.data?.data ?? res.data) as BackendInvoicePaymentDoc;
+}
+
+export interface UpdateInvoicePaymentPayload {
+  customer_id?: string;
+  invoice_id?: string;
+  payment_number?: string;
+  payment_date?: string;
+  payment_type?: string;
+  amount?: number;
+  notes?: string;
+  internal_notes?: string;
+  type?: "invoice";
+}
+
+export async function updateInvoicePayment(
+  id: string,
+  payload: UpdateInvoicePaymentPayload,
+): Promise<BackendInvoicePaymentDoc> {
+  const res = await api.raw.patch(`/payment/${id}`, payload);
+  return (res.data?.data ?? res.data) as BackendInvoicePaymentDoc;
+}
+
+export async function deleteInvoicePayment(id: string): Promise<void> {
+  await api.raw.delete(`/payment/${id}`);
 }

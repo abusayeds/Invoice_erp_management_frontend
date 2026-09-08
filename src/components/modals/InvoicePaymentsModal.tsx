@@ -1,9 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Calendar, FileText, Plus, Upload, X } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Calendar, Eye, FileText, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
 import type { BackendInvoiceDoc } from "@/services/invoicesApi";
-import { createPaymentReceived, fetchPaymentReceived, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
+import {
+  createInvoicePayment,
+  deleteInvoicePayment,
+  deletePaymentReceived,
+  fetchInvoiceDirectPayments,
+  fetchPaymentReceived,
+  updateInvoicePayment,
+  updatePaymentReceived,
+  type BackendInvoicePaymentDoc,
+  type BackendPaymentReceivedDoc,
+} from "@/services/paymentReceivedApi";
 import type { PaymentMethodOption } from "@/services/paymentMethodsApi";
 
 interface InvoicePaymentsModalProps {
@@ -28,6 +38,13 @@ const dateLabel = (value?: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+};
+
+const inputDateValue = (value?: string): string => {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
 };
 
 const todayInput = () => new Date().toISOString().slice(0, 10);
@@ -66,6 +83,61 @@ const firstPaymentMethod = (payment: BackendPaymentReceivedDoc) =>
     ? text(payment.payment_method[0]) || "Cash"
     : "Cash";
 
+type UnifiedPayment = {
+  id: string;
+  serial: string;
+  invoiceNumber: string;
+  dateLabel: string;
+  timestamp: number;
+  amount: number;
+  currency: string;
+  method: string;
+  notes: string;
+  internalNotes: string;
+  source: "payment" | "paymentReceived";
+};
+
+const modalShell = "bg-white text-gray-900 border-gray-300";
+const modalSidebar = "bg-white border-gray-300";
+const modalHeader = "bg-gray-100 border-gray-300";
+const modalSection = "bg-gray-50 border-gray-300";
+const modalHover = "hover:bg-gray-50";
+const fieldClass =
+  "w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+
+const Dropdown: React.FC<{
+  trigger: React.ReactNode;
+  children: (close: () => void) => React.ReactNode;
+  align?: "left" | "right";
+  panelClass?: string;
+}> = ({ trigger, children, align = "left", panelClass = "" }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={() => setOpen((value) => !value)}>
+        {trigger}
+      </button>
+      {open && (
+        <div
+          className={`absolute z-30 mt-2 min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   open,
   invoice,
@@ -73,6 +145,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   onClose,
   onSaved,
 }) => {
+  const queryClient = useQueryClient();
   const [selectedPaymentId, setSelectedPaymentId] = useState<string>("");
   const [showForm, setShowForm] = useState(true);
   const [paymentDate, setPaymentDate] = useState(todayInput());
@@ -80,8 +153,13 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
   const invoiceId = invoice?._id ?? "";
+  const invoiceCustomerId =
+    invoice?.customer_id && typeof invoice.customer_id === "object"
+      ? text(invoice.customer_id._id)
+      : text(invoice?.customer_id);
   const dueAmount = numberValue(invoice?.balance_amount ?? invoice?.total);
   const preferredMethods = useMemo(() => {
     const configured = paymentMethods.map((item) => item.name).filter(Boolean);
@@ -91,82 +169,260 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    setShowForm(true);
-    setSelectedPaymentId("");
     setPaymentDate(todayInput());
     setMethod(preferredMethods[0] || "Cash");
     setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setNotes("");
     setInternalNotes("");
+    setEditingPaymentId(null);
   }, [open, preferredMethods, dueAmount, invoiceId]);
 
   const { data: paymentsData, isFetching } = useQuery({
     queryKey: ["invoice-payments", invoiceId],
-    queryFn: () => fetchPaymentReceived({ invoice_id: invoiceId, limit: 100, sort: "-date" }),
+    queryFn: async () => {
+      const [received, direct] = await Promise.all([
+        fetchPaymentReceived({ invoice_id: invoiceId, limit: 100, sort: "-date" }),
+        fetchInvoiceDirectPayments(invoiceId),
+      ]);
+      return { received: received.rows, direct };
+    },
     enabled: open && !!invoiceId,
     placeholderData: (prev) => prev,
   });
 
-  const payments = paymentsData?.rows ?? [];
-  const selectedPayment =
-    payments.find((payment) => payment._id === selectedPaymentId) ?? payments[0] ?? null;
+  const payments = useMemo<UnifiedPayment[]>(() => {
+    const received = (paymentsData?.received ?? []).map((payment, index) => ({
+      id: payment._id,
+      serial: text(payment.payment_number) || `PR-${String(index + 1).padStart(4, "0")}`,
+      invoiceNumber: text(payment.invoice_number) || text(invoice?.invoice_number),
+      dateLabel: dateLabel(payment.date ?? payment.createdAt),
+      timestamp: new Date(payment.date ?? payment.createdAt ?? 0).getTime() || 0,
+      amount: numberValue(payment.total ?? payment.sub_total),
+      currency: text(payment.currency) || text(invoice?.currency) || "USD",
+      method: firstPaymentMethod(payment),
+      notes: text(payment.notes),
+      internalNotes: text(payment.internal_notes),
+      source: "paymentReceived" as const,
+    }));
+    const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc, index) => ({
+      id: payment._id,
+      serial: text(payment.payment_number) || `PAY-${String(index + 1).padStart(4, "0")}`,
+      invoiceNumber: text(invoice?.invoice_number),
+      dateLabel: dateLabel(payment.payment_date ?? payment.createdAt),
+      timestamp: new Date(payment.payment_date ?? payment.createdAt ?? 0).getTime() || 0,
+      amount: numberValue(payment.amount),
+      currency: text(invoice?.currency) || "USD",
+      method: text(payment.payment_type) || "Cash",
+      notes: text(payment.notes),
+      internalNotes: text(payment.internal_notes),
+      source: "payment" as const,
+    }));
+    return [...direct, ...received].sort((a, b) => b.timestamp - a.timestamp);
+  }, [paymentsData, invoice]);
 
-  const createPaymentMut = useMutation({
-    mutationFn: async () =>
-      createPaymentReceived({
-        customer_id:
-          invoice?.customer_id && typeof invoice.customer_id === "object"
-            ? text(invoice.customer_id._id)
-            : typeof invoice?.customer_id === "string"
-              ? invoice.customer_id
-              : undefined,
-        customer_name: text(invoice?.customer_name) || customerName(invoice),
-        invoice_id: invoiceId || undefined,
-        invoice_number: text(invoice?.invoice_number),
-        currency: text(invoice?.currency) || "USD",
-        date: paymentDate,
-        payment_method: [method || "Cash"],
+  const nextPaymentNumber = useMemo(
+    () => `PAY-${String(payments.filter((payment) => payment.source === "payment").length + 1).padStart(4, "0")}`,
+    [payments],
+  );
+
+  const selectedPayment = payments.find((payment) => payment.id === selectedPaymentId) ?? payments[0] ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    if (payments.length > 0) {
+      setShowForm(false);
+      setSelectedPaymentId((current) => current || payments[0].id);
+      return;
+    }
+    setShowForm(true);
+    setSelectedPaymentId("");
+  }, [open, payments]);
+
+  const openCreateForm = () => {
+    setShowForm(true);
+    setEditingPaymentId(null);
+    setSelectedPaymentId("");
+    setMethod(preferredMethods[0] || "Cash");
+    setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
+    setPaymentDate(todayInput());
+    setNotes("");
+    setInternalNotes("");
+  };
+
+  const openEditForm = () => {
+    if (!selectedPayment) return;
+    setEditingPaymentId(selectedPayment.id);
+    setShowForm(true);
+    setSelectedPaymentId(selectedPayment.id);
+    setPaymentDate(inputDateValue(selectedPayment.dateLabel));
+    setMethod(selectedPayment.method || preferredMethods[0] || "Cash");
+    setAmount(selectedPayment.amount.toFixed(2));
+    setNotes(selectedPayment.notes);
+    setInternalNotes(selectedPayment.internalNotes);
+  };
+
+  const refreshPayments = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["invoice-payments", invoiceId] });
+    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", invoiceId] });
+  };
+
+  const savePaymentMut = useMutation({
+    mutationFn: async () => {
+      const parsedAmount = Math.max(0, Number(amount) || 0);
+      if (editingPaymentId && selectedPayment) {
+        if (selectedPayment.source === "paymentReceived") {
+          return updatePaymentReceived(editingPaymentId, {
+            customer_id: invoiceCustomerId || undefined,
+            invoice_id: invoiceId || undefined,
+            invoice_number: text(invoice.invoice_number) || undefined,
+            currency: text(invoice.currency) || undefined,
+            date: paymentDate,
+            payment_method: [method || "Cash"],
+            notes,
+            internal_notes: internalNotes,
+            total: parsedAmount,
+            sub_total: parsedAmount,
+            product: [],
+            service: [],
+          });
+        }
+        return updateInvoicePayment(editingPaymentId, {
+          customer_id: invoiceCustomerId,
+          invoice_id: invoiceId,
+          payment_number: selectedPayment.serial,
+          payment_date: paymentDate,
+          payment_type: method || "Cash",
+          amount: parsedAmount,
+          notes,
+          internal_notes: internalNotes,
+          type: "invoice",
+        });
+      }
+
+      return createInvoicePayment({
+        customer_id: invoiceCustomerId,
+        invoice_id: invoiceId,
+        payment_number: nextPaymentNumber,
+        payment_date: paymentDate,
+        payment_type: method || "Cash",
+        amount: parsedAmount,
         notes,
         internal_notes: internalNotes,
-        product: [],
-        service: [],
-        sub_total: Math.max(0, Number(amount) || 0),
-        total: Math.max(0, Number(amount) || 0),
-        status: "Paid",
-      }),
+        type: "invoice",
+      });
+    },
     onSuccess: () => {
-      showToast("Payment saved", "success");
+      refreshPayments();
+      showToast(editingPaymentId ? "Payment updated" : "Payment saved", "success");
+      setEditingPaymentId(null);
+      setShowForm(false);
       onSaved?.();
-      onClose();
     },
     onError: () => {
-      showToast("Payment save failed", "error");
+      showToast(editingPaymentId ? "Payment update failed" : "Payment save failed", "error");
     },
   });
+
+  const deletePaymentMut = useMutation({
+    mutationFn: async () => {
+      if (!selectedPayment) throw new Error("No payment selected");
+      if (selectedPayment.source === "paymentReceived") {
+        await deletePaymentReceived(selectedPayment.id);
+        return;
+      }
+      await deleteInvoicePayment(selectedPayment.id);
+    },
+    onSuccess: async () => {
+      await refreshPayments();
+      setSelectedPaymentId("");
+      showToast("Payment deleted", "success");
+    },
+    onError: () => {
+      showToast("Could not delete payment", "error");
+    },
+  });
+
+  const openReceiptWindow = (mode: "preview" | "print" | "email") => {
+    if (!selectedPayment) return;
+    const title = `Payment Receipt ${selectedPayment.serial}`;
+    const body = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            .sheet { border: 1px solid #d1d5db; }
+            .row { display: flex; justify-content: space-between; gap: 24px; padding: 16px; border-bottom: 1px solid #e5e7eb; }
+            .amount { font-size: 28px; font-weight: 700; text-align: center; padding: 28px 16px; border-bottom: 1px solid #e5e7eb; }
+            .section { padding: 16px; border-bottom: 1px solid #e5e7eb; }
+            table { border-collapse: collapse; }
+            td { border: 1px solid #d1d5db; padding: 6px 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">
+            <h1 style="text-align:center; padding:16px; margin:0; border-bottom:1px solid #d1d5db;">PAYMENT RECEIPT</h1>
+            <div class="row">
+              <div>
+                <div style="font-size:20px; font-weight:700;">info</div>
+                <div>${customerName(invoice)}</div>
+                <div>${customerSubtitle(invoice) || ""}</div>
+              </div>
+              <table>
+                <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
+                <tr><td><strong>Payment date</strong></td><td>${selectedPayment.dateLabel}</td></tr>
+                <tr><td><strong>Payment Type</strong></td><td>${selectedPayment.method}</td></tr>
+                <tr><td><strong>Amount</strong></td><td>${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</td></tr>
+              </table>
+            </div>
+            <div class="amount">${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
+            <div class="section"><strong>Invoice</strong><div>${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}</div></div>
+            <div class="section"><strong>Notes</strong><div>${selectedPayment.notes || "No Notes"}</div></div>
+            <div class="section"><strong>Internal Notes</strong><div>${selectedPayment.internalNotes || "No Internal Notes"}</div></div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (mode === "email") {
+      const subject = encodeURIComponent(title);
+      const mailBody = encodeURIComponent(
+        `Customer: ${customerName(invoice)}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
+      );
+      window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
+      return;
+    }
+
+    const popup = window.open("", "_blank", "width=900,height=700");
+    if (!popup) {
+      showToast("Popup blocked by browser", "warning");
+      return;
+    }
+    popup.document.open();
+    popup.document.write(body);
+    popup.document.close();
+    if (mode === "print") popup.print();
+  };
 
   if (!open || !invoice) return null;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
-      <div className="h-full w-full flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="w-full max-w-6xl h-[86vh] overflow-hidden rounded-2xl border border-gray-700 bg-[#1f1f1f] text-white shadow-2xl">
+      <div className="flex h-full w-full items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
+        <div className={`h-[86vh] w-full max-w-6xl overflow-hidden rounded-2xl border shadow-2xl ${modalShell}`}>
           <div className="flex h-full">
-            <aside className="flex w-full max-w-sm flex-col border-r border-gray-700 bg-[#262626]">
-              <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
+            <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
+              <div className={`flex items-center justify-between border-b px-4 py-3 ${modalHeader}`}>
                 <h2 className="text-lg font-semibold">Payment Received</h2>
-                <button onClick={onClose} className="rounded-md p-1.5 text-gray-300 hover:bg-white/10">
+                <button onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-200">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="border-b border-gray-700 px-4 py-3">
+              <div className={`border-b px-4 py-3 ${modalSidebar}`}>
                 <button
-                  onClick={() => {
-                    setShowForm(true);
-                    setSelectedPaymentId("");
-                    setAmount(dueAmount.toFixed(2));
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-gray-500 px-3 py-1 text-xs text-gray-200 hover:border-gray-300"
+                  onClick={openCreateForm}
+                  className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-gray-400"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Record Payment
@@ -175,28 +431,26 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
               <div className="flex-1 overflow-y-auto">
                 {payments.map((payment) => {
-                  const active = !showForm && selectedPayment?._id === payment._id;
+                  const active = !showForm && selectedPayment?.id === payment.id;
                   return (
                     <button
-                      key={payment._id}
+                      key={payment.id}
                       onClick={() => {
-                        setSelectedPaymentId(payment._id);
+                        setSelectedPaymentId(payment.id);
                         setShowForm(false);
                       }}
-                      className={`w-full border-b border-gray-700 px-4 py-3 text-left transition-colors ${active ? "bg-[#333333]" : "hover:bg-[#2e2e2e]"}`}
+                      className={`w-full border-b border-gray-300 px-4 py-3 text-left transition-colors ${active ? "bg-gray-100" : modalHover}`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{customerName(invoice)}</div>
-                          <div className="mt-0.5 text-sm text-gray-300">#{text(payment.invoice_number || invoice.invoice_number)}</div>
-                          <div className="mt-0.5 truncate text-xs text-gray-400">{text(payment.notes) || "No Notes"}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-gray-900">{customerName(invoice)}</div>
+                          <div className="mt-0.5 text-xs text-gray-500">{payment.serial}</div>
+                          <div className="mt-0.5 truncate text-xs text-gray-500">{payment.notes || "No Notes"}</div>
                         </div>
-                        <div className="min-w-0 text-right">
-                          <div className="text-xs text-gray-400">{dateLabel(payment.date ?? payment.createdAt)}</div>
-                          <div className="mt-0.5 text-sm font-semibold">
-                            {currencyLabel(numberValue(payment.total ?? payment.sub_total), text(payment.currency) || text(invoice.currency))}
-                          </div>
-                          <div className="mt-0.5 truncate text-xs text-gray-400">{firstPaymentMethod(payment)}</div>
+                        <div className="flex max-w-[140px] min-w-0 flex-col items-end">
+                          <span className="truncate text-xs text-gray-500">{payment.dateLabel}</span>
+                          <span className="mt-0.5 text-sm font-semibold text-gray-900">{currencyLabel(payment.amount, payment.currency)}</span>
+                          <span className="mt-0.5 w-full truncate text-right text-xs text-gray-500">{payment.method}</span>
                         </div>
                       </div>
                     </button>
@@ -204,220 +458,241 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                 })}
 
                 {!isFetching && payments.length === 0 && (
-                  <div className="px-4 py-12 text-center text-sm text-gray-400">No payments recorded yet.</div>
+                  <div className="px-4 py-12 text-center text-sm text-gray-500">No payments recorded yet.</div>
                 )}
               </div>
 
-              <div className="border-t border-gray-700 bg-[#303030] px-4 py-3 text-center">
-                <div className="text-lg font-semibold">
-                  {currencyLabel(
-                    payments.reduce((sum, item) => sum + numberValue(item.total ?? item.sub_total), 0),
-                    text(invoice.currency),
-                  )}
+              <div className={`border-t px-4 py-3 text-center ${modalHeader}`}>
+                <div className="text-lg font-semibold text-gray-900">
+                  {currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice.currency))}
                 </div>
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-gray-500">
                   {payments.length} {payments.length === 1 ? "Payment" : "Payments"}
                 </div>
               </div>
             </aside>
 
-            <section className="flex min-w-0 flex-1 flex-col bg-[#1f1f1f]">
-              <div className="flex items-center justify-between border-b border-gray-700 px-5 py-3">
-                <div className="min-w-0">
-                  <h3 className="truncate text-xl font-semibold">{customerName(invoice)}</h3>
-                  {customerSubtitle(invoice) && <p className="truncate text-sm text-gray-400">{customerSubtitle(invoice)}</p>}
-                </div>
-                {!showForm && selectedPayment && (
-                  <button
-                    onClick={() => {
-                      setShowForm(true);
-                      setSelectedPaymentId("");
-                    }}
-                    className="rounded-md border border-gray-600 px-3 py-1.5 text-sm text-gray-100 hover:bg-white/10"
-                  >
-                    New Payment
-                  </button>
-                )}
-              </div>
-
+            <section className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
               {showForm ? (
-                <div className="flex-1 overflow-y-auto p-5">
-                  <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Customer</label>
-                      <input value={customerName(invoice)} readOnly className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 text-sm text-white" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Invoice #</label>
-                      <input value={text(invoice.invoice_number)} readOnly className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 text-sm text-white" />
-                    </div>
-                  </div>
-
-                  <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Payment Date</label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={paymentDate}
-                          onChange={(e) => setPaymentDate(e.target.value)}
-                          className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 pr-10 text-sm text-white"
-                        />
-                        <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Type</label>
-                      <select
-                        value={method}
-                        onChange={(e) => setMethod(e.target.value)}
-                        className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 text-sm text-white"
+                <div className="m-2 flex-1 overflow-y-auto border border-gray-300 bg-white shadow-sm">
+                  <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3">
+                    <h3 className="text-lg font-semibold text-gray-900">{editingPaymentId ? "Edit Payment" : "Add Payment"}</h3>
+                    <div className="flex items-center gap-2">
+                      <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!invoiceCustomerId) {
+                            showToast("This invoice has no linked customer", "warning");
+                            return;
+                          }
+                          savePaymentMut.mutate();
+                        }}
+                        disabled={savePaymentMut.isPending || !amount}
+                        className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                       >
-                        {preferredMethods.map((item) => (
-                          <option key={item} value={item}>{item}</option>
-                        ))}
-                        {preferredMethods.length === 0 && <option value="Cash">Cash</option>}
-                      </select>
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!invoiceCustomerId) {
+                            showToast("This invoice has no linked customer", "warning");
+                            return;
+                          }
+                          savePaymentMut.mutate();
+                        }}
+                        disabled={savePaymentMut.isPending || !amount}
+                        className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-40"
+                      >
+                        {savePaymentMut.isPending ? "Saving..." : "Save & Send"}
+                      </button>
                     </div>
                   </div>
 
-                  <div className="mb-5 rounded-md border border-gray-700 bg-[#262626] p-4">
-                    <div className="mb-3 text-sm text-gray-400">
-                      {currencyLabel(dueAmount, text(invoice.currency))} Due
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-8 p-6 lg:grid-cols-2">
+                    <div className="space-y-4">
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-200">Amount</label>
-                        <input
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          className="w-full rounded-md border border-gray-600 bg-[#1f1f1f] px-3 py-2 text-sm text-white"
+                        <label className="text-xs text-gray-500">Payment #</label>
+                        <input value={nextPaymentNumber} readOnly className={fieldClass} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Customer</label>
+                        <input value={customerName(invoice)} readOnly className={fieldClass} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Invoice #</label>
+                        <input value={text(invoice.invoice_number)} readOnly className={fieldClass} />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                          <label className="text-xs text-gray-500">Payment date</label>
+                          <div className="relative">
+                            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={`${fieldClass} pr-10`} />
+                            <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Payment Type</label>
+                          <select value={method} onChange={(e) => setMethod(e.target.value)} className={fieldClass}>
+                            {preferredMethods.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
+                            ))}
+                            {preferredMethods.length === 0 && <option value="Cash">Cash</option>}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Amount</label>
+                        <div className="mt-1 flex items-center gap-2">
+                          <button onClick={() => setAmount(dueAmount.toFixed(2))} className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">
+                            Full Payment
+                          </button>
+                          <input value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900" />
+                        </div>
+                      </div>
+                      <div className={`rounded-md border p-4 ${modalSection}`}>
+                        <div className="text-sm text-gray-500">
+                          Outstanding Balance: <span className="font-semibold text-gray-900">{currencyLabel(dueAmount, text(invoice.currency))}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Notes</label>
+                        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs text-gray-500">Internal Notes</label>
+                        <textarea
+                          rows={4}
+                          value={internalNotes}
+                          onChange={(e) => setInternalNotes(e.target.value)}
+                          className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-200">Full payment</label>
-                        <button
-                          onClick={() => setAmount(dueAmount.toFixed(2))}
-                          className="w-full rounded-md border border-gray-600 bg-[#1f1f1f] px-3 py-2 text-left text-sm text-white hover:bg-[#303030]"
-                        >
-                          {currencyLabel(dueAmount, text(invoice.currency))}
-                        </button>
+                        <label className="text-xs text-gray-500">Attachment</label>
+                        <div className="mt-1 grid grid-cols-1 rounded-md border border-gray-200 divide-y divide-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                              <Upload className="h-4 w-4" />
+                            </span>
+                            <span className="text-xs text-gray-600">Upload from Computer</span>
+                          </button>
+                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                              <FileText className="h-4 w-4" />
+                            </span>
+                            <span className="text-xs text-gray-600">Upload from Document</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Notes</label>
-                      <textarea
-                        rows={4}
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 text-sm text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-200">Internal Notes</label>
-                      <textarea
-                        rows={4}
-                        value={internalNotes}
-                        onChange={(e) => setInternalNotes(e.target.value)}
-                        className="w-full rounded-md border border-gray-600 bg-[#262626] px-3 py-2 text-sm text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <div className="mb-2 text-sm font-medium text-gray-200">Attachment</div>
-                    <div className="grid grid-cols-1 divide-y divide-gray-700 overflow-hidden rounded-md border border-gray-700 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                      <button className="flex flex-col items-center gap-2 px-4 py-8 text-sm text-gray-300 hover:bg-white/5">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500/15 text-blue-300">
-                          <Upload className="h-4 w-4" />
-                        </span>
-                        Upload from Computer
-                      </button>
-                      <button className="flex flex-col items-center gap-2 px-4 py-8 text-sm text-gray-300 hover:bg-white/5">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500/15 text-blue-300">
-                          <FileText className="h-4 w-4" />
-                        </span>
-                        Upload from Document
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2">
-                    <button onClick={onClose} className="rounded-md border border-gray-600 px-4 py-2 text-sm text-gray-100 hover:bg-white/10">
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => createPaymentMut.mutate()}
-                      disabled={createPaymentMut.isPending || !amount}
-                      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {createPaymentMut.isPending ? "Saving..." : "Save"}
-                    </button>
                   </div>
                 </div>
               ) : selectedPayment ? (
-                <div className="flex-1 overflow-y-auto">
-                  <div className="grid grid-cols-1 gap-0 border-b border-gray-700 md:grid-cols-3">
-                    <div className="px-5 py-4">
-                      <div className="text-xs text-gray-400">#{text(selectedPayment.invoice_number || invoice.invoice_number)}</div>
-                      <div className="mt-1 text-2xl font-semibold">
-                        {currencyLabel(numberValue(selectedPayment.total ?? selectedPayment.sub_total), text(selectedPayment.currency) || text(invoice.currency))}
+                <div className="m-2 flex flex-1 flex-col overflow-y-auto border border-gray-300 bg-white shadow-sm">
+                  <div className="flex h-12 items-center justify-between gap-3 border-b border-gray-300 bg-gray-100 px-6">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">{customerName(invoice)}</h3>
+                      {customerSubtitle(invoice) && <p className="truncate text-xs text-gray-500">{customerSubtitle(invoice)}</p>}
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <button title="Edit" onClick={openEditForm} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button title="Preview" onClick={() => openReceiptWindow("preview")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button title="Print" onClick={() => openReceiptWindow("print")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                        <Printer className="h-4 w-4" />
+                      </button>
+                      <button title="Email" onClick={() => openReceiptWindow("email")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                        <Mail className="h-4 w-4" />
+                      </button>
+                      <Dropdown
+                        align="right"
+                        panelClass="w-48"
+                        trigger={<span className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"><MoreVertical className="h-4 w-4" /></span>}
+                      >
+                        {(close) => (
+                          <>
+                            <button onClick={() => { openEditForm(); close(); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
+                              Edit
+                              <Pencil className="h-4 w-4 text-gray-400" />
+                            </button>
+                            <button onClick={() => { deletePaymentMut.mutate(); close(); }} disabled={deletePaymentMut.isPending} className="flex w-full items-center gap-2 border-t border-gray-200 px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-50 disabled:opacity-50">
+                              <Trash2 className="h-4 w-4" />
+                              {deletePaymentMut.isPending ? "Deleting..." : "Trash"}
+                            </button>
+                          </>
+                        )}
+                      </Dropdown>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 border-b border-gray-300 px-5 py-3">
+                    <div>
+                      <div className="text-xs text-gray-500">{selectedPayment.serial}</div>
+                      <div className="text-sm font-semibold text-gray-900">{currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
+                    </div>
+                    <div className="flex items-center gap-12">
+                      <div>
+                        <div className="text-xs text-gray-500">Payment date</div>
+                        <div className="text-sm font-semibold text-gray-900">{selectedPayment.dateLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Payment Type</div>
+                        <div className="text-sm font-semibold text-gray-900">{selectedPayment.method}</div>
                       </div>
                     </div>
-                    <div className="px-5 py-4">
-                      <div className="text-xs text-gray-400">Payment date</div>
-                      <div className="mt-1 text-base font-semibold">{dateLabel(selectedPayment.date ?? selectedPayment.createdAt)}</div>
-                    </div>
-                    <div className="px-5 py-4">
-                      <div className="text-xs text-gray-400">Payment Type</div>
-                      <div className="mt-1 text-base font-semibold">{firstPaymentMethod(selectedPayment)}</div>
+                  </div>
+
+                  <div className="border-b border-gray-300">
+                    <div className="border-b border-gray-300 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-900">Invoices</div>
+                    <div className="flex items-center justify-between px-5 py-4 text-sm text-gray-900">
+                      <span>{selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}</span>
+                      <span className="font-semibold text-gray-900">{currencyLabel(selectedPayment.amount, selectedPayment.currency)}</span>
                     </div>
                   </div>
 
-                  <div className="border-b border-gray-700">
-                    <div className="border-b border-gray-700 px-5 py-3 text-sm font-semibold">Invoices</div>
-                    <div className="flex items-center justify-between px-5 py-4 text-sm">
-                      <span>#{text(invoice.invoice_number)}</span>
-                      <span className="font-semibold">
-                        {currencyLabel(numberValue(selectedPayment.total ?? selectedPayment.sub_total), text(selectedPayment.currency) || text(invoice.currency))}
-                      </span>
+                  <div className="grid grid-cols-1 border-b border-gray-300 md:grid-cols-2">
+                    <div className="border-b border-gray-300 px-5 py-3 md:border-b-0 md:border-r md:border-gray-200">
+                      <div className="mb-2 text-sm font-semibold text-gray-900">Notes</div>
+                      <div className="text-sm text-gray-600">{selectedPayment.notes || "No Notes"}</div>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 border-b border-gray-700 md:grid-cols-2">
-                    <div className="border-b border-gray-700 px-5 py-4 md:border-b-0 md:border-r md:border-gray-700">
-                      <div className="mb-2 text-sm font-semibold">Notes</div>
-                      <div className="text-sm text-gray-300">{text(selectedPayment.notes) || "No Notes"}</div>
-                    </div>
-                    <div className="px-5 py-4">
-                      <div className="mb-2 text-sm font-semibold">Internal Notes</div>
-                      <div className="text-sm text-gray-300">{text(selectedPayment.internal_notes) || "No Internal Notes"}</div>
+                    <div className="px-5 py-3">
+                      <div className="mb-2 text-sm font-semibold text-gray-900">Internal Notes</div>
+                      <div className="text-sm text-gray-600">{selectedPayment.internalNotes || "No Internal Notes"}</div>
                     </div>
                   </div>
 
                   <div className="px-5 py-4">
-                    <div className="mb-2 text-sm font-semibold">Attachment</div>
-                    <div className="grid grid-cols-1 divide-y divide-gray-700 overflow-hidden rounded-md border border-gray-700 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                      <button className="flex flex-col items-center gap-2 px-4 py-8 text-sm text-gray-300 hover:bg-white/5">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500/15 text-blue-300">
+                    <div className="mb-2 text-sm font-semibold text-gray-900">Attachment</div>
+                    <div className="grid grid-cols-2 rounded-md border border-gray-200 divide-x divide-gray-200">
+                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                           <Upload className="h-4 w-4" />
                         </span>
-                        Upload from Computer
+                        <span className="text-xs text-gray-600">Upload from Computer</span>
                       </button>
-                      <button className="flex flex-col items-center gap-2 px-4 py-8 text-sm text-gray-300 hover:bg-white/5">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500/15 text-blue-300">
+                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                           <FileText className="h-4 w-4" />
                         </span>
-                        Upload from Document
+                        <span className="text-xs text-gray-600">Upload from Document</span>
                       </button>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center text-sm text-gray-400">Select a payment from the left side.</div>
+                <div className="m-2 flex flex-1 items-center justify-center border border-gray-300 bg-white text-sm text-gray-500 shadow-sm">
+                  Select a payment from the left side.
+                </div>
               )}
             </section>
           </div>

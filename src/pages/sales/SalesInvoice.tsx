@@ -8,7 +8,7 @@
  * match the design. Selecting a list row updates the detail panel.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -25,6 +25,10 @@ import { showToast } from "@/utils/toast";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney } from "@/lib/db";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
+import { fetchInvoice, fetchInvoices, updateInvoice, type BackendInvoiceDoc } from "@/services/invoicesApi";
+import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
+import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
+import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import {
   Search,
   Plus,
@@ -78,12 +82,15 @@ interface LineItem {
 
 interface Invoice {
   id: number;
+  backendId?: string;
   name: string;
+  customerSubtitle?: string;
   number: string;
   note: string;
   date: string;
   due: string;
   amount: string;
+  currency?: string;
   status: Status;
 }
 
@@ -144,6 +151,91 @@ const STATUS_BADGE: Record<Status, string> = {
   Overdue: "bg-red-500 text-white",
 };
 
+const invoiceSortToBackend = (value: string) => {
+  switch (value) {
+    case "Invoice #":
+      return "invoice_number";
+    case "Name":
+    case "First Name":
+    case "Last Name":
+      return "customer_name";
+    case "Status":
+      return "status";
+    case "Total":
+    case "Due":
+    case "Paid":
+      return "-total";
+    case "Due Date":
+      return "-due_date";
+    default:
+      return "-date";
+  }
+};
+
+const apiText = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  return "";
+};
+
+const apiMoney = (amount: number, currency?: string) => {
+  const cur = apiText(currency) || "USD";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: cur,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  } catch {
+    return `${cur} ${(amount || 0).toFixed(2)}`;
+  }
+};
+
+const invoiceAddressLines = (address?: BackendInvoiceDoc["billing_address"]) =>
+  [address?.street, address?.street2, [address?.city, address?.state, address?.zip].filter(Boolean).join(", "), address?.country]
+    .filter(Boolean);
+
+const customerDisplayName = (customer: any): string => {
+  return (
+    apiText(customer?.businessProfile?.companyName) ||
+    apiText(customer?.company_name) ||
+    apiText(customer?.name) ||
+    apiText(customer?.contact) ||
+    "—"
+  );
+};
+
+const customerDisplaySubtitle = (customer: any): string => {
+  return [apiText(customer?.name), apiText(customer?.email)].filter(Boolean).join(" · ");
+};
+
+const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/png" });
+};
+
+const DynamicPaymentBadges: React.FC<{ names: string[]; options: PaymentMethodOption[] }> = ({ names, options }) => {
+  if (!names.length) return <div className="text-sm text-gray-400">—</div>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {names.map((name) => {
+        const meta = options.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+        return (
+          <span
+            key={name}
+            className="px-1.5 h-6 min-w-[34px] rounded text-[9px] font-bold flex items-center justify-center border border-black/10 bg-white"
+            title={name}
+          >
+            {meta?.logo ? <img src={meta.logo} alt={name} className="max-h-4 max-w-14 object-contain" /> : name}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ── Small dropdown ────────────────────────────────────────────── */
 const Dropdown: React.FC<{
   trigger: React.ReactNode;
@@ -152,21 +244,55 @@ const Dropdown: React.FC<{
 }> = ({ trigger, children, align = "left" }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left?: number; right?: number; width: number } | null>(null);
+
+  const updatePosition = () => {
+    const node = ref.current;
+    if (!node) return;
+    const bounds = node.getBoundingClientRect();
+    setRect({
+      top: bounds.bottom + 8,
+      left: align === "right" ? undefined : bounds.left,
+      right: align === "right" ? window.innerWidth - bounds.right : undefined,
+      width: bounds.width,
+    });
+  };
+
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const sync = () => updatePosition();
+    window.addEventListener("resize", sync);
+    window.addEventListener("scroll", sync, true);
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("scroll", sync, true);
+    };
+  }, [open, align]);
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
+      <button onClick={() => {
+        setOpen((o) => {
+          const next = !o;
+          if (!o) setTimeout(updatePosition, 0);
+          return next;
+        });
+      }}>{trigger}</button>
+      {open && rect && (
         <div
-          className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
+          ref={panelRef}
+          className="fixed z-50 min-w-[180px] max-h-[70vh] overflow-y-auto hover-scrollbar rounded-md border border-gray-200 bg-white py-1 shadow-xl"
+          style={align === "right" ? { top: rect.top, right: rect.right } : { top: rect.top, left: rect.left, minWidth: rect.width }}
         >
           {children(() => setOpen(false))}
         </div>
@@ -386,38 +512,6 @@ const EmailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
   </Overlay>
 );
 
-/* ── Add Payment modal ─────────────────────────────────────────── */
-const PaymentModal: React.FC<{ onClose: () => void; amount: string }> = ({ onClose, amount }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-md my-12 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-semibold text-gray-900">Add Payment</h3>
-        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><X className="w-4 h-4" /></button>
-      </div>
-      <div className="p-5 space-y-4">
-        <div>
-          <label className="text-xs text-gray-500">Amount</label>
-          <input defaultValue={amount.replace("$", "")} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Payment Method</label>
-          <select className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-            {["Cash", "Bank Transfer", "Credit Card", "PayPal", "Stripe", "Cheque"].map((m) => <option key={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Payment Date</label>
-          <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Payment</button>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
-
 /* ── Customer multi-select filter (staged, Apply/Cancel) ───────── */
 const CustomerFilter: React.FC<{
   applied: string[] | null; // null = All Customers
@@ -428,10 +522,36 @@ const CustomerFilter: React.FC<{
   const [sel, setSel] = useState<Set<string>>(new Set(applied ?? customerList));
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const customerQuery = useQuery({
+    queryKey: ["sales-invoice-customer-filter", q],
+    queryFn: async () => fetchCustomers({ page: 1, limit: 100, searchTerm: q.trim() || undefined }),
+    staleTime: 30_000,
+  });
+
+  const customerOptions = useMemo<TCustomerRow[]>(() => {
+    const rows = customerQuery.data?.rows ?? [];
+    if (rows.length > 0) return rows;
+    if (q.trim()) return [];
+    return customerList.map((name, index) => ({ id: index + 1, _id: name, name, contact: "", amount: 0, status: "Active" }));
+  }, [customerQuery.data, q]);
+
+  const customerNames = useMemo(() => customerOptions.map((row) => row.name).filter(Boolean), [customerOptions]);
+
+  const updatePosition = () => {
+    const node = ref.current;
+    if (!node) return;
+    const bounds = node.getBoundingClientRect();
+    setRect({ top: bounds.bottom + 8, left: bounds.left, width: Math.max(bounds.width, 256) });
+  };
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -441,10 +561,23 @@ const CustomerFilter: React.FC<{
   useEffect(() => {
     if (open) {
       setAll(applied === null);
-      setSel(new Set(applied ?? customerList));
+      setSel(new Set(applied ?? customerNames));
       setQ("");
+      setTimeout(updatePosition, 0);
     }
   }, [open, applied]);
+
+  useEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const sync = () => updatePosition();
+    window.addEventListener("resize", sync);
+    window.addEventListener("scroll", sync, true);
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("scroll", sync, true);
+    };
+  }, [open]);
 
   const toggleAll = () => {
     if (all) {
@@ -452,24 +585,23 @@ const CustomerFilter: React.FC<{
       setSel(new Set());
     } else {
       setAll(true);
-      setSel(new Set(customerList));
+      setSel(new Set(customerNames));
     }
   };
   const toggle = (name: string) => {
     setSel((prev) => {
       const next = new Set(prev);
       next.has(name) ? next.delete(name) : next.add(name);
-      setAll(next.size === customerList.length);
+      setAll(next.size === customerNames.length);
       return next;
     });
   };
   const apply = () => {
-    onApply(all || sel.size === customerList.length ? null : [...sel]);
+    onApply(all || sel.size === customerNames.length ? null : [...sel]);
     setOpen(false);
   };
 
   const label = applied === null ? "All" : applied.length === 1 ? applied[0] : `${applied.length}`;
-  const shown = customerList.filter((c) => c.toLowerCase().includes(q.toLowerCase()));
 
   const Box: React.FC<{ on: boolean }> = ({ on }) => (
     <span className={`w-4 h-4 rounded-[4px] flex items-center justify-center border ${on ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
@@ -480,15 +612,21 @@ const CustomerFilter: React.FC<{
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => {
+            const next = !o;
+            if (!o) setTimeout(updatePosition, 0);
+            return next;
+          });
+        }}
         className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"
       >
         <Plus className="w-3 h-3" />
         Customer | {label}
         <ChevronDown className="w-3 h-3" />
       </button>
-      {open && (
-        <div className="absolute left-0 mt-2 z-40 w-64 bg-white border border-gray-200 rounded-md shadow-xl flex flex-col max-h-[70vh]">
+      {open && rect && (
+        <div ref={panelRef} className="fixed z-50 flex max-h-[70vh] w-64 flex-col rounded-md border border-gray-200 bg-white shadow-xl" style={{ top: rect.top, left: rect.left, width: rect.width }}>
           <label className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-300 cursor-pointer">
             <Box on={all} />
             <input type="checkbox" className="hidden" checked={all} onChange={toggleAll} />
@@ -502,12 +640,12 @@ const CustomerFilter: React.FC<{
               className="w-full px-2.5 py-1.5 text-sm bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
             />
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
-            {shown.map((c) => (
-              <label key={c} className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
-                <Box on={sel.has(c)} />
-                <input type="checkbox" className="hidden" checked={sel.has(c)} onChange={() => toggle(c)} />
-                <span className="truncate">{c}</span>
+          <div className="hover-scrollbar flex-1 overflow-y-auto py-1">
+            {customerOptions.map((customer) => (
+              <label key={customer._id} className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <Box on={sel.has(customer.name)} />
+                <input type="checkbox" className="hidden" checked={sel.has(customer.name)} onChange={() => toggle(customer.name)} />
+                <span className="truncate">{customer.name}</span>
               </label>
             ))}
           </div>
@@ -795,6 +933,7 @@ const CreateInvoiceModal: React.FC<{ onClose: () => void; onSaved: (id: number) 
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const SalesInvoice: React.FC = () => {
+  const queryClient = useQueryClient();
   // Opened from an activity link → pre-select that invoice.
   const navSelectedId = (useLocation().state as { selectedId?: number } | null)?.selectedId;
   const [selectedId, setSelectedId] = useState(navSelectedId ?? 14);
@@ -803,6 +942,7 @@ export const SalesInvoice: React.FC = () => {
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string[] | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<
     null | "settings" | "preview" | "email" | "payment" | "pdfSettings"
@@ -820,60 +960,106 @@ export const SalesInvoice: React.FC = () => {
   const [sigRequestOpen, setSigRequestOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
   // live from the shared datastore (customer name resolved by id)
   const dbInvoices = useCollection<any>("invoices");
   const dbCustomers = useCollection<any>("customers", "name");
-  const invoices: Invoice[] = useMemo(
+  const localInvoices: Invoice[] = useMemo(
     () => dbInvoices.slice().sort((a, b) => b.id - a.id).map((inv) => ({
       id: inv.id,
-      name: dbCustomers.find((c) => c.id === inv.customerId)?.name || inv.name || "—",
+      backendId: inv._id,
+      name: customerDisplayName(dbCustomers.find((c) => c.id === inv.customerId)) || inv.name || "—",
+      customerSubtitle: customerDisplaySubtitle(dbCustomers.find((c) => c.id === inv.customerId)),
       number: inv.number, note: inv.notes || "No Notes", date: inv.date, due: inv.due,
-      amount: fmtMoney(inv.total), status: inv.status,
+      amount: fmtMoney(inv.total), currency: inv.currency || "USD", status: inv.status,
     })),
     [dbInvoices, dbCustomers],
   );
-  const listDue = dbInvoices.reduce((s, i) => s + (i.amountDue || 0), 0);
+  const { data: backendInvoiceList } = useQuery({
+    queryKey: ["sales-invoice-backend-list", search, sortBy, sortDir, statusFilter],
+    queryFn: () =>
+      fetchInvoices({
+        page: 1,
+        limit: 200,
+        searchTerm: search || undefined,
+        sort: `${sortDir === "Descending" && !invoiceSortToBackend(sortBy).startsWith("-") ? "-" : ""}${invoiceSortToBackend(sortBy).replace(/^-/, "")}`,
+        status: statusFilter,
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
 
   const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = invoices.filter(
-      (i) =>
-        (statusFilter === "All" || i.status === statusFilter) &&
-        (customerFilter === null || customerFilter.includes(i.name)) &&
-        (search.trim() === "" ||
-          i.name.toLowerCase().includes(search.toLowerCase()) ||
-          i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case "Total":
-        case "Due":
-        case "Paid":
-          cmp = toNum(a.amount) - toNum(b.amount);
-          break;
-        case "Invoice #":
-          cmp = a.id - b.id;
-          break;
-        case "Status":
-          cmp = a.status.localeCompare(b.status);
-          break;
-        case "Name":
-        case "First Name":
-        case "Last Name":
-          cmp = a.name.localeCompare(b.name);
-          break;
-        default: // Invoice date / Due Date
-          cmp = a.id - b.id;
-      }
-      return sortDir === "Ascending" ? cmp : -cmp;
-    });
-    return list;
-  }, [invoices, sortBy, sortDir, statusFilter, customerFilter, search]);
+    const backendRows = backendInvoiceList?.rows ?? [];
+    if (backendRows.length === 0 && (search || statusFilter !== "All")) return [];
 
-  const selected = invoices.find((i) => i.id === selectedId) || invoices[0];
+    const sourceRows = backendRows.length > 0 ? backendRows : localInvoices.map((item) => ({
+      _id: item.backendId || String(item.id),
+      number: item.number.replace(/^#/, ""),
+      customerName: item.name,
+      customerSubtitle: item.customerSubtitle || "",
+      amount: Number(item.amount.replace(/[^0-9.-]/g, "")) || 0,
+      dateLabel: item.date,
+      status: item.status,
+      currency: item.currency || "USD",
+      dueAmount: 0,
+      paidAmount: 0,
+      customerId: "",
+    }));
+
+    return sourceRows
+      .filter((row) => customerFilter === null || customerFilter.includes(row.customerName))
+      .map((row) => {
+        const linkedLocal =
+          dbInvoices.find((item) => item._id === row._id) ||
+          dbInvoices.find((item) => String(item.number).replace(/^#/, "") === row.number);
+        return {
+          id: linkedLocal?.id ?? (Number(row.number) || Math.abs(row._id.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))),
+          backendId: row._id,
+          name: row.customerName,
+          customerSubtitle: row.customerSubtitle,
+          number: `#${row.number}`,
+          note: row.customerSubtitle || linkedLocal?.notes || "No Notes",
+          date: row.dateLabel,
+          due: row.dateLabel,
+          amount: apiMoney(row.amount, row.currency),
+          currency: row.currency,
+          status: (["Draft", "Paid", "Partial", "Overdue"].includes(row.status) ? row.status : "Draft") as Status,
+        } satisfies Invoice;
+      });
+  }, [backendInvoiceList?.rows, customerFilter, dbInvoices, localInvoices, search, statusFilter]);
+
+  const listDue = useMemo(
+    () => filtered.reduce((sum, item) => sum + (Number(item.amount.replace(/[^0-9.-]/g, "")) || 0), 0),
+    [filtered],
+  );
+
+  const selected = filtered.find((i) => i.id === selectedId) || filtered[0];
   const selectedDb: any = dbInvoices.find((i) => i.id === (selected?.id ?? selectedId)) || {};
   const selectedCustomer: any = dbCustomers.find((c) => c.id === selectedDb.customerId) || {};
+
+  useEffect(() => {
+    if (filtered.length > 0 && !filtered.some((item) => item.id === selectedId)) {
+      setSelectedId(filtered[0].id);
+    }
+  }, [filtered, selectedId]);
+  const { data: paymentMethodOptions = [] } = useQuery({
+    queryKey: ["sales-invoice-payment-methods"],
+    queryFn: fetchPaymentMethods,
+    staleTime: 60_000,
+  });
+  const { data: selectedInvoiceDoc } = useQuery({
+    queryKey: ["sales-invoice-backend-detail", selected?.backendId],
+    queryFn: () => fetchInvoice(String(selected?.backendId)),
+    enabled: !!selected?.backendId,
+    staleTime: 30_000,
+  });
   const dbPaymentsReceived = useCollection<any>("paymentsReceived");
   const invoicePayments = dbPaymentsReceived.filter((p) => p.invoiceId === selectedDb.id);
 
@@ -901,14 +1087,14 @@ export const SalesInvoice: React.FC = () => {
     const ids = [...checked];
     await repo.removeMany("invoices", ids);
     showToast(`${ids.length} ${ids.length === 1 ? "invoice" : "invoices"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(invoices.find((i) => !ids.includes(i.id))?.id ?? 0);
+    if (ids.includes(selectedId)) setSelectedId(filtered.find((i) => !ids.includes(i.id))?.id ?? 0);
     setConfirmAction(null);
     exitSelect();
   };
   const trashCurrent = async () => {
     await repo.remove("invoices", selectedDb.id);
     showToast(`Invoice ${selectedDb.number} moved to trash`, "success");
-    setSelectedId(invoices.find((i) => i.id !== selectedDb.id)?.id ?? 0);
+    setSelectedId(filtered.find((i) => i.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
   };
 
@@ -976,9 +1162,32 @@ export const SalesInvoice: React.FC = () => {
     else if (a === "trash") setConfirmAction("trashOne");
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
-    if (!selectedDb?.id) return;
-    await repo.update("invoices", selectedDb.id, { signature: data.image, signatureName: data.name, signatureTitle: data.title, signatureDate: data.date });
-    showToast("Signature saved", "success");
+    const backendId = selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id;
+    let signaturePath = data.image;
+
+    try {
+      if (backendId && data.image.startsWith("data:")) {
+        const formData = new FormData();
+        formData.append("files", await dataUrlToFile(data.image, `invoice-signature-${backendId}.png`));
+        const uploadRes = await api.raw.post("/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        signaturePath = uploadRes.data?.data?.file_path || uploadRes.data?.data?.path || data.image;
+        await updateInvoice(String(backendId), { signature: signaturePath });
+        await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", String(backendId)] });
+      }
+      if (selectedDb?.id) {
+        await repo.update("invoices", selectedDb.id, {
+          signature: signaturePath,
+          signatureName: data.name,
+          signatureTitle: data.title,
+          signatureDate: data.date,
+        });
+      }
+      showToast("Signature saved", "success");
+    } catch {
+      showToast("Could not save signature", "error");
+    }
   };
 
   /* ── selection mode ── */
@@ -986,7 +1195,7 @@ export const SalesInvoice: React.FC = () => {
   const money = (n: number) =>
     `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
-  const selectedInvoices = invoices.filter((i) => checked.has(i.id));
+  const selectedInvoices = filtered.filter((i) => checked.has(i.id));
   const totals = {
     total: selectedInvoices.reduce((s, i) => s + num(i.amount), 0),
     paid: selectedInvoices.filter((i) => i.status === "Paid").reduce((s, i) => s + num(i.amount), 0),
@@ -1132,8 +1341,8 @@ export const SalesInvoice: React.FC = () => {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search invoices..."
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
             />
@@ -1141,7 +1350,7 @@ export const SalesInvoice: React.FC = () => {
         </div>
 
         {/* Toolbar: sort + filter chips */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-300">
+        <div className="hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300">
           {/* Sort by: fields + direction */}
           <Dropdown
             trigger={
@@ -1212,6 +1421,8 @@ export const SalesInvoice: React.FC = () => {
           {filtered.map((inv) => {
             const active = !selectMode && inv.id === selectedId;
             const isChecked = checked.has(inv.id);
+            const rowCustomer = dbCustomers.find((c) => c.id === inv.id || c.id === dbInvoices.find((item) => item.id === inv.id)?.customerId);
+            const rowSubtitle = customerDisplaySubtitle(rowCustomer) || inv.note;
             return (
               <button
                 key={inv.id}
@@ -1232,7 +1443,7 @@ export const SalesInvoice: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-gray-900 truncate">{inv.name}</div>
                   <div className="text-xs text-gray-500 mt-0.5">{inv.number}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 truncate">{inv.note}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 truncate">{rowSubtitle || "No Notes"}</div>
                 </div>
                 <div className="flex flex-col items-end flex-shrink-0">
                   <span className="text-xs text-gray-500">{inv.date}</span>
@@ -1284,7 +1495,7 @@ export const SalesInvoice: React.FC = () => {
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
-              <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>
+              <button className="text-xs text-blue-600 hover:text-blue-700 underline">{customerDisplaySubtitle(selectedCustomer) || "View Contact"}</button>
             </div>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {actionIcons.map((a) => (
@@ -1311,15 +1522,21 @@ export const SalesInvoice: React.FC = () => {
             <div className="flex items-center gap-10">
               <div>
                 <div className="text-xs text-gray-500">{selected.number}</div>
-                <div className="text-sm font-semibold text-gray-900">{selected.amount}</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedInvoiceDoc ? apiMoney(selectedInvoiceDoc.total || 0, selectedInvoiceDoc.currency) : selected.amount}
+                </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Invoice date</div>
-                <div className="text-sm font-semibold text-gray-900">{selected.date}</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedInvoiceDoc?.date ? new Date(selectedInvoiceDoc.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : selected.date}
+                </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Due</div>
-                <div className="text-sm font-semibold text-gray-900">{selected.due}</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedInvoiceDoc?.due_date ? new Date(selectedInvoiceDoc.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : selected.due}
+                </div>
               </div>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[selected.status]}`}>
@@ -1331,16 +1548,16 @@ export const SalesInvoice: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-5 py-4 border-b border-gray-300">
             <div>
               <div className="text-xs text-gray-500 mb-1">Billing Address</div>
-              {[selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean).length
-                ? [selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean).map((l: string, i: number) => (
+              {(selectedInvoiceDoc ? invoiceAddressLines(selectedInvoiceDoc.billing_address) : [selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean)).length
+                ? (selectedInvoiceDoc ? invoiceAddressLines(selectedInvoiceDoc.billing_address) : [selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean)).map((l: string, i: number) => (
                     <div key={i} className={`text-sm ${i === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{l}</div>
                   ))
                 : <div className="text-sm text-gray-400">—</div>}
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
-              {[selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean).length
-                ? [selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean).map((l: string, i: number) => (
+              {(selectedInvoiceDoc ? invoiceAddressLines(selectedInvoiceDoc.shipping_address) : [selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean)).length
+                ? (selectedInvoiceDoc ? invoiceAddressLines(selectedInvoiceDoc.shipping_address) : [selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean)).map((l: string, i: number) => (
                     <div key={i} className={`text-sm ${i === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{l}</div>
                   ))
                 : <div className="text-sm text-gray-400">—</div>}
@@ -1349,18 +1566,7 @@ export const SalesInvoice: React.FC = () => {
               <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
                 Payment Methods <Pencil className="w-3 h-3" />
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {paymentMethods.map((p) => (
-                  <span
-                    key={p.label}
-                    className="px-1.5 h-6 min-w-[34px] rounded text-[9px] font-bold flex items-center justify-center border border-black/10"
-                    style={{ background: p.bg, color: p.fg }}
-                    title={p.label}
-                  >
-                    {p.label}
-                  </span>
-                ))}
-              </div>
+              <DynamicPaymentBadges names={selectedInvoiceDoc?.payment_method ?? []} options={paymentMethodOptions} />
             </div>
           </div>
 
@@ -1368,15 +1574,15 @@ export const SalesInvoice: React.FC = () => {
           <div className="grid grid-cols-3 gap-6 px-5 py-3 border-b border-gray-300">
             <div>
               <div className="text-xs text-gray-500">Sub Title</div>
-              <div className="text-sm font-semibold text-gray-900">{selectedDb.subTitle || selectedCustomer.subtitle || "—"}</div>
+              <div className="text-sm font-semibold text-gray-900">{selectedInvoiceDoc?.sub_title || selectedDb.subTitle || selectedCustomer.subtitle || "—"}</div>
             </div>
             <div>
               <div className="text-xs text-gray-500">Shipping Method</div>
-              <div className="text-sm font-semibold text-gray-900">{selectedDb.shippingMethod || "Standard Ground"}</div>
+              <div className="text-sm font-semibold text-gray-900">{selectedInvoiceDoc?.shipping_method || selectedDb.shippingMethod || "Standard Ground"}</div>
             </div>
             <div>
               <div className="text-xs text-gray-500">P.O. #</div>
-              <div className="text-sm font-semibold text-gray-900">{selectedDb.poNo || selectedDb.id || "—"}</div>
+              <div className="text-sm font-semibold text-gray-900">{selectedInvoiceDoc?.po || selectedDb.poNo || selectedDb.id || "—"}</div>
             </div>
           </div>
           </>
@@ -1488,7 +1694,16 @@ export const SalesInvoice: React.FC = () => {
           </div>
 
           {/* saved signature (shows after Add Signature) */}
-          <SignatureBlock record={selectedDb} label="Customer Signature" />
+          <SignatureBlock
+            record={{
+              ...selectedDb,
+              signature: selectedInvoiceDoc?.signature || selectedDb.signature,
+              signatureName: selectedDb.signatureName,
+              signatureTitle: selectedDb.signatureTitle,
+              signatureDate: selectedDb.signatureDate,
+            }}
+            label="Customer Signature"
+          />
 
           {/* Draft corner ribbon */}
           {selected.status === "Draft" && (
@@ -1518,7 +1733,24 @@ export const SalesInvoice: React.FC = () => {
       })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} />}
       {modal === "payment" && (
-        <PaymentModal onClose={() => setModal(null)} amount={selected.amount} />
+        <InvoicePaymentsModal
+          open
+          invoice={
+            selectedInvoiceDoc ?? {
+              _id: String(selectedDb._id || ""),
+              invoice_number: selectedDb.number?.replace(/^#/, "") || "",
+              currency: selectedDb.currency || "USD",
+              total: selectedDb.total || 0,
+              balance_amount: selectedDb.amountDue || 0,
+              customer_id: selectedCustomer._id ? { _id: String(selectedCustomer._id), name: selectedCustomer.contact || selectedCustomer.name } : undefined,
+              customer_name: selected.name,
+              payment_method: [],
+            }
+          }
+          paymentMethods={paymentMethodOptions}
+          onClose={() => setModal(null)}
+          onSaved={() => setModal(null)}
+        />
       )}
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="invoice" />
@@ -1526,7 +1758,13 @@ export const SalesInvoice: React.FC = () => {
       {sigOpen && (
         <SignatureModal
           heading="Customer Signature"
-          defaultName={selectedCustomer.contact || selectedCustomer.name || ""}
+          defaultName={
+            selectedCustomer.contact ||
+            selectedCustomer.name ||
+            (selectedInvoiceDoc?.customer_id && typeof selectedInvoiceDoc.customer_id === "object"
+              ? selectedInvoiceDoc.customer_id.name || selectedInvoiceDoc.customer_name || ""
+              : selectedInvoiceDoc?.customer_name || "")
+          }
           onDone={saveSignature}
           onClose={() => setSigOpen(false)}
         />
