@@ -280,7 +280,7 @@ export const Dashboard: React.FC = () => {
   const shownCards = allCards.filter((c) => visible[c.key] !== false);
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-auto">
+    <div className="module-page-shell overflow-auto">
       {/* ── Page heading row ─────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-12 bg-white border-b border-gray-200">
         <h1 className="text-lg font-normal text-gray-900">Summary</h1>

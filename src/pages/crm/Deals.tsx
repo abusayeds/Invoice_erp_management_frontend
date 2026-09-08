@@ -814,8 +814,8 @@ export const Deals: React.FC = () => {
   // ─── Main Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+    <div className="module-page-shell flex flex-col overflow-hidden p-0">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <button onClick={() => navigate("/")}>Dashboard</button>
@@ -831,7 +831,7 @@ export const Deals: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Deals</h2>
           <div className="flex items-center gap-2">
@@ -864,7 +864,7 @@ export const Deals: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative">

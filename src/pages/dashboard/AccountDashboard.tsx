@@ -334,10 +334,10 @@ export const AccountDashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm p-4 md:p-6">
+    <div className="dashboard-shell custom-scrollbar p-4 md:p-6">
       <div className="w-full">
         {/* Header */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="dashboard-title-bar -mx-4 md:-mx-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 -mt-4 md:-mt-6">
           <div>
             <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
               Account Dashboard

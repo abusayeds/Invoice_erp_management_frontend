@@ -574,7 +574,7 @@ export const Quotations: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="module-page-shell">
       <div className="max-w-[1600px] mx-auto">
         {/* Breadcrumb */}
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
@@ -625,7 +625,7 @@ export const Quotations: React.FC = () => {
         </div>
 
         {/* Header */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
               Manage Quotations

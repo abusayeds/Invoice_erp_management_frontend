@@ -523,8 +523,8 @@ export const Projects: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+    <div className="module-page-shell overflow-y-auto p-0">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
           <span>›</span><span className="text-gray-900 font-medium">Projects</span>
@@ -669,7 +669,7 @@ export const ProjectDetail: React.FC = () => {
   const [editMilestone, setEditMilestone] = useState<Milestone | null>(null);
 
   if (!project) return (
-    <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center text-gray-500">
+    <div className="module-page-shell flex items-center justify-center text-gray-500">
       Project not found. <button onClick={() => navigate("/project/projects")} className="ml-2 text-blue-500">Back to projects</button>
     </div>
   );
@@ -703,8 +703,8 @@ export const ProjectDetail: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+    <div className="module-page-shell overflow-y-auto p-0">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>
@@ -880,7 +880,7 @@ export const ProjectBugs: React.FC = () => {
   const [dragId, setDragId] = useState<string | null>(null);
 
   if (!project) return (
-    <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center text-gray-500">
+    <div className="module-page-shell flex items-center justify-center text-gray-500">
       Project not found. <button onClick={() => navigate("/project/projects")} className="ml-2 text-blue-500">Back</button>
     </div>
   );
@@ -893,8 +893,8 @@ export const ProjectBugs: React.FC = () => {
     repo.update("projects", project.id, { bugs: project.bugs.filter((b) => b.id !== bugId) });
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+    <div className="module-page-shell overflow-y-auto p-0">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button><span>›</span>
           <button onClick={() => navigate("/project/projects")} className="hover:text-gray-700">Project</button><span>›</span>

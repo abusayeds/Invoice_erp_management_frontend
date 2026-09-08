@@ -684,7 +684,7 @@ const ManageTickets: React.FC<{
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="module-page-shell flex flex-col overflow-hidden p-0">
       <AppHeader
         breadcrumbs={[
           { label: "Dashboard" },
@@ -694,7 +694,7 @@ const ManageTickets: React.FC<{
       />
 
       {/* Page header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="module-title-bar">
         <h1 className="text-xl font-semibold text-gray-900">Manage Tickets</h1>
         <button onClick={() => setShowCreate(true)} title="Create Ticket" className="w-9 h-9 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center transition-colors">
           <Plus className="w-5 h-5" />
@@ -921,7 +921,7 @@ const EditReply: React.FC<{
   const [noteText, setNoteText] = useState("");
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="module-page-shell flex flex-col overflow-hidden p-0">
       <AppHeader
         breadcrumbs={[
           { label: "Dashboard" },
@@ -931,7 +931,7 @@ const EditReply: React.FC<{
       />
 
       {/* Page header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="module-title-bar">
         <h1 className="text-xl font-semibold text-gray-900">
           Ticket - {ticket.ticketId}
         </h1>

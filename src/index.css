@@ -172,6 +172,86 @@
   background-color: var(--app-bg) !important;
 }
 
+/* Shared module shell used by Sales/Purchase split layouts so the
+ * list panel, detail panel and title bars stay visually consistent. */
+.module-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--app-bg);
+}
+
+.module-detail-panel {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  margin: 0.5rem;
+  background: var(--surface) !important;
+  border: 1px solid var(--color-gray-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.module-empty-panel {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.5rem;
+  background: var(--surface) !important;
+  border: 1px solid var(--color-gray-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.module-title-bar {
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--color-gray-300);
+  background: var(--color-gray-100);
+}
+
+.dashboard-shell {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  margin: 0.5rem;
+  background: var(--surface) !important;
+  border: 1px solid var(--color-gray-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-title-bar {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--color-gray-300);
+  background: var(--color-gray-100);
+}
+
+.module-page-shell {
+  min-height: 100%;
+  margin: 0.5rem;
+  padding: 1rem;
+  background: var(--surface) !important;
+  border: 1px solid var(--color-gray-300);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 768px) {
+  .module-page-shell {
+    padding: 1.5rem;
+  }
+}
+
 /* ── Field de-box: Material-style underline fields (app-wide) ──────
  * Text-like inputs, selects and textareas lose their box and get a
  * themed underline; focus shows a 2px brand-blue line.

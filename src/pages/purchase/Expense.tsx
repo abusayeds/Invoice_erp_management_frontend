@@ -322,9 +322,9 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
 
   const catMatches = EXP_CATEGORIES.filter((c) => !category.trim() || c.toLowerCase().includes(category.toLowerCase()));
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
+    <section className="module-detail-panel custom-scrollbar">
       {/* header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+      <div className="module-title-bar">
         <h1 className="text-lg font-semibold text-gray-900">{initial?.id ? "Edit Expense" : "Create Expense"}</h1>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
@@ -590,11 +590,11 @@ export const Expenses: React.FC = () => {
   if (!selected && mode !== "create") return <ListEmptyState title="No expenses yet" onCreate={() => setMode("create")} createLabel="New Expense" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               <button title="Create Invoice" onClick={createInvoiceFromSelected} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><ClipboardList className="w-4 h-4" /></button>
@@ -603,8 +603,8 @@ export const Expenses: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Expenses</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Expenses</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -699,7 +699,7 @@ export const Expenses: React.FC = () => {
       {expModal ? (
         <ExpenseFormLive onClose={() => setExpModal(false)} onSaved={(id) => { setMode("view"); setSelectedId(id); }} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="module-empty-panel">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Expense" : "Expenses"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -710,9 +710,9 @@ export const Expenses: React.FC = () => {
       ) : mode !== "view" ? (
         <ExpenseFormLive initial={selectedDb} onClose={() => setMode("view")} onSaved={(id) => setSelectedId(id)} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
+        <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}
-          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+          <div className="module-title-bar">
             <h1 className="text-lg font-semibold text-gray-900">Expense Details</h1>
             <div className="flex items-center gap-0.5">
               <button onClick={() => setModal("settings")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>

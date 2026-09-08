@@ -778,9 +778,9 @@ export const ProjectsNew: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="module-page-shell overflow-hidden flex flex-col p-0">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button
             onClick={() => navigate("/")}
@@ -794,7 +794,7 @@ export const ProjectsNew: React.FC = () => {
       </div>
 
       {/* Page Header */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Projects
@@ -810,7 +810,7 @@ export const ProjectsNew: React.FC = () => {
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
@@ -1055,7 +1055,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
   if (!project) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center">
+      <div className="module-page-shell flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-900">
             Project not found
@@ -1096,9 +1096,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-auto">
+    <div className="module-page-shell overflow-auto">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2 sticky top-0 z-10">
+      <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 sticky top-0 z-10">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button
             onClick={() => navigate("/")}

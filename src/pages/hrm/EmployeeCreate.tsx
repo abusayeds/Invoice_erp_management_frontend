@@ -121,7 +121,7 @@ const EmployeeCreate: React.FC = () => {
     set({ documents: form.documents.filter((d) => d.id !== docId) });
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }, { label: "Employees", to: "/hrm/employees" }]}
         current={isEdit ? "Edit" : "Create"}

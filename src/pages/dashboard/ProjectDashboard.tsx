@@ -180,11 +180,11 @@ export const ProjectDashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm p-6">
+    <div className="dashboard-shell custom-scrollbar p-6">
       <div className="w-full">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">
+        <div className="dashboard-title-bar -mx-6 -mt-6 mb-6">
+          <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
             Project Dashboard
           </h1>
         </div>

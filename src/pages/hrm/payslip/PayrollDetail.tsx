@@ -157,7 +157,7 @@ const PayrollDetail: React.FC = () => {
   const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 whitespace-nowrap";
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }, { label: "Payrolls", to: "/hrm/payslip/payroll" }]}
         current={payroll.title}

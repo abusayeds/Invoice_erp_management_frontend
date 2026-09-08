@@ -617,8 +617,8 @@ export const InterviewRounds: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+    <div className="module-page-shell overflow-hidden flex flex-col p-0">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <button
@@ -644,7 +644,7 @@ export const InterviewRounds: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Interview Rounds
@@ -660,7 +660,7 @@ export const InterviewRounds: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">

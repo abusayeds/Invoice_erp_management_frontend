@@ -403,9 +403,9 @@ const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, o
   }, []);
   const matches = vendorList.filter((v) => v.toLowerCase().includes(vendorQuery.toLowerCase()));
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
+    <section className="module-detail-panel custom-scrollbar">
       {/* header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+      <div className="module-title-bar sticky top-0 z-20">
         <h1 className="text-lg font-semibold text-gray-900">Edit Debit Note</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -587,11 +587,11 @@ export const DebitNotes: React.FC = () => {
   if (!selected && !createOpen) return <ListEmptyState title="No debit notes yet" onCreate={() => setCreateOpen(true)} createLabel="New Debit Note" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               {[Trash2, MessageCircle, Mail, Eye, Check].map((Ic, i) => (
@@ -600,8 +600,8 @@ export const DebitNotes: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Debit Notes</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Debit Notes</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -702,7 +702,7 @@ export const DebitNotes: React.FC = () => {
         /* Create Debit Note — same full inline form as Create Credit Note */
         <CreateDocForm collection="debitNotes" title="New Debit Note" party="vendors" buy creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
       ) : selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="module-empty-panel">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} Debit {checked.size === 1 ? "Note" : "Notes"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -713,10 +713,10 @@ export const DebitNotes: React.FC = () => {
       ) : editMode ? (
         <EditDebitNote dn={selected} onClose={() => setEditMode(false)} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="relative m-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <section className="module-detail-panel custom-scrollbar">
+          <div className="relative flex-1 overflow-hidden flex flex-col">
             {/* header */}
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
+            <div className="module-title-bar">
               <div className="min-w-0">
                 <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
                 <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>

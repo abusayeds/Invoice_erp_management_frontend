@@ -409,9 +409,9 @@ export const CrmSystemSetup: React.FC = () => {
   const modalTitle = `${editingId ? "Edit" : "Create"} ${modal === "Pipelines" ? "Pipeline" : modal === "Lead Stages" ? "Lead Stage" : modal === "Deal Stages" ? "Deal Stage" : modal === "Labels" ? "Label" : "Source"}`;
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
+    <div className="module-page-shell overflow-hidden flex flex-col p-0">
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
           <span>›</span>
@@ -423,7 +423,7 @@ export const CrmSystemSetup: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <h1 className="text-lg font-semibold text-gray-900">System Setup</h1>
       </div>
 

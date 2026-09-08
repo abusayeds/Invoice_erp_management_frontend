@@ -91,9 +91,9 @@ function ChartCard({ title, icon: Icon, children }: { title: string; icon: React
 function ReportShell({ title, children }: { title: string; children: React.ReactNode }) {
   const navigate = useNavigate();
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "POS" }]} current={title} onNavigate={navigate} />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="module-title-bar px-4 sm:px-6">
         <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
       </div>
       <div className="p-4 sm:p-6 space-y-6">{children}</div>

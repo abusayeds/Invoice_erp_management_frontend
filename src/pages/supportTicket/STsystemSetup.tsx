@@ -72,7 +72,7 @@ interface CustomPage {
 // ─── Shared: AppHeader ────────────────────────────────────────────────────────
 
 const AppHeader: React.FC<{ section: string }> = ({ section }) => (
-  <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+  <div className="module-title-bar">
     <div className="flex items-center gap-2 text-sm text-gray-500">
       <span className="hover:text-gray-700 cursor-pointer">Dashboard</span>
       <span className="text-gray-400">›</span>
@@ -84,7 +84,7 @@ const AppHeader: React.FC<{ section: string }> = ({ section }) => (
       <span className="text-gray-400">›</span>
       <span className="text-gray-900 font-medium">{section}</span>
     </div>
-    <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1">
+    <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-300 rounded-md px-2 py-1">
       <Globe className="w-4 h-4" />
       <span>en English</span>
     </div>
@@ -1548,18 +1548,18 @@ export const STsystemSetup: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] flex flex-col overflow-hidden">
+    <div className="module-page-shell flex flex-col overflow-hidden p-0">
       <AppHeader section={current.section} />
 
       {/* Page title */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
+      <div className="module-title-bar">
         <h1 className="text-xl font-semibold text-gray-900">System Setup</h1>
       </div>
 
       {/* Body: sidebar + content */}
       <div className="flex-1 overflow-hidden flex">
         {/* ── Sidebar ── */}
-        <div className="w-52 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto py-3">
+        <div className="w-52 flex-shrink-0 bg-white border-r border-gray-300 overflow-y-auto py-3">
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -1584,7 +1584,7 @@ export const STsystemSetup: React.FC = () => {
 
         {/* ── Content Panel ── */}
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="bg-white border border-gray-200 rounded-lg p-6 min-h-full">
+          <div className="bg-white border border-gray-300 rounded-lg p-6 min-h-full">
             {renderPanel()}
           </div>
         </div>

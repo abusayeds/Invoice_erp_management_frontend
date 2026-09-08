@@ -91,8 +91,8 @@ export const Banking: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+    <div className="module-page-shell overflow-hidden flex flex-col p-0">
+      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-6"><button className="text-sm font-medium text-gray-900 border-b-2 border-blue-600 pb-2">Summary</button></div>
           <div className="flex items-center gap-3">
@@ -102,7 +102,7 @@ export const Banking: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+      <div className="module-title-bar px-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <h2 className="text-lg font-semibold text-gray-900">{showForm ? (isEditing ? "Edit Bank Account" : "Add Bank Account") : "Banking"}</h2>

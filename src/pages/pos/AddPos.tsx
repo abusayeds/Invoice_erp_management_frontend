@@ -174,11 +174,11 @@ export const AddPos: React.FC = () => {
   const inputCls = "px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30";
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-hidden flex">
+    <div className="module-page-shell overflow-hidden flex p-0">
       {/* ── product side ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* toolbar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 flex-wrap">
+        <div className="module-title-bar px-4 py-3 h-auto flex-wrap gap-3">
           <button onClick={() => navigate("/")} title="Home" className="p-2 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-50">
             <Home className="w-4 h-4" />
           </button>
@@ -210,7 +210,7 @@ export const AddPos: React.FC = () => {
         </div>
 
         {/* category chips */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2 flex-wrap">
+        <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center gap-2 flex-wrap">
           {categories.map((c) => (
             <button
               key={c}

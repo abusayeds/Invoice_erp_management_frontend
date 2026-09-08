@@ -110,13 +110,13 @@ export const BalanceSheet: React.FC = () => {
   if (!sheet) return <div className="flex-1 bg-[#FAFBFC]" />;
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "Double Entry" }, { label: "Balance Sheets" }]}
         current={`Balance Sheet - ${sheet.date}`}
         onNavigate={navigate}
       />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Balance Sheet - {sheet.date}</h2>
         <button
           onClick={() => setModal("generate")}

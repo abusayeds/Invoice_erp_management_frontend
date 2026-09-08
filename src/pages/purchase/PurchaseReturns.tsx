@@ -328,8 +328,8 @@ const CreateReturn: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const rows = [{ no: 1, name: "", desc: "Description" }, { no: 2, name: "Service", desc: "Description" }];
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="module-detail-panel custom-scrollbar">
+      <div className="module-title-bar sticky top-0 z-20">
         <h1 className="text-lg font-semibold text-gray-900">Create Purchase Return</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -518,11 +518,11 @@ export const PurchaseReturns: React.FC = () => {
   if (!selected && !createMode) return <ListEmptyState title="No purchase returns yet" onCreate={() => setCreateMode(true)} createLabel="New Purchase Return" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               {[Trash2, MessageCircle, Mail, Eye, Check].map((Ic, i) => (
@@ -531,8 +531,8 @@ export const PurchaseReturns: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Purchase Returns</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Purchase Returns</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -622,7 +622,7 @@ export const PurchaseReturns: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="module-empty-panel">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Purchase Return" : "Purchase Returns"} Selected</h2>
             <div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left">
@@ -633,9 +633,9 @@ export const PurchaseReturns: React.FC = () => {
       ) : createMode ? (
         <CreateReturn onClose={() => setCreateMode(false)} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="relative m-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
+        <section className="module-detail-panel custom-scrollbar">
+          <div className="relative flex-1 overflow-hidden flex flex-col">
+            <div className="module-title-bar">
               <div className="min-w-0">
                 <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
                 <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>

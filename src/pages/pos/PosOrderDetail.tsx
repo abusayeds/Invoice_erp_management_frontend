@@ -35,7 +35,7 @@ export const PosOrderDetail: React.FC = () => {
   const order = (orders || []).find((o) => o.id === id);
   if (!order) {
     return (
-      <div className="flex-1 bg-[#FAFBFC] flex items-center justify-center text-sm text-gray-500">
+      <div className="module-page-shell flex items-center justify-center text-sm text-gray-500">
         {orders === undefined ? "Loading..." : "POS sale not found."}
       </div>
     );
@@ -64,13 +64,13 @@ export const PosOrderDetail: React.FC = () => {
     );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "POS Orders", to: "/pos/orders" }]}
         current="POS Sale Details"
         onNavigate={navigate}
       />
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">POS Sale</h2>
         <button
           onClick={() => navigate("/pos/orders")}

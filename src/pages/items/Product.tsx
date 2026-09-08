@@ -580,11 +580,11 @@ export const Product: React.FC = () => {
   if (!selected && mode !== "create") return <ListEmptyState title="No products yet" onCreate={() => setMode("create")} createLabel="New Product" />;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
+    <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
       <ResizableListPanel>
         {selectMode ? (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               {[Archive, Copy, Trash2].map((Ic, i) => (
@@ -593,8 +593,8 @@ export const Product: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">Products</h2>
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Products</h2>
             <div className="flex items-center gap-0.5">
               <button className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select"><Pencil className="w-4 h-4 text-gray-500" /></button>
@@ -604,7 +604,7 @@ export const Product: React.FC = () => {
         )}
 
         {/* search */}
-        <div className="px-3 py-2 border-b border-gray-200">
+        <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
@@ -612,7 +612,7 @@ export const Product: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-200">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
               <button key={o} onClick={() => { setSortBy(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -643,7 +643,7 @@ export const Product: React.FC = () => {
             const isChecked = checked.has(p.id);
             return (
               <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : (setSelectedId(p.id), setMode("view")))}
-                className={`w-full text-left px-4 py-3 border-b border-gray-200 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+                className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
                 )}
@@ -676,7 +676,7 @@ export const Product: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {selectMode ? (
-        <section className="flex-1 flex items-center justify-center">
+        <section className="module-empty-panel">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900">{checked.size} {checked.size === 1 ? "Product" : "Products"} Selected</h2>
           </div>
@@ -686,10 +686,10 @@ export const Product: React.FC = () => {
       ) : mode === "edit" ? (
         <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.update("products", selected.id, { name: d.name, category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); }} />
       ) : (
-        <section className="flex-1 overflow-y-auto custom-scrollbar">
+        <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}
-          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
-            <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
+          <div className="module-title-bar">
+            <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-2">
               <button onClick={() => setModal("stock")} className="px-4 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-medium">Update Stock</button>
               <button onClick={() => setModal("settings")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>

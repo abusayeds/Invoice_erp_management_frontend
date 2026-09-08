@@ -247,7 +247,7 @@ const SetSalaryDetail: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-[#FAFBFC] overflow-y-auto">
+    <div className="module-page-shell overflow-y-auto">
       <HrmBreadcrumb
         trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }, { label: "Set Salary", to: "/hrm/payslip/set-salary" }]}
         current="View Salary"
