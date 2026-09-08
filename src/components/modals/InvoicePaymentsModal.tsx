@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Eye, FileText, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
+import { useCollection } from "@/lib/db";
 import type { BackendInvoiceDoc } from "@/services/invoicesApi";
 import {
   createInvoicePayment,
@@ -147,6 +148,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   onSaved,
 }) => {
   const queryClient = useQueryClient();
+  const localInvoices = useCollection<any>("invoices");
+  const localPaymentsReceived = useCollection<any>("paymentsReceived");
   const [selectedPaymentId, setSelectedPaymentId] = useState<string>("");
   const [showForm, setShowForm] = useState(true);
   const [paymentSerial, setPaymentSerial] = useState("");
@@ -162,6 +165,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const customerRef = useRef<HTMLDivElement>(null);
 
   const invoiceId = invoice?._id ?? "";
+  const localInvoice = useMemo(() => localInvoices.find((item) => String(item._id) === invoiceId), [invoiceId, localInvoices]);
   const invoiceCustomerId =
     invoice?.customer_id && typeof invoice.customer_id === "object"
       ? text(invoice.customer_id._id)
@@ -227,9 +231,28 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       internalNotes: text(payment.internal_notes),
       source: "payment" as const,
     }));
-    const merged = [...direct, ...received].sort((a, b) => b.timestamp - a.timestamp);
+    const local = localPaymentsReceived
+      .filter((payment) => {
+        if (localInvoice?.id && payment.invoiceId === localInvoice.id) return true;
+        if (invoiceCustomerId && String(payment.customerId) === String(localInvoice?.customerId ?? "")) return true;
+        return false;
+      })
+      .map((payment, index) => ({
+        id: `local-${payment.id}`,
+        serial: text(payment.number) || `PR-LOCAL-${String(index + 1).padStart(4, "0")}`,
+        invoiceNumber: text(payment.invoiceNumber) || text(invoice?.invoice_number),
+        dateLabel: dateLabel(payment.date),
+        timestamp: new Date(payment.date ?? 0).getTime() || 0,
+        amount: numberValue(payment.amount ?? payment.total ?? payment.subTotal),
+        currency: text(payment.currency) || text(invoice?.currency) || "USD",
+        method: text(payment.method) || "Cash",
+        notes: text(payment.notes),
+        internalNotes: text(payment.internalNotes),
+        source: "paymentReceived" as const,
+      }));
+    const merged = [...direct, ...received, ...local].sort((a, b) => b.timestamp - a.timestamp);
     return merged.filter((payment, index, arr) => arr.findIndex((item) => item.id === payment.id && item.source === payment.source) === index);
-  }, [paymentsData, invoice]);
+  }, [invoice, invoiceCustomerId, localInvoice, localPaymentsReceived, paymentsData]);
 
   const customerSearch = useQuery({
     queryKey: ["invoice-payment-customers", customerQuery],
