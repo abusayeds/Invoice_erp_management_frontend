@@ -25,6 +25,7 @@ export interface PaymentReceivedListParams {
   searchTerm?: string;
   sort?: string;
   invoice_id?: string;
+  customer_id?: string;
 }
 
 export interface PaymentReceivedListResult {
@@ -50,6 +51,7 @@ export async function fetchPaymentReceived(
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
   if (params.invoice_id) query.invoice_id = params.invoice_id;
+  if (params.customer_id) query.customer_id = params.customer_id;
 
   const res = await api.raw.get("/payment-received/all", { params: query });
   const body = res.data ?? {};

@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
@@ -25,6 +26,9 @@ import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
+import { api } from "@/lib/api/client";
+import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
+import { fetchCreditNote, fetchCreditNotes, type BackendCreditNoteDoc } from "@/services/creditNotesApi";
 import {
   Search,
   Plus,

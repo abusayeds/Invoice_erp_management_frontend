@@ -516,8 +516,8 @@ textarea:not(.keep-box, table textarea) {
 
   /* Modern Scrollbar */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 4px;
+    height: 4px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -525,12 +525,17 @@ textarea:not(.keep-box, table textarea) {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--color-base-300);
+    background: transparent;
     border-radius: 100px;
     transition: background 0.2s;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: var(--color-base-300);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb:hover {
     background: var(--color-base-400);
   }
 
@@ -553,6 +558,43 @@ textarea:not(.keep-box, table textarea) {
   .hover-scrollbar:hover::-webkit-scrollbar-thumb:hover {
     background: var(--color-base-400);
   }
+
+.global-loading-track {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+.global-loading-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28%;
+  min-width: 96px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent 0%, var(--themeColor) 20%, #66acff 50%, var(--themeColor) 80%, transparent 100%);
+  opacity: 0;
+  transform: translateX(-120%);
+  transition: opacity 0.2s ease;
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.45);
+  pointer-events: none;
+}
+
+.global-loading-bar.is-active {
+  opacity: 1;
+  animation: global-loading-slide 1.8s ease-in-out infinite;
+}
+
+@keyframes global-loading-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
 
   /* Premium Shadow */
   .shadow-premium {

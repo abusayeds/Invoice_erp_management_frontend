@@ -27,6 +27,31 @@ export function onUnauthorized(handler: () => void): void {
   unauthorizedHandler = handler;
 }
 
+let activeRequestCount = 0;
+const loadingListeners = new Set<(count: number) => void>();
+
+function emitLoadingCount() {
+  loadingListeners.forEach((listener) => listener(activeRequestCount));
+}
+
+function beginLoading() {
+  activeRequestCount += 1;
+  emitLoadingCount();
+}
+
+function endLoading() {
+  activeRequestCount = Math.max(0, activeRequestCount - 1);
+  emitLoadingCount();
+}
+
+export function subscribeApiLoading(listener: (count: number) => void): () => void {
+  loadingListeners.add(listener);
+  listener(activeRequestCount);
+  return () => {
+    loadingListeners.delete(listener);
+  };
+}
+
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -37,16 +62,25 @@ const axiosInstance: AxiosInstance = axios.create({
 // ── Request: attach bearer token ────────────────────────────────────────────
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    beginLoading();
     const token = getToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
+  },
+  (error) => {
+    endLoading();
+    return Promise.reject(error);
   },
 );
 
 // ── Response: unwrap data, normalize errors, handle 401 ─────────────────────
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    endLoading();
+    return response;
+  },
   (error) => {
+    endLoading();
     const apiError = toApiError(error);
     if (apiError.status === 401) {
       clearToken();

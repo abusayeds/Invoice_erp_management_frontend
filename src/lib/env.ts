@@ -7,14 +7,14 @@
  * `VITE_API_BASE_URL` (or `VITE_BACKEND_BASE`) in your `.env` file.
  */
 
-const backendBase =
+export const BACKEND_BASE_URL: string =
   import.meta.env.VITE_BACKEND_BASE?.replace(/\/$/, "") ||
   "http://localhost:5500";
 
 /** Fully-qualified REST API base URL, e.g. http://localhost:5500/api/v1 */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ||
-  `${backendBase}/api/v1`;
+  `${BACKEND_BASE_URL}/api/v1`;
 
 /** localStorage key used to persist the auth token. */
 export const AUTH_TOKEN_KEY: string =
@@ -24,6 +24,7 @@ export const AUTH_TOKEN_KEY: string =
 export const IS_PROD: boolean = import.meta.env.PROD;
 
 export const env = {
+  BACKEND_BASE_URL,
   API_BASE_URL,
   AUTH_TOKEN_KEY,
   IS_PROD,

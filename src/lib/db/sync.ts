@@ -268,11 +268,38 @@ const mapInvoice: MapFn = (d) => ({
   amountDue: num(d.balance_amount),
   terms: str(d.terms_and_conditions),
   notes: str(d.notes),
+  signature: str(d.signature),
+  currency: str(d.currency),
+  paymentMethod: Array.isArray(d.payment_method) ? d.payment_method.map((item: unknown) => str(item)).filter(Boolean) : [],
+  payment_method: Array.isArray(d.payment_method) ? d.payment_method.map((item: unknown) => str(item)).filter(Boolean) : [],
+  paymentType: Array.isArray(d.payment_method) ? str(d.payment_method[0]) : str(d.payment_method),
+  subTitle: str(d.sub_title),
+  shippingMethod: str(d.shipping_method),
+  street1: str(d.billing_address?.street),
+  street2: str(d.billing_address?.street2),
+  city: str(d.billing_address?.city),
+  state: str(d.billing_address?.state),
+  zip: str(d.billing_address?.zip),
+  country: str(d.billing_address?.country),
+  shipStreet1: str(d.shipping_address?.street),
+  shipStreet2: str(d.shipping_address?.street2),
+  shipCity: str(d.shipping_address?.city),
+  shipState: str(d.shipping_address?.state),
+  shipZip: str(d.shipping_address?.zip),
+  shipCountry: str(d.shipping_address?.country),
 });
 
 /** UI invoice row → backend create/update body (resolves customer ref + lines). */
 const reverseInvoice = async (r: Record<string, any>) => {
   const customer_id = await backendIdOf("customers", r.customerId);
+  const billingStreet = str(r.street1);
+  const billingCity = str(r.city);
+  const billingCountry = str(r.country);
+  const shippingStreet = str(r.shipStreet1);
+  const shippingCity = str(r.shipCity);
+  const shippingCountry = str(r.shipCountry);
+  const hasBillingAddress = !!(billingStreet && billingCity && billingCountry);
+  const hasShippingAddress = !!(shippingStreet && shippingCity && shippingCountry);
   const product = (r.items ?? [])
     .filter((it: any) => str(it.name))
     .map((it: any) => {
@@ -294,6 +321,7 @@ const reverseInvoice = async (r: Record<string, any>) => {
   return {
     invoice_number: str(r.number).replace(/^#/, ""),
     ...(customer_id ? { customer_id } : { customer_name: str(r.customerName) }),
+    currency: str(r.currency) || undefined,
     date: toIso(r.date) || todayIso(),
     due_date: toIso(r.due) || toIso(r.date) || todayIso(),
     product,
@@ -303,6 +331,36 @@ const reverseInvoice = async (r: Record<string, any>) => {
     total: num(r.total),
     paid_amount: num(r.amountPaid),
     balance_amount: num(r.amountDue),
+    payment_method: Array.isArray(r.paymentMethod ?? r.payment_method)
+      ? (r.paymentMethod ?? r.payment_method).map((item: unknown) => str(item)).filter(Boolean)
+      : undefined,
+    sub_title: str(r.subTitle) || undefined,
+    shipping_method: str(r.shippingMethod) || undefined,
+    ...(hasBillingAddress
+      ? {
+          billing_address: {
+            street: billingStreet,
+            street2: str(r.street2) || undefined,
+            city: billingCity,
+            state: str(r.state) || undefined,
+            zip: str(r.zip) || undefined,
+            country: billingCountry,
+          },
+        }
+      : {}),
+    ...(hasShippingAddress
+      ? {
+          shipping_address: {
+            street: shippingStreet,
+            street2: str(r.shipStreet2) || undefined,
+            city: shippingCity,
+            state: str(r.shipState) || undefined,
+            zip: str(r.shipZip) || undefined,
+            country: shippingCountry,
+          },
+        }
+      : {}),
+    signature: str(r.signature) || undefined,
     terms_and_conditions: str(r.terms),
     notes: str(r.notes),
     status: invStatusOut(r.status),

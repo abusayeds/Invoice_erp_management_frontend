@@ -526,7 +526,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Menu & Footer Container */}
         <div className="flex-1 overflow-hidden flex flex-col bg-[#1e293b] my-2 ml-2 border border-black/20 border-r-0 shadow-sm">
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-2 px-2 custom-scrollbar">
+          <nav className="flex-1 overflow-y-auto py-2 px-2 hover-scrollbar">
           <ul className="">
             {visibleItems.map((item) => (
               <li key={item.label}>

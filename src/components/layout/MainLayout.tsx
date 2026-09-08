@@ -9,6 +9,7 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { ToastContainer } from "../ui/ToastContainer";
 import { ImportModal } from "@/lib/db";
+import { GlobalApiLoadingBar } from "./GlobalApiLoadingBar";
 
 export const MainLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -22,9 +23,12 @@ export const MainLayout: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="relative flex-1 flex flex-col overflow-hidden">
         {/* Header - Fixed */}
         <Header onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <div className="pointer-events-none absolute left-0 right-0 top-16 z-30">
+          <GlobalApiLoadingBar />
+        </div>
 
         {/* Content - Dynamic (Outlet renders child routes here) */}
         <main className="flex-1 overflow-auto flex flex-col w-full h-full">
