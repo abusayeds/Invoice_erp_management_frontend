@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, CreateDocForm, PdfPreviewModal } from "@/lib/db";
@@ -243,6 +244,7 @@ export const DeliveryChallan: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
   const [markAsOpen, setMarkAsOpen] = useState(false);
@@ -265,15 +267,16 @@ export const DeliveryChallan: React.FC = () => {
   const dbChallans = useCollection<any>("deliveryChallans");
   const dbCustomers = useCollection<any>("customers", "name");
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
+    const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
   const range = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
   const listQuery = useQuery({
-    queryKey: ["delivery-challans", search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
+    queryKey: ["delivery-challans", page, search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
     queryFn: async () => fetchDeliveryChallans({
-      page: 1,
-      limit: 100,
+      page,
+      limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(challanSortToBackend(sortBy), sortDir),
       status: statusFilter === "Trash" ? undefined : statusFilter,
@@ -284,6 +287,7 @@ export const DeliveryChallan: React.FC = () => {
     }),
     staleTime: 10_000,
   });
+  const listPagination = listQuery.data?.pagination;
   const challans: ChallanRow[] = useMemo(
     () => (listQuery.data?.rows ?? []).map((row) => {
       const linkedLocal = dbChallans.find((item) => String(item._id) === row._id);
@@ -541,10 +545,13 @@ export const DeliveryChallan: React.FC = () => {
         </div>
 
         {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listTotal)}</div>
-          <div className="text-xs text-gray-500">{filtered.length} Delivery Challans</div>
-        </div>
+        <ListSidebarFooter
+          total={money(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Delivery Challans`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

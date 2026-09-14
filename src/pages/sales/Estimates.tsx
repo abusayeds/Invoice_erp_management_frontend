@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildListSortParam } from "@/lib/listSort";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, PdfPreviewModal } from "@/lib/db";
@@ -262,6 +263,7 @@ export const Estimates: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<null | "settings" | "preview" | "packing" | "email" | "pdfSettings">(null);
   const [markAsOpen, setMarkAsOpen] = useState(false);
@@ -284,7 +286,7 @@ export const Estimates: React.FC = () => {
     }
   }, [navState?.openCreate, location.pathname, navigate]);
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
+    const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
@@ -304,11 +306,12 @@ export const Estimates: React.FC = () => {
   })), [dbCustomers, dbEstimates]);
 
   const dateRange = dateRangeFor(dateFilter);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
   const { data: backendList } = useQuery({
-    queryKey: ["estimate-list", search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
+    queryKey: ["estimate-list", page, search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
     queryFn: () => fetchEstimates({
-      page: 1,
-      limit: 200,
+      page,
+      limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(estimateSortToBackend(sortBy), sortDir),
       status: statusFilter === "Trash" ? undefined : statusFilter,
@@ -321,6 +324,7 @@ export const Estimates: React.FC = () => {
     placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
+  const listPagination = backendList?.pagination;
 
   const filtered = useMemo<EstimateRow[]>(() => {
     const rows = backendList?.rows ?? [];
@@ -595,7 +599,13 @@ export const Estimates: React.FC = () => {
             })}
           </div>
         </div>
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50"><div className="text-sm font-semibold text-gray-900">{fmtMoney(listTotal)}</div><div className="text-xs text-gray-500">{filtered.length} Estimates</div></div>
+        <ListSidebarFooter
+          total={fmtMoney(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Estimates`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {createOpen || (!selected && hasActiveFilters) ? (

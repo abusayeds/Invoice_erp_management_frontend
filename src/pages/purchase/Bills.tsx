@@ -11,11 +11,15 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { fetchBills } from "@/services/billsApi";
+import { buildListSortParam } from "@/lib/listSort";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
@@ -343,7 +347,7 @@ export const Bills: React.FC = () => {
   const dbBills = useCollection<any>("bills");
   const dbVendors = useCollection<any>("vendors", "name");
   const vendorList = useMemo(() => dbVendors.map((v) => v.name), [dbVendors]);
-  const bills: Bill[] = useMemo(
+  const billsLocal: Bill[] = useMemo(
     () => dbBills.slice().sort((a, b) => b.id - a.id).map((b) => ({
       id: b.id, name: dbVendors.find((v) => v.id === b.vendorId)?.name || "—",
       number: b.number, note: b.notes || "Mollit fugiat elit", date: b.date, due: b.due,
@@ -351,6 +355,7 @@ export const Bills: React.FC = () => {
     })),
     [dbBills, dbVendors],
   );
+
   // Opened from an activity link / Header (+) → pre-select or open create.
   const location = useLocation();
   const navigate = useNavigate();
@@ -364,6 +369,7 @@ export const Bills: React.FC = () => {
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "payment" | "pdfSettings">(null);
   const [createMode, setCreateMode] = useState(!!navState?.openCreate);
   useEffect(() => {
@@ -382,6 +388,41 @@ export const Bills: React.FC = () => {
 
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+
+  const { data: backendBills } = useQuery({
+    queryKey: ["bills-backend-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchBills({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = backendBills?.pagination;
+
+  const bills: Bill[] = useMemo(() => {
+    const rows = backendBills?.rows ?? [];
+    if (rows.length === 0) return billsLocal;
+    return rows.map((row, index) => {
+      const linked = dbBills.find((b) => String(b._id) === row._id) || dbBills.find((b) => String(b.number).replace(/^#/, "") === row.number);
+      return {
+        id: linked?.id ?? (index + 1),
+        name: row.vendorName,
+        number: row.number.startsWith("#") ? row.number : `#${row.number}`,
+        note: linked?.notes || "—",
+        date: row.dateLabel,
+        due: linked?.due || row.dateLabel,
+        amount: fmtMoney(row.amount),
+        status: row.status as Bill["status"],
+      };
+    });
+  }, [backendBills?.rows, billsLocal, dbBills]);
 
   const filtered = useMemo(() => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -600,11 +641,13 @@ export const Bills: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listTotal)} <span className="font-normal text-gray-500">Due</span></div>
-          <div className="text-xs text-gray-500">{filtered.length} Bills</div>
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listTotal)} <span className="font-normal text-slate-500">Due</span></>}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Bills`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

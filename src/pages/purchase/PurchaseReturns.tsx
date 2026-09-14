@@ -13,6 +13,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { useCollection, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
@@ -613,10 +614,7 @@ export const PurchaseReturns: React.FC = () => {
           })}
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listTotal)}</div>
-          <div className="text-xs text-gray-500">{filtered.length} Purchase Returns</div>
-        </div>
+        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Purchase Returns`} />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

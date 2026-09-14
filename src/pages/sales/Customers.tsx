@@ -12,6 +12,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { downloadDocPdf } from "@/lib/db";
@@ -94,7 +95,7 @@ type CustomerStatusFilter = (typeof statusOptions)[number];
 const activityFilters = ["All", "Created", "Updated", "Archived", "Draft", "Sent", "Invoiced"];
 const PAYMENT_TERMS = ["Default Company", "Net on receipt", "Net 7", "Net 10", "Net 15", "Net 30", "Net 60"];
 const CURRENCIES = ["$ USD", "৳ BDT", "€ EUR", "£ GBP", "₹ INR"];
-const PAGE_SIZE = 20;
+const PAGE_SIZE = LIST_PAGE_SIZE;
 
 const chartData = [
   { name: "Jan '26", Sales: 0, Overdue: 0, Paid: 0 },
@@ -1094,26 +1095,13 @@ export const Customers: React.FC = () => {
           })}
         </div>
 
-        {/* footer with pagination */}
-        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900 text-center">{money(listDue)} <span className="font-normal text-gray-500">Due</span></div>
-          <div className="text-xs text-gray-500 text-center">{pagination?.totalData ?? rows.length} Contacts</div>
-          {pagination && pagination.totalPage > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
-              ><ChevronLeft className="w-4 h-4" /></button>
-              <span className="text-xs text-gray-600">{page} / {pagination.totalPage}</span>
-              <button
-                onClick={() => setPage((p) => Math.min(pagination.totalPage, p + 1))}
-                disabled={page >= pagination.totalPage}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 disabled:opacity-30"
-              ><ChevronRight className="w-4 h-4" /></button>
-            </div>
-          )}
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listDue)} <span className="font-normal text-slate-500">Due</span></>}
+          countLabel={`${pagination?.totalData ?? rows.length} Contacts`}
+          pagination={pagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

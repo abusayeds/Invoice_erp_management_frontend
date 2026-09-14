@@ -15,6 +15,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -602,11 +603,10 @@ export const CreditNotes: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listUnusedTotal)} <span className="text-gray-500 font-normal">Unused</span></div>
-          <div className="text-xs text-gray-500">{filtered.length} Credit Notes</div>
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listUnusedTotal)} <span className="font-normal text-slate-500">Unused</span></>}
+          countLabel={`${filtered.length} Credit Notes`}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

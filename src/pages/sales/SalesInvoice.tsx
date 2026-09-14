@@ -26,6 +26,7 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useCollection, repo, nextNumber, money as fmtMoney } from "@/lib/db";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, type BackendInvoiceDoc } from "@/services/invoicesApi";
@@ -970,6 +971,7 @@ export const SalesInvoice: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState<string[] | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<
     null | "settings" | "preview" | "email" | "payment" | "pdfSettings"
   >(null);
@@ -995,9 +997,14 @@ export const SalesInvoice: React.FC = () => {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSearch(searchInput.trim());
+      setPage(1);
     }, 350);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [sortBy, sortDir, statusFilter, customerFilter]);
 
   // live from the shared datastore (customer name resolved by id)
   const dbInvoices = useCollection<any>("invoices");
@@ -1014,11 +1021,11 @@ export const SalesInvoice: React.FC = () => {
     [dbInvoices, dbCustomers],
   );
   const { data: backendInvoiceList } = useQuery({
-    queryKey: ["sales-invoice-backend-list", search, sortBy, sortDir, statusFilter],
+    queryKey: ["sales-invoice-backend-list", page, search, sortBy, sortDir, statusFilter],
     queryFn: () =>
       fetchInvoices({
-        page: 1,
-        limit: 200,
+        page,
+        limit: LIST_PAGE_SIZE,
         searchTerm: search || undefined,
         sort: buildListSortParam(invoiceSortToBackend(sortBy), sortDir),
         status: statusFilter === "Trash" ? undefined : statusFilter,
@@ -1027,6 +1034,7 @@ export const SalesInvoice: React.FC = () => {
     placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
+  const listPagination = backendInvoiceList?.pagination;
 
   const filtered = useMemo(() => {
     const backendRows = backendInvoiceList?.rows ?? [];
@@ -1575,11 +1583,13 @@ export const SalesInvoice: React.FC = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listDue)} Due</div>
-          <div className="text-xs text-gray-500">{filtered.length} Invoices</div>
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listDue)} Due</>}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Invoices`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL: create/edit form / selection summary / detail ════════ */}

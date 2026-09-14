@@ -9,9 +9,13 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, downloadDocPdf } from "@/lib/db";
+import { fetchVendors } from "@/services/vendorsApi";
+import { buildListSortParam } from "@/lib/listSort";
 import { TabSlide } from "@/components/ui/TabSlide";
 import { RecentActivities } from "@/components/ui/RecentActivities";
 import { showToast } from "@/utils/toast";
@@ -614,7 +618,25 @@ export const Vendors: React.FC = () => {
   const [createdOn, setCreatedOn] = useState("All");
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("Active");
   const [search, setSearch] = useState("");
-  const vendors: Vendor[] = useMemo(
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search, sortBy, statusFilter, createdOn]);
+
+  const { data: backendVendors } = useQuery({
+    queryKey: ["vendors-backend-list", page, search, sortBy, statusFilter],
+    queryFn: () => fetchVendors({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(sortBy === "Created On" ? "createdAt" : "name", "Descending"),
+      isArchive: statusFilter === "Archived" || undefined,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = backendVendors?.pagination;
+
+  const vendorsLocal: Vendor[] = useMemo(
     () => dbVendors
       .filter((v) => {
         const st = String(v.status || "Active");
@@ -625,6 +647,19 @@ export const Vendors: React.FC = () => {
       .map((v) => ({ id: v.id, name: v.name, contact: v.contact || v.email || v.subtitle || "—", amount: -(v.payable || 0) })),
     [dbVendors, statusFilter],
   );
+  const vendors: Vendor[] = useMemo(() => {
+    const rows = backendVendors?.rows ?? [];
+    if (rows.length === 0) return vendorsLocal;
+    return rows.map((row, index) => {
+      const linked = dbVendors.find((v) => String(v._id) === row._id) || dbVendors.find((v) => v.name === row.name);
+      return {
+        id: linked?.id ?? (index + 1),
+        name: row.name,
+        contact: row.email || row.phone || linked?.contact || "—",
+        amount: -(row.opening_balance || linked?.payable || 0),
+      };
+    });
+  }, [backendVendors?.rows, vendorsLocal, dbVendors]);
   const [activityFilter, setActivityFilter] = useState("All");
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
   // selection-bar bulk actions: merge picker → confirm alert / archive / delete alerts
@@ -912,10 +947,13 @@ export const Vendors: React.FC = () => {
         </div>
 
         {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listDue)} <span className="font-normal text-gray-500">Due</span></div>
-          <div className="text-xs text-gray-500">{filtered.length} Contacts</div>
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listDue)} <span className="font-normal text-slate-500">Due</span></>}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Contacts`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

@@ -13,6 +13,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
@@ -511,11 +512,7 @@ export const PaymentMade: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listTotal)}</div>
-          <div className="text-xs text-gray-500">{filtered.length} Payments</div>
-        </div>
+        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Payments`} />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}

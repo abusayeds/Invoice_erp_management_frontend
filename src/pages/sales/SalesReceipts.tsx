@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
@@ -276,6 +277,7 @@ export const SalesReceipts: React.FC = () => {
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
   const [sigOpen, setSigOpen] = useState(false);
   const [sigRequestOpen, setSigRequestOpen] = useState(false);
@@ -298,9 +300,10 @@ export const SalesReceipts: React.FC = () => {
     }
   }, [navState?.openCreate, location.pathname, navigate]);
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
+    const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
 
   const dbReceipts = useCollection<any>("salesReceipts");
   const dbCustomers = useCollection<any>("customers", "name");
@@ -319,10 +322,10 @@ export const SalesReceipts: React.FC = () => {
 
   const dateRange = rangeFor(dateFilter);
   const { data: backendList } = useQuery({
-    queryKey: ["sales-receipt-backend-list", search, sortBy, sortDir, customerFilter, dateFilter, statusFilter],
+    queryKey: ["sales-receipt-backend-list", page, search, sortBy, sortDir, customerFilter, dateFilter, statusFilter],
     queryFn: () => fetchSalesReceipts({
-      page: 1,
-      limit: 200,
+      page,
+      limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(receiptSortToBackend(sortBy), sortDir),
       isDeleted: statusFilter === "Trash" || undefined,
@@ -334,6 +337,7 @@ export const SalesReceipts: React.FC = () => {
     placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
+  const listPagination = backendList?.pagination;
 
   const filtered = useMemo<ReceiptRow[]>(() => {
     const backendRows = backendList?.rows ?? [];
@@ -579,7 +583,13 @@ export const SalesReceipts: React.FC = () => {
             })}
           </div>
         </div>
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50"><div className="text-sm font-semibold text-gray-900">{fmtMoney(listTotal)}</div><div className="text-xs text-gray-500">{filtered.length} Sales Receipts</div></div>
+        <ListSidebarFooter
+          total={fmtMoney(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Sales Receipts`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {createOpen || (!selected && hasActiveListFilters) ? <CreateSalesReceiptForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} /> : editOpen ? <CreateSalesReceiptForm key={selectedDb.id || selected.backendId} receipt={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} /> : selectMode ? (

@@ -12,10 +12,14 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { useCollection, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
+import { fetchPurchaseInvoices } from "@/services/purchaseInvoicesApi";
+import { buildListSortParam } from "@/lib/listSort";
 import {
   Search,
   Plus,
@@ -448,6 +452,7 @@ export const PurchaseInvoices: React.FC = () => {
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "payment">(null);
   const [createMode, setCreateMode] = useState(false);
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
@@ -459,7 +464,22 @@ export const PurchaseInvoices: React.FC = () => {
 
   const dbInvoices = useCollection<any>("purchaseInvoices");
   const dbVendors = useCollection<any>("vendors", "name");
-  const invoices: Invoice[] = useMemo(
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+  const { data: backendList } = useQuery({
+    queryKey: ["purchase-invoice-backend-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchPurchaseInvoices({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = backendList?.pagination;
+  const invoicesLocal: Invoice[] = useMemo(
     () => dbInvoices.slice().sort((a, b) => b.id - a.id).map((d) => ({
       id: d.id, name: dbVendors.find((v) => v.id === d.vendorId)?.name || "—",
       number: d.number, note: d.notes || "No Notes", date: d.date, due: d.due,
@@ -467,6 +487,23 @@ export const PurchaseInvoices: React.FC = () => {
     })),
     [dbInvoices, dbVendors],
   );
+  const invoices: Invoice[] = useMemo(() => {
+    const rows = backendList?.rows ?? [];
+    if (rows.length === 0) return invoicesLocal;
+    return rows.map((row, index) => {
+      const linked = dbInvoices.find((d) => String(d._id) === row._id) || dbInvoices.find((d) => String(d.number).replace(/^#/, "") === row.number);
+      return {
+        id: linked?.id ?? (index + 1),
+        name: row.vendorName,
+        number: row.number.startsWith("#") ? row.number : `#${row.number}`,
+        note: linked?.notes || "—",
+        date: row.dateLabel,
+        due: linked?.due || row.dateLabel,
+        amount: fmtMoney(row.amount),
+        status: row.status as Invoice["status"],
+      };
+    });
+  }, [backendList?.rows, invoicesLocal, dbInvoices]);
 
   const filtered = useMemo(() => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -616,10 +653,13 @@ export const PurchaseInvoices: React.FC = () => {
           </div>
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-sm font-semibold text-gray-900">{money(listTotal)} <span className="font-normal text-gray-500">Due</span></div>
-          <div className="text-xs text-gray-500">{filtered.length} Purchase Invoices</div>
-        </div>
+        <ListSidebarFooter
+          total={<>{money(listTotal)} <span className="font-normal text-slate-500">Due</span></>}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Purchase Invoices`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
