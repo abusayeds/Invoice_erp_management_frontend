@@ -26,6 +26,7 @@ export interface PaymentReceivedListParams {
   sort?: string;
   invoice_id?: string;
   customer_id?: string;
+  isDeleted?: boolean;
 }
 
 export interface PaymentReceivedListResult {
@@ -50,6 +51,7 @@ export async function fetchPaymentReceived(
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
+  if (params.isDeleted) query.isDeleted = "true";
   if (params.invoice_id) query.invoice_id = params.invoice_id;
   if (params.customer_id) query.customer_id = params.customer_id;
 
@@ -114,6 +116,24 @@ export async function updatePaymentReceived(
 
 export async function deletePaymentReceived(id: string): Promise<void> {
   await api.raw.delete(`/payment-received/delete/${id}`);
+}
+
+export async function hardDeletePaymentReceivedMany(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/payment-received/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeletePaymentReceived(id: string): Promise<void> {
+  await hardDeletePaymentReceivedMany([id]);
+}
+
+export async function restorePaymentReceived(id: string): Promise<void> {
+  await api.raw.post(`/payment-received/restore/${id}`);
+}
+
+export async function restorePaymentReceivedMany(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restorePaymentReceived(id)));
 }
 
 export interface BackendInvoicePaymentDoc {

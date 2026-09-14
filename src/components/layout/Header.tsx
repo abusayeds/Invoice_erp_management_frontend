@@ -257,9 +257,9 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         <Menu className="w-6 h-6 text-gray-700" />
       </button>
 
-      {/* Search + orange (+) — fixed width matching the list panel (450px) */}
-      <div className="flex items-center gap-2 flex-shrink-0" style={{ width: 450 }}>
-        <div className="relative flex-1" ref={searchRef}>
+      {/* Search + orange (+) — dropdown anchors to the search input's left edge */}
+      <div className="relative flex items-center gap-2 flex-shrink min-w-0 w-full max-w-[450px]" ref={createRef}>
+        <div className="relative flex-1 min-w-0" ref={searchRef}>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
           <input
             type="text"
@@ -268,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); }}
             onFocus={() => setShowSearch(true)}
             onKeyDown={handleSearch}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-gray-100 border border-gray-200 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-300 focus:bg-white text-base py-2.5"
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-gray-100 border border-gray-200 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-300 focus:bg-white"
           />
           {showSearch && searchQuery.trim() && (
             <div className="absolute left-0 top-11 w-[min(92vw,460px)] max-h-[70vh] overflow-auto custom-scrollbar bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1">
@@ -292,47 +292,50 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           )}
         </div>
 
-        {/* Orange create (+) with mega menu — immediately right of search */}
-        <div className="relative flex-shrink-0" ref={createRef}>
-          <button
-            onClick={() => {
-              setShowCreate((s) => !s);
-              setShowNotifications(false);
-              setShowUserMenu(false);
-              setShowApps(false);
-            }}
-            className="w-9 h-9 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center transition-colors shadow-sm"
-            title="Create new"
-          >
-            <Plus className="w-5 h-5 text-white" strokeWidth={2.2} />
-          </button>
+        {/* Orange create (+) */}
+        <button
+          onClick={() => {
+            setShowCreate((s) => !s);
+            setShowNotifications(false);
+            setShowUserMenu(false);
+            setShowApps(false);
+            setShowSearch(false);
+          }}
+          className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center transition-colors shadow-sm"
+          title="Create new"
+        >
+          <Plus className="w-5 h-5 text-white" strokeWidth={2.2} />
+        </button>
 
-          {showCreate && (
-            <div className="absolute left-0 top-11 z-50 bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-[min(90vw,720px)] max-h-[80vh] overflow-auto custom-scrollbar">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1">
-                {createGroups.map((group) => (
-                  <div key={group.title} className="min-w-0">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{group.title}</h4>
-                    <ul className="space-y-0.5">
-                      {group.items.map((it) => (
-                        <li key={it.label}>
-                          <Link
-                            to={it.path}
-                            onClick={() => setShowCreate(false)}
-                            className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                          >
-                            <it.icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                            <span className="truncate">{it.label}</span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+        {/* Mega menu: left edge = search input start; wider panel + larger labels */}
+        {showCreate && (
+          <div className="absolute left-0 top-[calc(100%+0.35rem)] z-50 bg-white rounded-xl shadow-xl border border-gray-200 px-5 py-5 w-[min(96vw,920px)] max-h-[min(80vh,560px)] overflow-auto custom-scrollbar">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4">
+              {createGroups.map((group) => (
+                <div key={group.title} className="min-w-0">
+                  <h4 className="text-base font-semibold text-gray-900 mb-3 tracking-tight">{group.title}</h4>
+                  <ul className="space-y-1">
+                    {group.items.map((it) => (
+                      <li key={it.label}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCreate(false);
+                            navigate(it.path, { state: { openCreate: true } });
+                          }}
+                          className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-[15px] font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors text-left"
+                        >
+                          <it.icon className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                          <span className="truncate">{it.label}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Spacer to push right cluster to the end */}

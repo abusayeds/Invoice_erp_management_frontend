@@ -80,6 +80,7 @@ export interface SalesReceiptListParams {
   dateFrom?: string;
   dateTo?: string;
   dateField?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -151,6 +152,7 @@ export async function fetchSalesReceipts(params: SalesReceiptListParams): Promis
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
+  if (params.isDeleted) query.isDeleted = "true";
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;
@@ -167,9 +169,31 @@ export async function fetchSalesReceipts(params: SalesReceiptListParams): Promis
 
 export async function fetchSalesReceipt(id: string): Promise<BackendSalesReceiptDoc | null> {
   try {
-    const res = await api.raw.get(`/sales-receipt/single/${id}`);
+    const res = await api.raw.get(`/sales-receipt/single/${id}`, { skipGlobalLoading: true } as any);
     return (res.data?.data ?? res.data ?? null) as BackendSalesReceiptDoc | null;
   } catch {
     return null;
   }
+}
+
+export async function deleteSalesReceipt(id: string): Promise<void> {
+  await api.raw.delete(`/sales-receipt/delete/${id}`);
+}
+
+export async function hardDeleteSalesReceipts(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/sales-receipt/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeleteSalesReceipt(id: string): Promise<void> {
+  await hardDeleteSalesReceipts([id]);
+}
+
+export async function restoreSalesReceipt(id: string): Promise<void> {
+  await api.raw.post(`/sales-receipt/restore/${id}`);
+}
+
+export async function restoreSalesReceipts(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreSalesReceipt(id)));
 }

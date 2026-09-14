@@ -82,6 +82,7 @@ export interface ProformaInvoiceListParams {
   sort?: string;
   status?: string;
   customer_id?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -160,7 +161,8 @@ export async function fetchProformaInvoices(
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
-  if (params.status && params.status !== "All") query.status = params.status;
+  if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
 
   const res = await api.raw.get("/proforma-invoice/all", { params: query });
@@ -174,7 +176,7 @@ export async function fetchProformaInvoices(
 
 export async function fetchProformaInvoice(id: string): Promise<BackendProformaInvoiceDoc | null> {
   try {
-    const res = await api.raw.get(`/proforma-invoice/single/${id}`);
+    const res = await api.raw.get(`/proforma-invoice/single/${id}`, { skipGlobalLoading: true } as any);
     return (res.data?.data ?? res.data ?? null) as BackendProformaInvoiceDoc | null;
   } catch {
     return null;
@@ -191,4 +193,22 @@ export async function updateProformaInvoice(
 
 export async function deleteProformaInvoice(id: string): Promise<void> {
   await api.raw.delete(`/proforma-invoice/delete/${id}`);
+}
+
+export async function hardDeleteProformaInvoices(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/proforma-invoice/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeleteProformaInvoice(id: string): Promise<void> {
+  await hardDeleteProformaInvoices([id]);
+}
+
+export async function restoreProformaInvoice(id: string): Promise<void> {
+  await api.raw.post(`/proforma-invoice/restore/${id}`);
+}
+
+export async function restoreProformaInvoices(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreProformaInvoice(id)));
 }

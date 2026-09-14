@@ -14,8 +14,9 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { api } from "@/lib/api/client";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
-import { deleteDeliveryChallan, fetchDeliveryChallan, fetchDeliveryChallans, updateDeliveryChallan, type BackendDeliveryChallanDoc } from "@/services/deliveryChallansApi";
-import { Search, Plus, ChevronDown, ChevronRight, Check, Settings, SlidersHorizontal, Pencil, PenTool, Eye, Printer, Mail, MoreVertical, Upload, FileText, Trash2, MessageCircle, CircleChevronUp, CircleChevronDown } from "lucide-react";
+import { buildListSortParam } from "@/lib/listSort";
+import { deleteDeliveryChallan, hardDeleteDeliveryChallan, hardDeleteDeliveryChallans, restoreDeliveryChallans, fetchDeliveryChallan, fetchDeliveryChallans, updateDeliveryChallan, type BackendDeliveryChallanDoc } from "@/services/deliveryChallansApi";
+import { Search, Plus, ChevronDown, ChevronRight, Check, Settings, SlidersHorizontal, Pencil, PenTool, Eye, Printer, Mail, MoreVertical, Upload, FileText, Trash2, MessageCircle, CircleChevronUp, CircleChevronDown, RotateCcw } from "lucide-react";
 
 /* ── Types & data ──────────────────────────────────────────────── */
 type Status = "Draft" | "Open" | "Delivered" | "Cancelled";
@@ -32,7 +33,7 @@ type ChallanRow = {
   currency: string;
 };
 
-const sortFields = ["Name", "Delivery Challan date", "Delivery Challan #", "Status", "Total"];
+const sortFields = ["Created On", "Name", "Delivery Challan date", "Delivery Challan #", "Status", "Total"];
 const sortDirections: Array<"Ascending" | "Descending"> = ["Ascending", "Descending"];
 const statusList = ["All", "Draft", "Open", "Delivered", "Cancelled", "Trash"];
 const markAsStatuses = ["Open", "Draft", "Delivered", "Cancelled"];
@@ -63,8 +64,11 @@ const challanSortToBackend = (value: string) => {
       return "status";
     case "Total":
       return "total";
-    default:
+    case "Delivery Challan date":
       return "date";
+    case "Created On":
+    default:
+      return "createdAt";
   }
 };
 const dateRangeFor = (option: string): { dateFrom?: string; dateTo?: string } => {
@@ -229,10 +233,11 @@ export const DeliveryChallan: React.FC = () => {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const navSelectedId = (location.state as { selectedId?: number } | null)?.selectedId;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
   const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 0);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
-  const [sortBy, setSortBy] = useState("Delivery Challan date");
+  const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
@@ -249,8 +254,14 @@ export const DeliveryChallan: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editOpen, setEditOpen] = useState(false);
+  useEffect(() => {
+    if (navState?.openCreate) {
+      setCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [navState?.openCreate, location.pathname, navigate]);
   const dbChallans = useCollection<any>("deliveryChallans");
   const dbCustomers = useCollection<any>("customers", "name");
   useEffect(() => {
@@ -264,8 +275,9 @@ export const DeliveryChallan: React.FC = () => {
       page: 1,
       limit: 100,
       searchTerm: search || undefined,
-      sort: `${sortDir === "Descending" ? "-" : ""}${challanSortToBackend(sortBy)}`,
-      status: statusFilter,
+      sort: buildListSortParam(challanSortToBackend(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
       customer_id: customerFilter || undefined,
       dateField: "date",
       ...range,
@@ -354,19 +366,41 @@ export const DeliveryChallan: React.FC = () => {
     }
   };
   const trashCurrent = async () => {
-    if (selected?.backendId) await deleteDeliveryChallan(selected.backendId);
-    showToast(`Delivery Challan ${selectedDb.number} moved to trash`, "success");
+    if (selected?.backendId) {
+      if (statusFilter === "Trash") await hardDeleteDeliveryChallan(selected.backendId);
+      else await deleteDeliveryChallan(selected.backendId);
+    }
+    showToast(
+      statusFilter === "Trash"
+        ? `Delivery Challan ${selectedDb.number} permanently deleted`
+        : `Delivery Challan ${selectedDb.number} moved to trash`,
+      "success",
+    );
     await queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
     setSelectedId(challans.find((c) => c.backendId !== selected?.backendId)?.backendId ?? 0);
     setConfirmAction(null);
   };
   const trashSelectedCh = async () => {
     const ids = [...checked];
-    await Promise.all(ids.map((id) => deleteDeliveryChallan(id)));
-    showToast(`${ids.length} delivery ${ids.length === 1 ? "challan" : "challans"} moved to trash`, "success");
+    if (statusFilter === "Trash") await hardDeleteDeliveryChallans(ids.map(String));
+    else await Promise.all(ids.map((id) => deleteDeliveryChallan(id)));
+    showToast(
+      statusFilter === "Trash"
+        ? `${ids.length} delivery ${ids.length === 1 ? "challan" : "challans"} permanently deleted`
+        : `${ids.length} delivery ${ids.length === 1 ? "challan" : "challans"} moved to trash`,
+      "success",
+    );
     await queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
     if (selected?.backendId && ids.includes(selected.backendId)) setSelectedId(challans.find((c) => !ids.includes(c.backendId))?.backendId ?? 0);
     setConfirmAction(null);
+    exitSelect();
+  };
+  const restoreSelectedCh = async () => {
+    const ids = [...checked].map(String);
+    if (ids.length === 0) { showToast("Select delivery challans to restore", "warning"); return; }
+    await restoreDeliveryChallans(ids);
+    await queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
+    showToast(`${ids.length} delivery ${ids.length === 1 ? "challan" : "challans"} restored`, "success");
     exitSelect();
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
@@ -416,12 +450,15 @@ export const DeliveryChallan: React.FC = () => {
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Delivery Challan" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select delivery challans to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
+              {statusFilter === "Trash" && (
+                <button title="Restore" onClick={() => (checked.size === 0 ? showToast("Select delivery challans to restore", "warning") : restoreSelectedCh())} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
+              )}
+              <button title={statusFilter === "Trash" ? "Delete permanently" : "Delete"} onClick={() => (checked.size === 0 ? showToast("Select delivery challans to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
               <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
               <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
               <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
@@ -448,7 +485,7 @@ export const DeliveryChallan: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => (
               <>
@@ -464,7 +501,7 @@ export const DeliveryChallan: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((s) => (
-              <button key={s} onClick={() => { setStatusFilter(s === "Trash" ? statusFilter : s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
@@ -477,7 +514,7 @@ export const DeliveryChallan: React.FC = () => {
 
         {/* rows */}
         <div className="relative flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
           {filtered.map((p) => {
             const active = !selectMode && !createOpen && !editOpen && p.backendId === selected?.backendId;
             const isChecked = checked.has(p.backendId);
@@ -501,10 +538,6 @@ export const DeliveryChallan: React.FC = () => {
             );
           })}
           </div>
-          {/* FAB */}
-          {!selectMode && (
-            <button onClick={() => setCreateOpen(true)} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
-          )}
         </div>
 
         {/* footer */}
@@ -516,9 +549,9 @@ export const DeliveryChallan: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen || (!selected && (search || statusFilter !== "All" || customerFilter)) ? (
-        <CreateDocForm collection="deliveryChallans" title="New Delivery Challan" party="customers" onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+        <CreateDocForm collection="deliveryChallans" title="New Delivery Challan" party="customers" onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["delivery-challans"] }); }} />
       ) : editOpen ? (
-        <CreateDocForm key={selectedId} collection="deliveryChallans" title="Edit Delivery Challan" party="customers" record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
+        <CreateDocForm key={selectedId} collection="deliveryChallans" title="Edit Delivery Challan" party="customers" record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["delivery-challans"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
@@ -702,10 +735,10 @@ export const DeliveryChallan: React.FC = () => {
       )}
       {activityOpen && <ActivityLogModal docLabel="Delivery Challan" record={selectedDb} onClose={() => setActivityOpen(false)} />}
       {confirmAction === "trashOne" && (
-        <ConfirmAlert message="Are you sure want to trash this delivery challan?" onNo={() => setConfirmAction(null)} onYes={trashCurrent} />
+        <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this delivery challan? This cannot be undone." : "Are you sure want to trash this delivery challan?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />
       )}
       {confirmAction === "trashSelected" && (
-        <ConfirmAlert message="Are you sure want to delete these delivery challans?" onNo={() => setConfirmAction(null)} onYes={trashSelectedCh} />
+        <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these delivery challans? This cannot be undone." : "Are you sure want to delete these delivery challans?"} onNo={() => setConfirmAction(null)} onYes={trashSelectedCh} />
       )}
       
     </div>

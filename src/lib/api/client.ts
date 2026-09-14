@@ -21,6 +21,9 @@ import { API_BASE_URL } from "../env";
 import { getToken, clearToken } from "./tokenStore";
 import { toApiError } from "./ApiError";
 
+/** Opt out of the global top loading bar (detail panel fetches, background sync). */
+export type ApiRequestConfig = AxiosRequestConfig & { skipGlobalLoading?: boolean };
+
 /** Called when a 401 is received, so the app can react (e.g. redirect to login). */
 let unauthorizedHandler: (() => void) | null = null;
 export function onUnauthorized(handler: () => void): void {
@@ -44,6 +47,10 @@ function endLoading() {
   emitLoadingCount();
 }
 
+function shouldTrackLoading(config?: { skipGlobalLoading?: boolean } | null) {
+  return !config?.skipGlobalLoading;
+}
+
 export function subscribeApiLoading(listener: (count: number) => void): () => void {
   loadingListeners.add(listener);
   listener(activeRequestCount);
@@ -61,14 +68,14 @@ const axiosInstance: AxiosInstance = axios.create({
 
 // ── Request: attach bearer token ────────────────────────────────────────────
 axiosInstance.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    beginLoading();
+  (config: InternalAxiosRequestConfig & { skipGlobalLoading?: boolean }) => {
+    if (shouldTrackLoading(config)) beginLoading();
     const token = getToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error) => {
-    endLoading();
+    if (shouldTrackLoading(error?.config)) endLoading();
     return Promise.reject(error);
   },
 );
@@ -76,11 +83,11 @@ axiosInstance.interceptors.request.use(
 // ── Response: unwrap data, normalize errors, handle 401 ─────────────────────
 axiosInstance.interceptors.response.use(
   (response) => {
-    endLoading();
+    if (shouldTrackLoading(response.config as { skipGlobalLoading?: boolean })) endLoading();
     return response;
   },
   (error) => {
-    endLoading();
+    if (shouldTrackLoading(error?.config)) endLoading();
     const apiError = toApiError(error);
     if (apiError.status === 401) {
       clearToken();
@@ -105,23 +112,23 @@ function unwrap<T>(payload: any): T {
 export const api = {
   raw: axiosInstance,
 
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async get<T>(url: string, config?: ApiRequestConfig): Promise<T> {
     const res = await axiosInstance.get(url, config);
     return unwrap<T>(res.data);
   },
-  async post<T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  async post<T>(url: string, body?: unknown, config?: ApiRequestConfig): Promise<T> {
     const res = await axiosInstance.post(url, body, config);
     return unwrap<T>(res.data);
   },
-  async put<T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  async put<T>(url: string, body?: unknown, config?: ApiRequestConfig): Promise<T> {
     const res = await axiosInstance.put(url, body, config);
     return unwrap<T>(res.data);
   },
-  async patch<T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  async patch<T>(url: string, body?: unknown, config?: ApiRequestConfig): Promise<T> {
     const res = await axiosInstance.patch(url, body, config);
     return unwrap<T>(res.data);
   },
-  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async delete<T>(url: string, config?: ApiRequestConfig): Promise<T> {
     const res = await axiosInstance.delete(url, config);
     return unwrap<T>(res.data);
   },

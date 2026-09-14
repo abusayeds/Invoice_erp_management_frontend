@@ -87,6 +87,7 @@ export interface CreditNoteListParams {
   dateFrom?: string;
   dateTo?: string;
   dateField?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -148,7 +149,8 @@ export async function fetchCreditNotes(params: CreditNoteListParams): Promise<Cr
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
-  if (params.status && params.status !== "All") query.status = params.status;
+  if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;
@@ -170,4 +172,26 @@ export async function fetchCreditNote(id: string): Promise<BackendCreditNoteDoc 
   } catch {
     return null;
   }
+}
+
+export async function deleteCreditNote(id: string): Promise<void> {
+  await api.raw.delete(`/account/credit-notes/delete/${id}`);
+}
+
+export async function hardDeleteCreditNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/account/credit-notes/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeleteCreditNote(id: string): Promise<void> {
+  await hardDeleteCreditNotes([id]);
+}
+
+export async function restoreCreditNote(id: string): Promise<void> {
+  await api.raw.post(`/account/credit-notes/restore/${id}`);
+}
+
+export async function restoreCreditNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreCreditNote(id)));
 }

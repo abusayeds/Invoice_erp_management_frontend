@@ -32,7 +32,7 @@ const SORT_MAP: Record<string, string> = {
   Name: "businessProfile.companyName",
   "First Name": "name",
   "Last Name": "name",
-  "Created On": "-createdAt",
+  "Created On": "createdAt",
   Outstanding: "businessProfile.opening_balance",
   Total: "businessProfile.opening_balance",
   Due: "businessProfile.opening_balance",
@@ -41,6 +41,11 @@ const SORT_MAP: Record<string, string> = {
 
 export function uiSortToBackend(uiSort: string): string {
   return SORT_MAP[uiSort] ?? "businessProfile.companyName";
+}
+
+/** Default list direction: newest first for Created On, A→Z otherwise. */
+export function uiSortDirection(uiSort: string): "Ascending" | "Descending" {
+  return uiSort === "Created On" ? "Descending" : "Ascending";
 }
 
 /* ── Date-range filter for "Created On" chip ───────────────────────────────── */
@@ -92,6 +97,7 @@ export interface CustomerListParams {
   searchTerm?: string;
   sort?: string;          // already mapped to backend field
   isArchive?: boolean;    // true → archived list
+  isDeleted?: boolean;    // true → trash list
   startDate?: string;
   endDate?: string;
 }
@@ -104,6 +110,7 @@ export async function fetchCustomers(params: CustomerListParams): Promise<TParty
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
   if (params.isArchive) query.isArchive = "true";
+  if (params.isDeleted) query.isDeleted = "true";
   if (params.startDate) query.startDate = params.startDate;
   if (params.endDate) query.endDate = params.endDate;
 
@@ -260,11 +267,31 @@ export async function deleteCustomer(backendId: string): Promise<void> {
   await api.raw.delete(`/customers/${backendId}`);
 }
 
-/* ── Bulk delete ────────────────────────────────────────────────────────────── */
+/* ── Bulk delete (soft → Trash) ─────────────────────────────────────────────── */
 export async function deleteCustomers(backendIds: string[]): Promise<void> {
   // Backend supports comma-separated ids in the :id param
   if (backendIds.length === 0) return;
   await api.raw.delete(`/customers/${backendIds.join(",")}`);
+}
+
+/** Permanent delete from Trash (supports multiple ids). */
+export async function permanentDeleteCustomers(backendIds: string[]): Promise<void> {
+  if (backendIds.length === 0) return;
+  await api.raw.delete(`/customers/permanent/${backendIds.join(",")}`);
+}
+
+export async function permanentDeleteCustomer(backendId: string): Promise<void> {
+  await permanentDeleteCustomers([backendId]);
+}
+
+/** Restore a trashed customer back to Active. */
+export async function restoreCustomer(backendId: string): Promise<void> {
+  await api.raw.post(`/customers/restore/${backendId}`);
+}
+
+export async function restoreCustomers(backendIds: string[]): Promise<void> {
+  if (backendIds.length === 0) return;
+  await Promise.all(backendIds.map((id) => restoreCustomer(id)));
 }
 
 /* ── Merge ──────────────────────────────────────────────────────────────────── */

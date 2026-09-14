@@ -208,8 +208,8 @@ export const CreateDocForm: React.FC<{
   const partyName = partyId ? parties.find((c) => c.id === partyId)?.name || query : query;
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>

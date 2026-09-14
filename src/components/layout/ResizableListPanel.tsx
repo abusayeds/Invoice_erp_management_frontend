@@ -5,13 +5,14 @@
  * Changes (2026-09):
  *  - Header slot: dark bg (#1b232b) with white text — matches sidebar + outlet header.
  *  - Borders: straight (no rounding).
- *  - + FAB: fixed to bottom-right of the panel, OUTSIDE the scroll area (sticky).
+ *  - + FAB: fixed above the list footer via shared ListCreateFab (onCreate prop).
  *  - Filter/toolbar area: sticky below the header — never scrolls away.
  *  - Scroll area: only the list rows scroll; header + toolbar + footer are fixed.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
+import { ListCreateFab } from "@/components/ui/ListCreateFab";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 700;
@@ -20,11 +21,19 @@ const DEFAULT_WIDTH = 450;
 interface ResizableListPanelProps {
   children: React.ReactNode;
   className?: string;
+  /** Opens the module create UI. When set, a shared + FAB is rendered above the footer. */
+  onCreate?: () => void;
+  createTitle?: string;
+  /** Hide FAB (e.g. while select/bulk mode is active). */
+  hideCreate?: boolean;
 }
 
 export const ResizableListPanel: React.FC<ResizableListPanelProps> = ({
   children,
   className = "",
+  onCreate,
+  createTitle = "Create",
+  hideCreate = false,
 }) => {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
@@ -74,6 +83,10 @@ export const ResizableListPanel: React.FC<ResizableListPanelProps> = ({
       className={`relative flex-shrink-0 flex flex-col my-2 bg-white border-r border-t border-b border-gray-300 shadow-sm overflow-hidden ${className}`}
     >
       {children}
+
+      {onCreate && !hideCreate && (
+        <ListCreateFab onClick={onCreate} title={createTitle} />
+      )}
 
       {/* Vertical drag handle */}
       <div

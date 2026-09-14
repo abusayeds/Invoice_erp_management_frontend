@@ -11,7 +11,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
 import { showToast } from "@/utils/toast";
@@ -299,10 +299,19 @@ export const PaymentReceived: React.FC = () => {
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  // Opened from an activity link → pre-select that payment.
-  const navSelectedId = (useLocation().state as { selectedId?: number } | null)?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 13);
+  // Opened from an activity link / Header create menu.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
+  const [selectedId, setSelectedId] = useState(navSelectedId ?? 0);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  useEffect(() => {
+    if (navState?.openCreate) {
+      setCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [navState?.openCreate, location.pathname, navigate]);
   const [sortBy, setSortBy] = useState("Payment date");
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -318,6 +327,7 @@ export const PaymentReceived: React.FC = () => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
     let list = payments.filter(
       (i) =>
+        (statusFilter === "All" || (statusFilter === "Trash" ? false : true)) &&
         (customerFilter === null || i.name === customerFilter) &&
         (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
     );
@@ -330,7 +340,7 @@ export const PaymentReceived: React.FC = () => {
       return sortDir === "Ascending" ? r : -r;
     });
     return list;
-  }, [payments, sortBy, sortDir, customerFilter, search]);
+  }, [payments, sortBy, sortDir, customerFilter, search, statusFilter]);
 
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
   const selectedDb: any = dbPayments.find((d) => d.id === (selected?.id ?? selectedId)) || {};
@@ -375,12 +385,13 @@ export const PaymentReceived: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  if (!selected && !createOpen) return <ListEmptyState title="No payments received yet" onCreate={() => setCreateOpen(true)} createLabel="New Payment" />;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!customerFilter || dateFilter !== "All";
+  if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No payments received yet" onCreate={() => setCreateOpen(true)} createLabel="New Payment" />;
 
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Payment" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
@@ -414,7 +425,7 @@ export const PaymentReceived: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-300">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => (
               <>
@@ -430,7 +441,7 @@ export const PaymentReceived: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((s) => (
-              <button key={s} onClick={() => { setStatusFilter(s === "Trash" ? statusFilter : s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Customer{customerFilter ? ` | ${customerFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
@@ -455,7 +466,7 @@ export const PaymentReceived: React.FC = () => {
 
         {/* rows */}
         <div className="relative flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
           {filtered.map((p) => {
             const active = !selectMode && !createOpen && !editOpen && p.id === selectedId;
             const isChecked = checked.has(p.id);
@@ -479,10 +490,6 @@ export const PaymentReceived: React.FC = () => {
             );
           })}
           </div>
-          {/* FAB */}
-          {!selectMode && (
-            <button onClick={() => setCreateOpen(true)} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
-          )}
         </div>
 
         {/* footer */}
@@ -494,7 +501,7 @@ export const PaymentReceived: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen ? (
-        <RecordPaymentForm onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+        <RecordPaymentForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSortBy("Payment date"); setSelectedId(id); }} />
       ) : editOpen ? (
         <RecordPaymentForm key={selectedId} record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
       ) : selectMode ? (

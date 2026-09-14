@@ -12,6 +12,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney } from "@/lib/db";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import {
@@ -159,8 +160,8 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
   const [settingsOpen, setSettingsOpen] = useState(false);
   const handleSave = () => { onSave?.({ name, sac, qty, unit, rate, tax, note }); onClose(); };
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Service" : "Edit Service"}</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -205,10 +206,19 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
 /* ── Component ──────────────────────────────────────────────────── */
 export const Services: React.FC = () => {
   const [selectedId, setSelectedId] = useState(1);
-  const [sortBy, setSortBy] = useState("Name");
+  const [sortBy, setSortBy] = useState("Created On");
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [mode, setMode] = useState<"view" | "create" | "edit">("view");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
+  const [mode, setMode] = useState<"view" | "create" | "edit">(openCreateFromNav ? "create" : "view");
+  useEffect(() => {
+    if (openCreateFromNav) {
+      setMode("create");
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [openCreateFromNav, location.pathname, navigate]);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -227,10 +237,19 @@ export const Services: React.FC = () => {
 
   const filtered = useMemo(() => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = services.filter((i) => search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()));
-    list = [...list].sort((a, b) => (sortBy === "Rate" ? toNum(b.price) - toNum(a.price) : a.name.localeCompare(b.name)));
+    let list = services.filter(
+      (i) =>
+        statusFilter !== "Trash" &&
+        statusFilter !== "Archived" &&
+        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase())),
+    );
+    list = [...list].sort((a, b) => {
+      if (sortBy === "Created On") return b.id - a.id;
+      if (sortBy === "Rate") return toNum(b.price) - toNum(a.price);
+      return a.name.localeCompare(b.name);
+    });
     return list;
-  }, [services, sortBy, search]);
+  }, [services, sortBy, search, statusFilter]);
 
   const selected = services.find((i) => i.id === selectedId) || services[0];
   const checkedItems = services.filter((i) => checked.has(i.id));
@@ -245,12 +264,13 @@ export const Services: React.FC = () => {
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
-  if (!selected && mode !== "create") return <ListEmptyState title="No services yet" onCreate={() => setMode("create")} createLabel="New Service" />;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim();
+  if (!selected && mode !== "create" && !hasActiveFilters) return <ListEmptyState title="No services yet" onCreate={() => setMode("create")} createLabel="New Service" />;
 
   return (
     <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setMode("create")} createTitle="Create Service" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
@@ -289,7 +309,7 @@ export const Services: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((s) => (
-              <button key={s} onClick={() => { setStatusFilter(s === "Trash" ? statusFilter : s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
         </div>
@@ -315,10 +335,6 @@ export const Services: React.FC = () => {
             );
           })}
           </div>
-          {/* FAB → Create Service */}
-          {!selectMode && (
-            <button onClick={() => setMode("create")} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
-          )}
         </div>
 
         {/* footer */}

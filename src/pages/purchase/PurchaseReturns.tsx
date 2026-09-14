@@ -515,12 +515,13 @@ export const PurchaseReturns: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  if (!selected && !createMode) return <ListEmptyState title="No purchase returns yet" onCreate={() => setCreateMode(true)} createLabel="New Purchase Return" />;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter;
+  if (!selected && !createMode && !hasActiveFilters) return <ListEmptyState title="No purchase returns yet" onCreate={() => setCreateMode(true)} createLabel="New Purchase Return" />;
 
   return (
     <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateMode(true)} createTitle="Create Purchase Return" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
@@ -548,7 +549,7 @@ export const PurchaseReturns: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-200">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-200">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => (
               <>
@@ -564,7 +565,7 @@ export const PurchaseReturns: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((s) => (
-              <button key={s} onClick={() => { setStatusFilter(s === "Trash" ? statusFilter : s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Vendor{vendorFilter ? ` | ${vendorFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
@@ -587,7 +588,7 @@ export const PurchaseReturns: React.FC = () => {
           </Dropdown>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+        <div className="flex-1 overflow-y-auto hover-scrollbar relative">
           {filtered.map((p) => {
             const active = !selectMode && !createMode && p.id === selectedId;
             const isChecked = checked.has(p.id);
@@ -610,8 +611,6 @@ export const PurchaseReturns: React.FC = () => {
               </button>
             );
           })}
-          {/* Create Purchase Return is hidden for now (per request). Restore by
-              re-enabling this FAB: onClick={() => setCreateOpen(true)}. */}
         </div>
 
         <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">

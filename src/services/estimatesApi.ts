@@ -85,6 +85,7 @@ export interface EstimateListParams {
   dateFrom?: string;
   dateTo?: string;
   dateField?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -144,7 +145,9 @@ export async function fetchEstimates(params: EstimateListParams): Promise<Estima
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
-  if (params.status && params.status !== "All") query.status = params.status;
+  // Trash uses isDeleted — never send status=Trash as a document status.
+  if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;
@@ -161,7 +164,7 @@ export async function fetchEstimates(params: EstimateListParams): Promise<Estima
 
 export async function fetchEstimate(id: string): Promise<BackendEstimateDoc | null> {
   try {
-    const res = await api.raw.get(`/estimate/single/${id}`);
+    const res = await api.raw.get(`/estimate/single/${id}`, { skipGlobalLoading: true } as any);
     return (res.data?.data ?? res.data ?? null) as BackendEstimateDoc | null;
   } catch {
     return null;
@@ -175,4 +178,23 @@ export async function updateEstimate(id: string, payload: Record<string, unknown
 
 export async function deleteEstimate(id: string): Promise<void> {
   await api.raw.delete(`/estimate/delete/${id}`);
+}
+
+/** Permanent delete from Trash (comma-separated ids OK). */
+export async function hardDeleteEstimates(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/estimate/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeleteEstimate(id: string): Promise<void> {
+  await hardDeleteEstimates([id]);
+}
+
+export async function restoreEstimate(id: string): Promise<void> {
+  await api.raw.post(`/estimate/restore/${id}`);
+}
+
+export async function restoreEstimates(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreEstimate(id)));
 }

@@ -56,6 +56,7 @@ export interface BackendInvoiceDoc {
   total?: number;
   paid_amount?: number;
   balance_amount?: number;
+  signature?: string;
   createdAt?: string;
 }
 
@@ -88,6 +89,7 @@ export interface InvoiceListParams {
   dateFrom?: string;
   dateTo?: string;
   dateField?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -166,7 +168,8 @@ export async function fetchInvoices(params: InvoiceListParams): Promise<InvoiceL
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
-  if (params.status && params.status !== "All") query.status = params.status;
+  if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;
@@ -183,7 +186,8 @@ export async function fetchInvoices(params: InvoiceListParams): Promise<InvoiceL
 
 export async function fetchInvoice(id: string): Promise<BackendInvoiceDoc | null> {
   try {
-    const res = await api.raw.get(`/invoices/${id}`);
+    // Silent: list→detail clicks must not flash the global loading bar (feels like a full reload).
+    const res = await api.raw.get(`/invoices/${id}`, { skipGlobalLoading: true } as Parameters<typeof api.raw.get>[1]);
     return (res.data?.data ?? res.data ?? null) as BackendInvoiceDoc | null;
   } catch {
     return null;
@@ -197,4 +201,22 @@ export async function updateInvoice(id: string, payload: Record<string, unknown>
 
 export async function deleteInvoice(id: string): Promise<void> {
   await api.raw.delete(`/invoices/${id}`);
+}
+
+export async function hardDeleteInvoices(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/invoices/permanent/${ids.join(",")}`);
+}
+
+export async function hardDeleteInvoice(id: string): Promise<void> {
+  await hardDeleteInvoices([id]);
+}
+
+export async function restoreInvoice(id: string): Promise<void> {
+  await api.raw.post(`/invoices/restore/${id}`);
+}
+
+export async function restoreInvoices(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreInvoice(id)));
 }

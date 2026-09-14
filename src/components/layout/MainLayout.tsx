@@ -3,7 +3,7 @@
  * Main application layout with Header, Sidebar, and Outlet
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -13,6 +13,22 @@ import { GlobalApiLoadingBar } from "./GlobalApiLoadingBar";
 
 export const MainLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // List filter toolbars are single-row + overflow-x. Convert vertical wheel
+  // into horizontal scroll so chips never need to wrap when the list is narrow.
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      const bar = target?.closest?.(".list-filter-toolbar") as HTMLElement | null;
+      if (!bar) return;
+      if (bar.scrollWidth <= bar.clientWidth + 1) return;
+      if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      bar.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+    document.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => document.removeEventListener("wheel", onWheel, true);
+  }, []);
 
   return (
     <div className="flex h-screen bg-[#FAFBFC]">

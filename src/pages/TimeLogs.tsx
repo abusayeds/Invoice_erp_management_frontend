@@ -14,6 +14,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo } from "@/lib/db";
 import {
   Search,
@@ -190,8 +191,8 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
   const [notes, setNotes] = useState(log?.notes ?? "");
   const handleSave = () => { onSave?.({ project, task, notes, hours: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}` }); onClose(); };
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 sticky top-0 bg-white z-20">
+    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Time Log" : "Edit Time Log"}</h1>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
@@ -242,7 +243,16 @@ export const TimeLogs: React.FC = () => {
   const [sortBy, setSortBy] = useState("Date");
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [mode, setMode] = useState<"view" | "create" | "edit">("view");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
+  const [mode, setMode] = useState<"view" | "create" | "edit">(openCreateFromNav ? "create" : "view");
+  useEffect(() => {
+    if (openCreateFromNav) {
+      setMode("create");
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [openCreateFromNav, location.pathname, navigate]);
 
   // live timer: { id, sec, active }
   const [timer, setTimer] = useState<{ id: number; sec: number; active: boolean } | null>(null);
@@ -289,12 +299,13 @@ export const TimeLogs: React.FC = () => {
 
   const ctrlBtn = "w-7 h-7 flex items-center justify-center rounded-full text-white";
 
-  if (!selected && mode !== "create") return <ListEmptyState title="No time logs yet" onCreate={() => setMode("create")} createLabel="New Time Log" />;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim();
+  if (!selected && mode !== "create" && !hasActiveFilters) return <ListEmptyState title="No time logs yet" onCreate={() => setMode("create")} createLabel="New Time Log" />;
 
   return (
     <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setMode("create")} createTitle="Create Time Log">
         {/* header */}
         <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
           <h2 className="text-base font-semibold text-gray-900 tracking-tight">Time Logs</h2>
@@ -314,7 +325,7 @@ export const TimeLogs: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((s) => (
-              <button key={s} onClick={() => { setStatusFilter(s === "Trash" ? statusFilter : s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400 cursor-pointer"><Plus className="w-3 h-3" />Customer | All</span>
@@ -383,8 +394,6 @@ export const TimeLogs: React.FC = () => {
             </div>
           ))}
           </div>
-          {/* FAB → Create */}
-          <button onClick={() => setMode("create")} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>
         </div>
 
         {/* footer */}

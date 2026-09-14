@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { buildListSortParam } from "@/lib/listSort";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -15,7 +16,7 @@ import { showToast } from "@/utils/toast";
 import { api } from "@/lib/api/client";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
-import { fetchEstimate, fetchEstimates, updateEstimate, deleteEstimate, type BackendEstimateDoc } from "@/services/estimatesApi";
+import { fetchEstimate, fetchEstimates, updateEstimate, deleteEstimate, hardDeleteEstimate, hardDeleteEstimates, restoreEstimates, type BackendEstimateDoc } from "@/services/estimatesApi";
 import {
   Search,
   Plus,
@@ -37,6 +38,7 @@ import {
   Copy,
   Signature,
   History,
+  RotateCcw,
   CircleChevronUp,
   CircleChevronDown,
   Package,
@@ -58,7 +60,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 const EST_TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const EST_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
-const sortFields = ["Name", "Estimate date", "Estimate #", "Status", "Total"];
+const sortFields = ["Created On", "Name", "Estimate date", "Estimate #", "Status", "Total"];
 const sortDirections: Array<"Ascending" | "Descending"> = ["Ascending", "Descending"];
 const statusList = ["All", "Draft", "Sent", "Approved", "Invoiced", "On Hold", "Disputed", "Declined", "Cancelled", "Trash"];
 const markAsStatuses = ["Draft", "Sent", "Approved", "Invoiced", "On Hold", "Disputed", "Declined", "Cancelled"];
@@ -83,8 +85,11 @@ const estimateSortToBackend = (value: string) => {
       return "status";
     case "Total":
       return "total";
-    default:
+    case "Estimate date":
       return "date";
+    case "Created On":
+    default:
+      return "createdAt";
   }
 };
 const dateRangeFor = (option: string): { dateFrom?: string; dateTo?: string } => {
@@ -248,9 +253,10 @@ export const Estimates: React.FC = () => {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const navSelectedId = (location.state as { selectedId?: number } | null)?.selectedId;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
   const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 0);
-  const [sortBy, setSortBy] = useState("Estimate date");
+  const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
@@ -265,12 +271,18 @@ export const Estimates: React.FC = () => {
   const [sigRequestOpen, setSigRequestOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editOpen, setEditOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<number>>(new Set());
 
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  useEffect(() => {
+    if (navState?.openCreate) {
+      setCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [navState?.openCreate, location.pathname, navigate]);
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
     return () => window.clearTimeout(timer);
@@ -298,8 +310,9 @@ export const Estimates: React.FC = () => {
       page: 1,
       limit: 200,
       searchTerm: search || undefined,
-      sort: `${sortDir === "Descending" ? "-" : ""}${estimateSortToBackend(sortBy).replace(/^-/, "")}`,
-      status: statusFilter,
+      sort: buildListSortParam(estimateSortToBackend(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
       customer_id: customerFilter || undefined,
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,
@@ -446,19 +459,49 @@ export const Estimates: React.FC = () => {
   };
   const trashCurrent = async () => {
     const backendId = selectedDoc?._id || selected?.backendId;
-    if (backendId) await deleteEstimate(String(backendId));
-    if (selectedDb?.id) await repo.remove("estimates", selectedDb.id);
+    if (statusFilter === "Trash") {
+      if (backendId) await hardDeleteEstimate(String(backendId));
+    } else if (selectedDb?.id) {
+      await repo.remove("estimates", selectedDb.id);
+    } else if (backendId) {
+      await deleteEstimate(String(backendId));
+    }
     await queryClient.invalidateQueries({ queryKey: ["estimate-list"] });
-    showToast(`Estimate ${selectedDb.number} moved to trash`, "success");
+    showToast(
+      statusFilter === "Trash"
+        ? `Estimate ${selectedDb.number} permanently deleted`
+        : `Estimate ${selectedDb.number} moved to trash`,
+      "success",
+    );
     setSelectedId(filtered.find((item) => item.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
   };
   const trashSelectedEst = async () => {
     const ids = [...checked];
-    await repo.removeMany("estimates", ids);
-    showToast(`${ids.length} ${ids.length === 1 ? "estimate" : "estimates"} moved to trash`, "success");
+    const backendIds = filtered.filter((item) => ids.includes(Number(item.id)) && item.backendId).map((item) => String(item.backendId));
+    if (statusFilter === "Trash") {
+      if (backendIds.length) await hardDeleteEstimates(backendIds);
+    } else {
+      await repo.removeMany("estimates", ids);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["estimate-list"] });
+    showToast(
+      statusFilter === "Trash"
+        ? `${ids.length} ${ids.length === 1 ? "estimate" : "estimates"} permanently deleted`
+        : `${ids.length} ${ids.length === 1 ? "estimate" : "estimates"} moved to trash`,
+      "success",
+    );
     if (ids.includes(Number(selectedId))) setSelectedId(filtered.find((item) => !ids.includes(Number(item.id)))?.id ?? 0);
     setConfirmAction(null);
+    exitSelect();
+  };
+  const restoreSelectedEst = async () => {
+    const ids = [...checked];
+    const backendIds = filtered.filter((item) => ids.includes(Number(item.id)) && item.backendId).map((item) => String(item.backendId));
+    if (backendIds.length === 0) { showToast("Select estimates to restore", "warning"); return; }
+    await restoreEstimates(backendIds);
+    await queryClient.invalidateQueries({ queryKey: ["estimate-list"] });
+    showToast(`${backendIds.length} ${backendIds.length === 1 ? "estimate" : "estimates"} restored`, "success");
     exitSelect();
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
@@ -494,21 +537,8 @@ export const Estimates: React.FC = () => {
   }, [selectMode]);
 
   const hasActiveFilters = !!search.trim() || !!customerFilter || dateFilter !== "All" || statusFilter !== "All";
-  if (!selected) {
-    return createOpen || hasActiveFilters ? (
-      <div className="relative flex h-full w-full bg-[#FAFBFC] overflow-hidden">
-        <ResizableListPanel>
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100"><h2 className="text-base font-semibold text-gray-900 tracking-tight">Estimates</h2></div>
-          <div className="px-3 py-2 border-b border-gray-300"><div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search estimates..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" /></div></div>
-          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300 hover-scrollbar">
-            <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>{(close) => (<>{sortFields.map((item) => <button key={item} onClick={() => { setSortBy(item); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{item}{item === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>)}<div className="border-t border-gray-200 my-1" />{sortDirections.map((dir) => <button key={dir} onClick={() => { setSortDir(dir); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{dir}{dir === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>)}</>)}</Dropdown>
-            <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
-          </div>
-          <div className="flex-1 flex items-center justify-center px-6 text-center"><div><div className="text-sm font-medium text-gray-900">No matching estimates found</div><div className="mt-1 text-xs text-gray-500">Create a new estimate from the panel on the right.</div></div></div>
-        </ResizableListPanel>
-        <CreateInvoiceForm mode="estimate" onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
-      </div>
-    ) : <ListEmptyState title="No estimates yet" onCreate={() => setCreateOpen(true)} createLabel="New Estimate" />;
+  if (!selected && !createOpen && !hasActiveFilters) {
+    return <ListEmptyState title="No estimates yet" onCreate={() => setCreateOpen(true)} createLabel="New Estimate" />;
   }
 
   const billing = addressLines(selectedDoc?.billing_address);
@@ -518,12 +548,15 @@ export const Estimates: React.FC = () => {
 
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Estimate" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select estimates to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
+              {statusFilter === "Trash" && (
+                <button title="Restore" onClick={() => (checked.size === 0 ? showToast("Select estimates to restore", "warning") : restoreSelectedEst())} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
+              )}
+              <button title={statusFilter === "Trash" ? "Delete permanently" : "Delete"} onClick={() => (checked.size === 0 ? showToast("Select estimates to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
               <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp...", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
               <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
               <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
@@ -541,14 +574,14 @@ export const Estimates: React.FC = () => {
           </div>
         )}
         <div className="px-3 py-2 border-b border-gray-300"><div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search estimates..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" /></div></div>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300 hover-scrollbar">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>{(close) => (<>{sortFields.map((item) => <button key={item} onClick={() => { setSortBy(item); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{item} {item === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>)}<div className="border-t border-gray-200 my-1" />{sortDirections.map((dir) => <button key={dir} onClick={() => { setSortDir(dir); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{dir} {dir === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>)}</>)}</Dropdown>
-          <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>{(close) => statusList.map((item) => <button key={item} onClick={() => { if (item !== "Trash") setStatusFilter(item); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${item === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{item} {item === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>)}</Dropdown>
+          <Dropdown trigger={<span className={`inline-flex items-center gap-1 text-xs border border-dashed rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400 ${statusFilter === "Trash" ? "text-red-500 border-red-300" : "text-gray-600 border-gray-300"}`}><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>{(close) => statusList.map((item) => <button key={item} onClick={() => { setStatusFilter(item); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${item === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{item} {item === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>)}</Dropdown>
           <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Estimate date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>{(close) => dateRanges.map((item) => <button key={item} onClick={() => { setDateFilter(item); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{item} {item === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>)}</Dropdown>
         </div>
         <div className="relative flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
             {filtered.map((row) => {
               const active = !selectMode && !createOpen && !editOpen && row.id === selectedId;
               const isChecked = checked.has(Number(row.id));
@@ -561,15 +594,14 @@ export const Estimates: React.FC = () => {
               );
             })}
           </div>
-          {!selectMode && <button onClick={() => setCreateOpen(true)} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"><Plus className="w-6 h-6" /></button>}
         </div>
         <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50"><div className="text-sm font-semibold text-gray-900">{fmtMoney(listTotal)}</div><div className="text-xs text-gray-500">{filtered.length} Estimates</div></div>
       </ResizableListPanel>
 
-      {createOpen ? (
-        <CreateInvoiceForm mode="estimate" onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+      {createOpen || (!selected && hasActiveFilters) ? (
+        <CreateInvoiceForm mode="estimate" onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["estimate-list"] }); }} />
       ) : editOpen ? (
-        <CreateInvoiceForm key={selectedDb.id || selected.backendId} mode="estimate" invoice={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
+        <CreateInvoiceForm key={selectedDb.id || selected.backendId} mode="estimate" invoice={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["estimate-list"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm"><div className="text-center"><h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Estimate" : "Estimates"} Selected</h2><div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left"><span className="text-gray-500">Total</span><span className="font-semibold text-gray-900">{fmtMoney(selectedTotal)}</span></div></div></section>
       ) : (
@@ -617,8 +649,8 @@ export const Estimates: React.FC = () => {
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
       {sigRequestOpen && <SignatureRequestModal docLabel="Estimate" number={selectedDb.number || ""} customer={selectedCustomer} onClose={() => setSigRequestOpen(false)} onSend={() => { logActivity("sent", `Signature request for Estimate ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }} />}
       {activityOpen && <ActivityLogModal docLabel="Estimate" record={selectedDb} onClose={() => setActivityOpen(false)} />}
-      {confirmAction === "trashOne" && <ConfirmAlert message="Are you sure want to trash this estimate?" onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
-      {confirmAction === "trashSelected" && <ConfirmAlert message="Are you sure want to delete these estimates?" onNo={() => setConfirmAction(null)} onYes={trashSelectedEst} />}
+      {confirmAction === "trashOne" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this estimate? This cannot be undone." : "Are you sure want to trash this estimate?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
+      {confirmAction === "trashSelected" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these estimates? This cannot be undone." : "Are you sure want to delete these estimates?"} onNo={() => setConfirmAction(null)} onYes={trashSelectedEst} />}
     </div>
   );
 };

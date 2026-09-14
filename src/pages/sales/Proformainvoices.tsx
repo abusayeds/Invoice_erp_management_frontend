@@ -18,10 +18,14 @@ import { api } from "@/lib/api/client";
 import { showToast } from "@/utils/toast";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
+import { buildListSortParam } from "@/lib/listSort";
 import {
   fetchProformaInvoice,
   fetchProformaInvoices,
   updateProformaInvoice,
+  hardDeleteProformaInvoice,
+  hardDeleteProformaInvoices,
+  restoreProformaInvoices,
   type BackendProformaInvoiceDoc,
 } from "@/services/proformaInvoicesApi";
 import {
@@ -45,6 +49,7 @@ import {
   MessageCircle,
   CircleChevronUp,
   CircleChevronDown,
+  RotateCcw,
 } from "lucide-react";
 
 type Status = "Draft" | "Sent" | "Invoiced" | "Cancelled";
@@ -78,7 +83,7 @@ const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> =
   return new File([blob], filename, { type: blob.type || "image/png" });
 };
 
-const sortFields = ["Proforma Invoice date", "Amount", "Proforma Invoice #", "Status", "Customer"];
+const sortFields = ["Created On", "Proforma Invoice date", "Amount", "Proforma Invoice #", "Status", "Customer"];
 const statusList = ["All", "Draft", "Sent", "Invoiced", "Cancelled", "Trash"];
 const PF_TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const PF_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
@@ -120,8 +125,11 @@ const proformaSortToBackend = (value: string) => {
       return "customer_name";
     case "Amount":
       return "total";
-    default:
+    case "Proforma Invoice date":
       return "date";
+    case "Created On":
+    default:
+      return "createdAt";
   }
 };
 
@@ -304,9 +312,12 @@ const CustomerFilter: React.FC<{
 
 export const ProformaInvoices: React.FC = () => {
   const queryClient = useQueryClient();
-  const navSelectedId = (useLocation().state as { selectedId?: number } | null)?.selectedId;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
   const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 0);
-  const [sortBy, setSortBy] = useState("Proforma Invoice date");
+  const [sortBy, setSortBy] = useState("Created On");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
@@ -320,13 +331,19 @@ export const ProformaInvoices: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<number>>(new Set());
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editRecord, setEditRecord] = useState<any>(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (navSelectedId != null) setSelectedId(navSelectedId);
   }, [navSelectedId]);
+
+  useEffect(() => {
+    if (navState?.openCreate) {
+      setCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [navState?.openCreate, location.pathname, navigate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
@@ -360,8 +377,9 @@ export const ProformaInvoices: React.FC = () => {
         page: 1,
         limit: 200,
         searchTerm: search || undefined,
-        sort: `-${proformaSortToBackend(sortBy).replace(/^-/, "")}`,
-        status: statusFilter,
+        sort: buildListSortParam(proformaSortToBackend(sortBy), "Descending"),
+        status: statusFilter === "Trash" ? undefined : statusFilter,
+        isDeleted: statusFilter === "Trash" || undefined,
         customer_id: customerFilter || undefined,
       }),
     placeholderData: (prev) => prev,
@@ -388,7 +406,7 @@ export const ProformaInvoices: React.FC = () => {
         dbProformas.find((item) => item._id === row._id) ||
         dbProformas.find((item) => String(item.number).replace(/^#/, "") === row.number);
       return {
-        id: linkedLocal?.id ?? (Number(row.number) || Math.abs(String(row._id).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))),
+        id: linkedLocal?.id ?? row._id,
         backendId: row._id,
         name: row.customerName || customerDisplayName(dbCustomers.find((c) => c._id === row.customerId)),
         customerSubtitle: row.customerSubtitle || "",
@@ -403,12 +421,18 @@ export const ProformaInvoices: React.FC = () => {
   }, [backendList?.rows, customerFilter, dbCustomers, dbProformas, localProformas, search, statusFilter]);
 
   useEffect(() => {
-    if (filtered.length > 0 && !filtered.some((item) => item.id === selectedId)) {
-      setSelectedId(filtered[0].id);
+    if (
+      filtered.length > 0 &&
+      !filtered.some((item) => item.id === selectedId || item.backendId === selectedId)
+    ) {
+      setSelectedId(filtered[0].backendId || filtered[0].id);
     }
   }, [filtered, selectedId]);
 
-  const selected = filtered.find((item) => item.id === selectedId) || filtered[0];
+  const selected =
+    filtered.find((item) => item.id === selectedId) ||
+    filtered.find((item) => item.backendId === selectedId) ||
+    filtered[0];
   const selectedDb =
     dbProformas.find((item) => item.id === selected?.id) ||
     dbProformas.find((item) => item._id === selected?.backendId) ||
@@ -420,6 +444,7 @@ export const ProformaInvoices: React.FC = () => {
     queryFn: () => fetchProformaInvoice(String(selected?.backendId)),
     enabled: !!selected?.backendId,
     staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
 
   const lines = useMemo<DetailLine[]>(() => {
@@ -564,19 +589,51 @@ export const ProformaInvoices: React.FC = () => {
   };
 
   const trashCurrent = async () => {
-    if (!selectedDb?.id) return;
-    await repo.remove("proformas", selectedDb.id);
-    showToast(`Proforma invoice ${selectedDb.number} moved to trash`, "success");
+    if (!selectedDb?.id && !selected?.backendId) return;
+    if (statusFilter === "Trash") {
+      const backendId = selected?.backendId || selectedDb?._id;
+      if (backendId) await hardDeleteProformaInvoice(String(backendId));
+    } else if (selectedDb?.id) {
+      await repo.remove("proformas", selectedDb.id);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] });
+    showToast(
+      statusFilter === "Trash"
+        ? `Proforma invoice ${selectedDb.number} permanently deleted`
+        : `Proforma invoice ${selectedDb.number} moved to trash`,
+      "success",
+    );
     setSelectedId(filtered.find((item) => item.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
   };
 
   const trashSelected = async () => {
     const ids = [...checked];
-    await repo.removeMany("proformas", ids);
-    showToast(`${ids.length} proforma ${ids.length === 1 ? "invoice" : "invoices"} moved to trash`, "success");
+    const backendIds = filtered.filter((item) => ids.includes(Number(item.id)) && item.backendId).map((item) => String(item.backendId));
+    if (statusFilter === "Trash") {
+      if (backendIds.length) await hardDeleteProformaInvoices(backendIds);
+    } else {
+      await repo.removeMany("proformas", ids);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] });
+    showToast(
+      statusFilter === "Trash"
+        ? `${ids.length} proforma ${ids.length === 1 ? "invoice" : "invoices"} permanently deleted`
+        : `${ids.length} proforma ${ids.length === 1 ? "invoice" : "invoices"} moved to trash`,
+      "success",
+    );
     if (ids.includes(Number(selectedId))) setSelectedId(filtered.find((item) => !ids.includes(Number(item.id)))?.id ?? 0);
     setConfirmAction(null);
+    exitSelect();
+  };
+
+  const restoreSelected = async () => {
+    const ids = [...checked];
+    const backendIds = filtered.filter((item) => ids.includes(Number(item.id)) && item.backendId).map((item) => String(item.backendId));
+    if (backendIds.length === 0) { showToast("Select proforma invoices to restore", "warning"); return; }
+    await restoreProformaInvoices(backendIds);
+    await queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] });
+    showToast(`${backendIds.length} proforma ${backendIds.length === 1 ? "invoice" : "invoices"} restored`, "success");
     exitSelect();
   };
 
@@ -613,48 +670,8 @@ export const ProformaInvoices: React.FC = () => {
 
   const hasActiveListFilters = !!search.trim() || statusFilter !== "All" || !!customerFilter;
 
-  if (!selected) {
-    return createOpen || hasActiveListFilters ? (
-      <div className="relative flex h-full w-full bg-[#FAFBFC] overflow-hidden">
-        <ResizableListPanel>
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
-            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Proforma Invoices</h2>
-          </div>
-          <div className="px-3 py-2 border-b border-gray-300">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search proforma invoices..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
-            </div>
-          </div>
-          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300 hover-scrollbar">
-            <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
-              {(close) => sortFields.map((item) => (
-                <button key={item} onClick={() => { setSortBy(item); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                  {item} {item === sortBy && <Check className="w-4 h-4 text-blue-600" />}
-                </button>
-              ))}
-            </Dropdown>
-            <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
-              {(close) => statusList.map((item) => (
-                <button key={item} onClick={() => { if (item !== "Trash") setStatusFilter(item); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${item === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>
-                  {item} {item === statusFilter && <Check className="w-4 h-4 text-blue-600" />}
-                </button>
-              ))}
-            </Dropdown>
-            <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
-          </div>
-          <div className="flex-1 flex items-center justify-center px-6 text-center">
-            <div>
-              <div className="text-sm font-medium text-gray-900">No matching proforma invoices found</div>
-              <div className="mt-1 text-xs text-gray-500">Create a new proforma invoice from the panel on the right.</div>
-            </div>
-          </div>
-        </ResizableListPanel>
-        <CreateInvoiceForm mode="proforma" onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
-      </div>
-    ) : (
-      <ListEmptyState title="No proforma invoices yet" onCreate={() => setCreateOpen(true)} createLabel="New Proforma Invoice" />
-    );
+  if (!selected && !createOpen && !hasActiveListFilters) {
+    return <ListEmptyState title="No proforma invoices yet" onCreate={() => setCreateOpen(true)} createLabel="New Proforma Invoice" />;
   }
 
   const billingLines = addressLines(selectedDoc?.billing_address);
@@ -663,12 +680,15 @@ export const ProformaInvoices: React.FC = () => {
   const localShippingLines = [selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean);
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Proforma Invoice" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select proforma invoices to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
+              {statusFilter === "Trash" && (
+                <button title="Restore" onClick={() => (checked.size === 0 ? showToast("Select proforma invoices to restore", "warning") : restoreSelected())} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
+              )}
+              <button title={statusFilter === "Trash" ? "Delete permanently" : "Delete"} onClick={() => (checked.size === 0 ? showToast("Select proforma invoices to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
               <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp...", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
               <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
               <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
@@ -700,7 +720,7 @@ export const ProformaInvoices: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300 hover-scrollbar">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((item) => (
               <button key={item} onClick={() => { setSortBy(item); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
@@ -710,7 +730,7 @@ export const ProformaInvoices: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusList.map((item) => (
-              <button key={item} onClick={() => { if (item !== "Trash") setStatusFilter(item); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${item === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>
+              <button key={item} onClick={() => { setStatusFilter(item); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${item === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>
                 {item} {item === statusFilter && <Check className="w-4 h-4 text-blue-600" />}
               </button>
             ))}
@@ -718,31 +738,35 @@ export const ProformaInvoices: React.FC = () => {
           <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {filtered.map((row) => {
-            const active = !selectMode && row.id === selectedId;
-            const isChecked = checked.has(Number(row.id));
-            return (
-              <button key={String(row.id)} onClick={() => (selectMode ? toggleRow(Number(row.id)) : setSelectedId(row.id))} className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
-                {selectMode && (
-                  <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{row.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{row.number}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 truncate">{row.customerSubtitle || row.note}</div>
-                </div>
-                <div className="flex flex-col items-end flex-shrink-0">
-                  <span className="text-xs text-gray-500">{row.date}</span>
-                  <span className="text-sm font-semibold text-gray-900 mt-0.5">{row.amount}</span>
-                  <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusBadge(row.status)}`}>{row.status}</span>
-                </div>
-              </button>
-            );
-          })}
-          {!selectMode && (
-            <button onClick={() => setCreateOpen(true)} className="absolute bottom-[4.5rem] right-5 z-20 flex w-[42px] h-[42px] items-center justify-center rounded-full bg-orange-500 text-white shadow hover:bg-orange-600 transition-colors"><Plus className="w-6 h-6" strokeWidth={2} /></button>
-          )}
+        <div className="relative flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
+            {filtered.map((row) => {
+              const active = !selectMode && !createOpen && !editRecord && (row.backendId ? row.backendId === selected?.backendId : row.id === selectedId);
+              const isChecked = checked.has(Number(row.id));
+              return (
+                <button
+                  key={String(row.backendId || row.id)}
+                  type="button"
+                  onClick={() => (selectMode ? toggleRow(Number(row.id)) : (setSelectedId(row.backendId || row.id), setCreateOpen(false), setEditRecord(null)))}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}
+                >
+                  {selectMode && (
+                    <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{row.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{row.number}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 truncate">{row.customerSubtitle || row.note}</div>
+                  </div>
+                  <div className="flex flex-col items-end flex-shrink-0">
+                    <span className="text-xs text-gray-500">{row.date}</span>
+                    <span className="text-sm font-semibold text-gray-900 mt-0.5">{row.amount}</span>
+                    <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusBadge(row.status)}`}>{row.status}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
@@ -751,10 +775,10 @@ export const ProformaInvoices: React.FC = () => {
         </div>
       </ResizableListPanel>
 
-      {createOpen ? (
-        <CreateInvoiceForm mode="proforma" onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+      {createOpen || (!selected && hasActiveListFilters) ? (
+        <CreateInvoiceForm mode="proforma" onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] }); }} />
       ) : editRecord ? (
-        <CreateInvoiceForm key={selectedDb.id || selected.backendId} mode="proforma" invoice={editRecord} onClose={() => setEditRecord(null)} onSaved={(id) => { setEditRecord(null); setSelectedId(id); }} />
+        <CreateInvoiceForm key={selectedDb.id || selected.backendId} mode="proforma" invoice={editRecord} onClose={() => setEditRecord(null)} onSaved={(id) => { setEditRecord(null); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
@@ -977,8 +1001,8 @@ export const ProformaInvoices: React.FC = () => {
           </div>
         </Overlay>
       )}
-      {confirmAction === "trashOne" && <ConfirmAlert message="Are you sure want to trash this proforma invoice?" onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
-      {confirmAction === "trashSelected" && <ConfirmAlert message="Are you sure want to delete these proforma invoices?" onNo={() => setConfirmAction(null)} onYes={trashSelected} />}
+      {confirmAction === "trashOne" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this proforma invoice? This cannot be undone." : "Are you sure want to trash this proforma invoice?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
+      {confirmAction === "trashSelected" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these proforma invoices? This cannot be undone." : "Are you sure want to delete these proforma invoices?"} onNo={() => setConfirmAction(null)} onYes={trashSelected} />}
     </div>
   );
 };

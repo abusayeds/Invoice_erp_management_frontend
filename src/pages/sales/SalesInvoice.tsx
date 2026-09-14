@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { buildListSortParam } from "@/lib/listSort";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
@@ -24,9 +25,10 @@ import { usePdfSettings, type PdfDocType } from "@/lib/db/pdfSettings";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
+import { ListEmptyState } from "@/components/ListEmptyState";
 import { useCollection, repo, nextNumber, money as fmtMoney } from "@/lib/db";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
-import { fetchInvoice, fetchInvoices, updateInvoice, type BackendInvoiceDoc } from "@/services/invoicesApi";
+import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, type BackendInvoiceDoc } from "@/services/invoicesApi";
 import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
@@ -63,6 +65,7 @@ import {
   ChevronRight,
   CircleChevronUp,
   CircleChevronDown,
+  RotateCcw,
 } from "lucide-react";
 
 /* ── Types & data ──────────────────────────────────────────────── */
@@ -82,7 +85,7 @@ interface LineItem {
 }
 
 interface Invoice {
-  id: number;
+  id: number | string;
   backendId?: string;
   name: string;
   customerSubtitle?: string;
@@ -94,6 +97,17 @@ interface Invoice {
   currency?: string;
   status: Status;
 }
+
+type DetailLine = {
+  id: string;
+  name: string;
+  description: string;
+  qty: number;
+  rate: number;
+  tax: number;
+  discount: number;
+  amount: number;
+};
 
 const invoices: Invoice[] = [
   { id: 14, name: "Sed aliquip eaque co", number: "#14", note: "Test, Sit quos sint quos e", date: "Jun 18, 2026", due: "Jun 18, 2026", amount: "$9,093.88", status: "Draft" },
@@ -132,7 +146,7 @@ const paymentMethods = [
 ];
 
 const sortFields = [
-  "Name", "First Name", "Last Name", "Invoice date", "Due Date",
+  "Created On", "Name", "First Name", "Last Name", "Invoice date", "Due Date",
   "Invoice #", "Status", "Total", "Due", "Paid",
 ];
 const statusList = [
@@ -165,11 +179,14 @@ const invoiceSortToBackend = (value: string) => {
     case "Total":
     case "Due":
     case "Paid":
-      return "-total";
+      return "total";
     case "Due Date":
-      return "-due_date";
+      return "due_date";
+    case "Invoice date":
+      return "date";
+    case "Created On":
     default:
-      return "-date";
+      return "createdAt";
   }
 };
 
@@ -177,6 +194,11 @@ const apiText = (value: unknown): string => {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
   return "";
+};
+
+const numberValue = (value: unknown) => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
 };
 
 const apiMoney = (amount: number, currency?: string) => {
@@ -935,11 +957,14 @@ const CreateInvoiceModal: React.FC<{ onClose: () => void; onSaved: (id: number) 
 /* ── Component ──────────────────────────────────────────────────── */
 export const SalesInvoice: React.FC = () => {
   const queryClient = useQueryClient();
-  // Opened from an activity link → pre-select that invoice.
-  const navSelectedId = (useLocation().state as { selectedId?: number } | null)?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 14);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Opened from an activity link / Header create menu.
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
+  const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 0);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
-  const [sortBy, setSortBy] = useState("Invoice date");
+  const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string[] | null>(null);
@@ -949,10 +974,15 @@ export const SalesInvoice: React.FC = () => {
     null | "settings" | "preview" | "email" | "payment" | "pdfSettings"
   >(null);
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
-  const [createOpen, setCreateOpen] = useState(false);
+  const [checked, setChecked] = useState<Set<number | string>>(new Set());
+  const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editOpen, setEditOpen] = useState(false);
-  const navigate = useNavigate();
+  useEffect(() => {
+    if (navState?.openCreate) {
+      setCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [navState?.openCreate, location.pathname, navigate]);
   // reference features: expandable info panel, doc-type previews, activity log, trash alerts
   const [expanded, setExpanded] = useState(true);
   const [docPreview, setDocPreview] = useState<null | "packingSlip" | "deliveryNote">(null);
@@ -990,8 +1020,9 @@ export const SalesInvoice: React.FC = () => {
         page: 1,
         limit: 200,
         searchTerm: search || undefined,
-        sort: `${sortDir === "Descending" && !invoiceSortToBackend(sortBy).startsWith("-") ? "-" : ""}${invoiceSortToBackend(sortBy).replace(/^-/, "")}`,
-        status: statusFilter,
+        sort: buildListSortParam(invoiceSortToBackend(sortBy), sortDir),
+        status: statusFilter === "Trash" ? undefined : statusFilter,
+        isDeleted: statusFilter === "Trash" || undefined,
       }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
@@ -1021,8 +1052,9 @@ export const SalesInvoice: React.FC = () => {
         const linkedLocal =
           dbInvoices.find((item) => item._id === row._id) ||
           dbInvoices.find((item) => String(item.number).replace(/^#/, "") === row.number);
+        // Prefer Dexie id when linked; otherwise keep the Mongo _id so selection stays stable across list refreshes.
         return {
-          id: linkedLocal?.id ?? (Number(row.number) || Math.abs(row._id.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))),
+          id: linkedLocal?.id ?? row._id,
           backendId: row._id,
           name: row.customerName,
           customerSubtitle: row.customerSubtitle,
@@ -1042,13 +1074,22 @@ export const SalesInvoice: React.FC = () => {
     [filtered],
   );
 
-  const selected = filtered.find((i) => i.id === selectedId) || filtered[0];
-  const selectedDb: any = dbInvoices.find((i) => i.id === (selected?.id ?? selectedId)) || {};
+  const selected =
+    filtered.find((i) => i.id === selectedId) ||
+    filtered.find((i) => i.backendId === selectedId) ||
+    filtered[0];
+  const selectedDb: any =
+    dbInvoices.find((i) => i.id === selected?.id) ||
+    dbInvoices.find((i) => i._id === selected?.backendId) ||
+    {};
   const selectedCustomer: any = dbCustomers.find((c) => c.id === selectedDb.customerId) || {};
 
   useEffect(() => {
-    if (filtered.length > 0 && !filtered.some((item) => item.id === selectedId)) {
-      setSelectedId(filtered[0].id);
+    if (
+      filtered.length > 0 &&
+      !filtered.some((item) => item.id === selectedId || item.backendId === selectedId)
+    ) {
+      setSelectedId(filtered[0].backendId || filtered[0].id);
     }
   }, [filtered, selectedId]);
   const { data: paymentMethodOptions = [] } = useQuery({
@@ -1061,13 +1102,58 @@ export const SalesInvoice: React.FC = () => {
     queryFn: () => fetchInvoice(String(selected?.backendId)),
     enabled: !!selected?.backendId,
     staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
+
+  const detailLines = useMemo<DetailLine[]>(() => {
+    const products = (selectedInvoiceDoc?.product ?? []).map((item, index) => ({
+      id: `p-${index}`,
+      name: apiText(item.product_name || (typeof item.product_id === "object" ? item.product_id?.productName : "")) || "Product",
+      description: apiText(item.description || (typeof item.product_id === "object" ? item.product_id?.description : "")),
+      qty: numberValue(item.quantity ?? 1),
+      rate: numberValue(item.rate),
+      tax: numberValue(item.tax),
+      discount: numberValue(item.discount),
+      amount: numberValue(item.amount ?? numberValue(item.quantity) * numberValue(item.rate)),
+    }));
+    const services = (selectedInvoiceDoc?.service ?? []).map((item, index) => ({
+      id: `s-${index}`,
+      name: apiText(item.service_name || (typeof item.service_id === "object" ? item.service_id?.serviceName : "")) || "Service",
+      description: apiText(item.description || (typeof item.service_id === "object" ? item.service_id?.description : "")),
+      qty: numberValue(item.quantity ?? 1),
+      rate: numberValue(item.rate),
+      tax: numberValue(item.tax),
+      discount: numberValue(item.discount),
+      amount: numberValue(item.amount ?? numberValue(item.quantity) * numberValue(item.rate)),
+    }));
+    if (products.length || services.length) return [...products, ...services];
+    return (selectedDb.items || []).map((item: any, index: number) => ({
+      id: `l-${index}`,
+      name: item.name || "Item",
+      description: item.description || "",
+      qty: numberValue(item.qty ?? 1),
+      rate: numberValue(item.rate),
+      tax: TAX_RATE[item.taxId || 1] || 0,
+      discount: numberValue(item.discount),
+      amount: numberValue(item.amount ?? numberValue(item.qty) * numberValue(item.rate)),
+    }));
+  }, [selectedDb.items, selectedInvoiceDoc?.product, selectedInvoiceDoc?.service]);
+
+  const detailSubTotal = numberValue(selectedInvoiceDoc?.sub_total ?? selectedDb.subTotal);
+  const detailTotal = numberValue(selectedInvoiceDoc?.total ?? selectedDb.total);
+  const detailPaid = numberValue(selectedInvoiceDoc?.paid_amount ?? selectedDb.amountPaid);
+  const detailDue = numberValue(
+    selectedInvoiceDoc?.balance_amount ?? selectedDb.amountDue ?? Math.max(0, detailTotal - detailPaid),
+  );
+  const detailTerms = apiText(selectedInvoiceDoc?.terms_and_conditions) || selectedDb.terms || "—";
+  const detailNotes = apiText(selectedInvoiceDoc?.notes) || selectedDb.notes || "—";
+
   const dbPaymentsReceived = useCollection<any>("paymentsReceived");
   const invoicePayments = dbPaymentsReceived.filter((p) => p.invoiceId === selectedDb.id);
 
   /* ── reference actions: mark-as-paid / duplicate / trash ──────── */
   const markAsPaid = async (method: string) => {
-    const ids = [...checked];
+    const ids = [...checked].filter((id): id is number => typeof id === "number");
     for (const id of ids) {
       const inv = dbInvoices.find((i) => i.id === id);
       if (!inv || inv.status === "Paid") continue;
@@ -1086,18 +1172,52 @@ export const SalesInvoice: React.FC = () => {
   };
 
   const trashSelectedInvoices = async () => {
-    const ids = [...checked];
-    await repo.removeMany("invoices", ids);
-    showToast(`${ids.length} ${ids.length === 1 ? "invoice" : "invoices"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(filtered.find((i) => !ids.includes(i.id))?.id ?? 0);
+    const ids = [...checked].filter((id): id is number => typeof id === "number");
+    const backendIds = filtered
+      .filter((item) => checked.has(item.id) && item.backendId)
+      .map((item) => String(item.backendId));
+    if (statusFilter === "Trash") {
+      if (backendIds.length) await hardDeleteInvoices(backendIds);
+    } else if (ids.length) {
+      await repo.removeMany("invoices", ids);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+    showToast(
+      statusFilter === "Trash"
+        ? `${checked.size} ${checked.size === 1 ? "invoice" : "invoices"} permanently deleted`
+        : `${checked.size} ${checked.size === 1 ? "invoice" : "invoices"} moved to trash`,
+      "success",
+    );
+    if ([...checked].includes(selectedId)) setSelectedId(filtered.find((i) => !checked.has(i.id))?.id ?? 0);
     setConfirmAction(null);
     exitSelect();
   };
   const trashCurrent = async () => {
-    await repo.remove("invoices", selectedDb.id);
-    showToast(`Invoice ${selectedDb.number} moved to trash`, "success");
+    const backendId = selected?.backendId || selectedDb?._id;
+    if (statusFilter === "Trash") {
+      if (backendId) await hardDeleteInvoice(String(backendId));
+    } else if (selectedDb?.id) {
+      await repo.remove("invoices", selectedDb.id);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+    showToast(
+      statusFilter === "Trash"
+        ? `Invoice ${selectedDb.number} permanently deleted`
+        : `Invoice ${selectedDb.number} moved to trash`,
+      "success",
+    );
     setSelectedId(filtered.find((i) => i.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
+  };
+  const restoreSelectedInvoices = async () => {
+    const backendIds = filtered
+      .filter((item) => checked.has(item.id) && item.backendId)
+      .map((item) => String(item.backendId));
+    if (backendIds.length === 0) { showToast("Select invoices to restore", "warning"); return; }
+    await restoreInvoices(backendIds);
+    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+    showToast(`${backendIds.length} ${backendIds.length === 1 ? "invoice" : "invoices"} restored`, "success");
+    exitSelect();
   };
 
   /** Duplicate the selected invoice into another document collection. */
@@ -1208,7 +1328,7 @@ export const SalesInvoice: React.FC = () => {
     setSelectMode(false);
     setChecked(new Set());
   };
-  const toggleRow = (id: number) => {
+  const toggleRow = (id: number | string) => {
     setChecked((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -1247,124 +1367,16 @@ export const SalesInvoice: React.FC = () => {
     statusFilter !== "All" ||
     (customerFilter !== null && customerFilter.length > 0);
 
-  // No invoices (e.g. after deleting them all): don't blank the page — show an
-  // empty state with a working "New Invoice" action (and the create form itself
-  // when the user starts one).
-  if (!selected) {
-    return createOpen || hasActiveListFilters ? (
-      <div className="relative flex h-full w-full bg-[#FAFBFC] overflow-hidden">
-        <ResizableListPanel>
-          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
-            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Invoices</h2>
-            <div className="flex items-center gap-0.5">
-              <button className="p-1.5 hover:bg-gray-100 rounded-md">
-                <Search className="w-4 h-4 text-gray-500" />
-              </button>
-              <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select invoices">
-                <Pencil className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-          </div>
-
-          <div className="px-3 py-2 border-b border-gray-300">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search invoices..."
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
-              />
-            </div>
-          </div>
-
-          <div className="hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300">
-            <Dropdown
-              trigger={
-                <span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">
-                  Sort by | <span className="text-gray-800 font-medium">{sortBy}</span>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </span>
-              }
-            >
-              {() => (
-                <>
-                  {sortFields.map((o) => (
-                    <button key={o} onClick={() => setSortBy(o)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                      {o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}
-                    </button>
-                  ))}
-                  <div className="border-t border-gray-200 my-1" />
-                  {(["Ascending", "Descending"] as const).map((d) => (
-                    <button key={d} onClick={() => setSortDir(d)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                      {d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}
-                    </button>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-            <Dropdown
-              trigger={
-                <span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400">
-                  <Plus className="w-3 h-3" />
-                  Status{statusFilter !== "All" ? ` | ${statusFilter}` : ""}
-                </span>
-              }
-            >
-              {(close) =>
-                statusList.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => {
-                      setStatusFilter(s === "Trash" ? statusFilter : s);
-                      close();
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}
-                  >
-                    {s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}
-                  </button>
-                ))
-              }
-            </Dropdown>
-            <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
-          </div>
-
-          <div className="flex-1 flex items-center justify-center px-6 text-center">
-            <div>
-              <div className="text-sm font-medium text-gray-900">No matching invoices found</div>
-              <div className="mt-1 text-xs text-gray-500">Create a new invoice from the right panel.</div>
-            </div>
-          </div>
-
-          <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-            <div className="text-sm font-semibold text-gray-900">{money(0)} Due</div>
-            <div className="text-xs text-gray-500">0 Invoices</div>
-          </div>
-        </ResizableListPanel>
-
-        <CreateInvoiceForm onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
-      </div>
-    ) : (
-      <div className="flex h-full flex-col items-center justify-center bg-[#FAFBFC] text-center">
-        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-          <FileText className="w-7 h-7 text-gray-400" />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-900">No invoices yet</h3>
-        <p className="text-sm text-gray-500 mt-1 mb-5">Create your first invoice to get started.</p>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-orange-600"
-        >
-          <Plus className="w-4 h-4" /> New Invoice
-        </button>
-      </div>
-    );
+  // Match Delivery Challan: only full-page empty when nothing selected and create is closed.
+  // Create always opens inside the normal list + right-panel shell.
+  if (!selected && !createOpen && !hasActiveListFilters) {
+    return <ListEmptyState title="No invoices yet" onCreate={() => setCreateOpen(true)} createLabel="New Invoice" />;
   }
 
   return (
     <div className="relative flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Invoice" hideCreate={selectMode}>
         {/* List header — default vs. selection mode */}
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
@@ -1378,8 +1390,15 @@ export const SalesInvoice: React.FC = () => {
               {allSelected && <Check className="w-3.5 h-3.5 text-white" />}
             </button>
             <div className="flex items-center gap-0.5">
+              {statusFilter === "Trash" && (
+                <button
+                  title="Restore"
+                  onClick={() => (checked.size === 0 ? showToast("Select invoices to restore", "warning") : restoreSelectedInvoices())}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+                ><RotateCcw className="w-4 h-4" /></button>
+              )}
               <button
-                title="Delete"
+                title={statusFilter === "Trash" ? "Delete permanently" : "Delete"}
                 onClick={() => (checked.size === 0 ? showToast("Select invoices to delete", "warning") : setConfirmAction("trashSelected"))}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
               ><Trash2 className="w-4 h-4" /></button>
@@ -1446,7 +1465,7 @@ export const SalesInvoice: React.FC = () => {
         </div>
 
         {/* Toolbar: sort + filter chips */}
-        <div className="hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           {/* Sort by: fields + direction */}
           <Dropdown
             trigger={
@@ -1495,7 +1514,7 @@ export const SalesInvoice: React.FC = () => {
                 <button
                   key={s}
                   onClick={() => {
-                    setStatusFilter(s === "Trash" ? statusFilter : s);
+                    setStatusFilter(s);
                     close();
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${
@@ -1512,49 +1531,48 @@ export const SalesInvoice: React.FC = () => {
           <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
         </div>
 
-        {/* List rows */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {filtered.map((inv) => {
-            const active = !selectMode && inv.id === selectedId;
-            const isChecked = checked.has(inv.id);
-            const rowCustomer = dbCustomers.find((c) => c.id === inv.id || c.id === dbInvoices.find((item) => item.id === inv.id)?.customerId);
-            const rowSubtitle = customerDisplaySubtitle(rowCustomer) || inv.note;
-            return (
-              <button
-                key={inv.id}
-                onClick={() => (selectMode ? toggleRow(inv.id) : setSelectedId(inv.id))}
-                className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${
-                  active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"
-                }`}
-              >
-                {selectMode && (
-                  <span
-                    className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${
-                      isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"
-                    }`}
-                  >
-                    {isChecked && <Check className="w-3.5 h-3.5 text-white" />}
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{inv.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{inv.number}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 truncate">{rowSubtitle || "No Notes"}</div>
-                </div>
-                <div className="flex flex-col items-end flex-shrink-0">
-                  <span className="text-xs text-gray-500">{inv.date}</span>
-                  <span className="text-sm font-semibold text-gray-900 mt-0.5">{inv.amount}</span>
-                  <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status]}`}>
-                    {inv.status}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-          {/* FAB → Create Invoice (live → shared datastore) */}
-          {!selectMode && (
-            <button onClick={() => setCreateOpen(true)} className="absolute bottom-[4.5rem] right-5 z-20 flex w-[42px] h-[42px] items-center justify-center rounded-full bg-orange-500 text-white shadow hover:bg-orange-600 transition-colors"><Plus className="w-6 h-6" strokeWidth={2} /></button>
-          )}
+        {/* List rows — FAB stays outside the scroller so it remains clickable */}
+        <div className="relative flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
+            {filtered.map((inv) => {
+              const active = !selectMode && !createOpen && !editOpen && (inv.backendId ? inv.backendId === selected?.backendId : inv.id === selectedId);
+              const isChecked = checked.has(inv.id);
+              const rowCustomer = dbCustomers.find((c) => c.id === dbInvoices.find((item) => item.id === inv.id)?.customerId);
+              const rowSubtitle = customerDisplaySubtitle(rowCustomer) || inv.note;
+              return (
+                <button
+                  key={inv.backendId || inv.id}
+                  type="button"
+                  onClick={() => (selectMode ? toggleRow(inv.id) : (setSelectedId(inv.backendId || inv.id), setCreateOpen(false), setEditOpen(false)))}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${
+                    active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"
+                  }`}
+                >
+                  {selectMode && (
+                    <span
+                      className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${
+                        isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"
+                      }`}
+                    >
+                      {isChecked && <Check className="w-3.5 h-3.5 text-white" />}
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{inv.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{inv.number}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 truncate">{rowSubtitle || "No Notes"}</div>
+                  </div>
+                  <div className="flex flex-col items-end flex-shrink-0">
+                    <span className="text-xs text-gray-500">{inv.date}</span>
+                    <span className="text-sm font-semibold text-gray-900 mt-0.5">{inv.amount}</span>
+                    <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status]}`}>
+                      {inv.status}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Footer */}
@@ -1565,10 +1583,10 @@ export const SalesInvoice: React.FC = () => {
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL: create/edit form / selection summary / detail ════════ */}
-      {createOpen ? (
-        <CreateInvoiceForm onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+      {createOpen || (!selected && hasActiveListFilters) ? (
+        <CreateInvoiceForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }} />
       ) : editOpen ? (
-        <CreateInvoiceForm key={selectedId} invoice={dbInvoices.find((i) => i.id === selectedId)} onClose={() => setEditOpen(false)} onSaved={(id) => setSelectedId(id)} />
+        <CreateInvoiceForm key={selectedId} invoice={dbInvoices.find((i) => i.id === selectedId)} onClose={() => setEditOpen(false)} onSaved={(id) => { setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
@@ -1700,22 +1718,22 @@ export const SalesInvoice: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {(selectedDb.items || []).length === 0 && (
+                {detailLines.length === 0 && (
                   <tr><td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-400">No items</td></tr>
                 )}
-                {(selectedDb.items || []).map((it: any, idx: number) => (
-                  <tr key={idx} className="border-b border-gray-300 align-top">
+                {detailLines.map((it, idx) => (
+                  <tr key={it.id} className="border-b border-gray-300 align-top">
                     <td className="px-5 py-3 text-gray-700">{idx + 1}</td>
                     <td className="px-2 py-3">
                       <div className="font-semibold text-gray-900">{it.name}</div>
                       {it.description && <div className="text-xs text-gray-500 mt-1">{it.description}</div>}
                     </td>
-                    <td className="px-2 py-3 text-right text-gray-800">{it.qty ?? 1}</td>
+                    <td className="px-2 py-3 text-right text-gray-800">{it.qty}</td>
                     <td className="px-2 py-3 text-right text-gray-800">{fmtMoney(0)}</td>
                     <td className="px-2 py-3 text-right text-gray-800">{fmtMoney(it.rate)}</td>
-                    <td className="px-2 py-3 text-gray-800">{TAX_NAME[it.taxId || 1]}</td>
+                    <td className="px-2 py-3 text-gray-800">{it.tax ? `${it.tax}%` : "—"}</td>
                     <td className="px-2 py-3 text-right text-gray-500 text-xs">{it.discount ? fmtMoney(it.discount) : "—"}</td>
-                    <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmtMoney(it.amount ?? (it.qty || 0) * (it.rate || 0))}</td>
+                    <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmtMoney(it.amount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1727,45 +1745,39 @@ export const SalesInvoice: React.FC = () => {
             <div>
               <label className="text-xs text-gray-500">Terms &amp; Conditions</label>
               <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">
-                {selectedDb.terms || "—"}
+                {detailTerms}
               </div>
             </div>
             <div>
               <label className="text-xs text-gray-500">Notes</label>
               <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">
-                {selectedDb.notes || "—"}
+                {detailNotes}
               </div>
             </div>
             <div className="border border-gray-200 rounded-md overflow-hidden self-start">
               <div className="flex justify-between px-4 py-2.5 text-sm">
                 <span className="text-gray-700">Sub Total</span>
-                <span className="font-semibold text-gray-900">{fmtMoney(selectedDb.subTotal)}</span>
+                <span className="font-semibold text-gray-900">{fmtMoney(detailSubTotal)}</span>
               </div>
-              {Object.entries(
-                (selectedDb.items || []).reduce((acc: Record<number, number>, it: any) => {
-                  const base = it.amount ?? (it.qty || 0) * (it.rate || 0);
-                  acc[it.taxId || 1] = (acc[it.taxId || 1] || 0) + base;
-                  return acc;
-                }, {}),
-              ).map(([taxId, base]) => (
-                <div key={taxId} className="flex justify-between px-4 py-2 text-xs text-gray-500">
-                  <span>{TAX_NAME[Number(taxId)]} {TAX_RATE[Number(taxId)]}% on {fmtMoney(base as number)}</span>
-                  <span>{fmtMoney(((base as number) * (TAX_RATE[Number(taxId)] || 0)) / 100)}</span>
+              {detailLines.some((it) => it.tax > 0) && (
+                <div className="flex justify-between px-4 py-2 text-xs text-gray-500">
+                  <span>Tax</span>
+                  <span>{fmtMoney(Math.max(0, detailTotal - detailSubTotal + detailLines.reduce((s, it) => s + it.discount, 0)))}</span>
                 </div>
-              ))}
+              )}
               <div className="flex justify-between px-4 py-2.5 text-sm border-t border-gray-200">
                 <span className="text-gray-700">Total</span>
-                <span className="font-semibold text-gray-900">{fmtMoney(selectedDb.total)}</span>
+                <span className="font-semibold text-gray-900">{fmtMoney(detailTotal)}</span>
               </div>
-              {(selectedDb.amountPaid || 0) > 0 && (
+              {detailPaid > 0 && (
                 <div className="flex justify-between px-4 py-2 text-sm">
                   <span className="text-gray-700">Amount Paid</span>
-                  <span className="font-semibold text-gray-900">{fmtMoney(selectedDb.amountPaid)}</span>
+                  <span className="font-semibold text-gray-900">{fmtMoney(detailPaid)}</span>
                 </div>
               )}
               <div className="flex justify-between px-4 py-3 bg-gray-100">
                 <span className="font-semibold text-gray-900">Amount Due</span>
-                <span className="font-semibold text-gray-900">{fmtMoney(selectedDb.amountDue)}</span>
+                <span className="font-semibold text-gray-900">{fmtMoney(detailDue)}</span>
               </div>
             </div>
           </div>
@@ -1818,7 +1830,7 @@ export const SalesInvoice: React.FC = () => {
       {modal === "preview" && (() => {
         // In select mode with several rows ticked, merge them all into one PDF;
         // otherwise preview the single active record.
-        const batchIds = selectMode ? [...checked] : [];
+        const batchIds = selectMode ? [...checked].filter((id): id is number => typeof id === "number") : [];
         const d: any = (batchIds.length ? dbInvoices.find((i) => i.id === batchIds[0]) : dbInvoices.find((i) => i.id === selectedId)) || {};
         const cp: any = dbCustomers.find((c) => c.id === d.customerId) || {}; const cn = cp.name || "—";
         const ht = selectMode && selectedInvoices.length ? "Invoice " + selectedInvoices.map((i) => i.number.replace("#", "")).join(", ") : `Invoice${d.number || ""}`;
@@ -1887,10 +1899,10 @@ export const SalesInvoice: React.FC = () => {
         <ActivityLogModal invoice={selectedDb} payments={invoicePayments} onClose={() => setActivityOpen(false)} />
       )}
       {confirmAction === "trashOne" && (
-        <ConfirmAlert message="Are you sure want to trash this invoice?" onNo={() => setConfirmAction(null)} onYes={trashCurrent} />
+        <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this invoice? This cannot be undone." : "Are you sure want to trash this invoice?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />
       )}
       {confirmAction === "trashSelected" && (
-        <ConfirmAlert message="Are you sure want to delete these invoices?" onNo={() => setConfirmAction(null)} onYes={trashSelectedInvoices} />
+        <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these invoices? This cannot be undone." : "Are you sure want to delete these invoices?"} onNo={() => setConfirmAction(null)} onYes={trashSelectedInvoices} />
       )}
     </div>
   );

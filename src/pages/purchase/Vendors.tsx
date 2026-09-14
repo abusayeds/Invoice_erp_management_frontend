@@ -65,6 +65,7 @@ const vendors: Vendor[] = [
 
 const sortFields = ["Name", "First Name", "Last Name", "Created On", "Payable", "Total", "Due", "Paid"];
 const createdOptions = ["All", "Today", "This Week", "This Month", "This Year"];
+const statusOptions = ["Active", "Archived", "Trash"] as const;
 const activityFilters = ["All", "Created", "Updated", "Archived", "Bill", "Expense", "Payment"];
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -592,25 +593,38 @@ export const Vendors: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   // When navigated here from a "Duplicate ▸ Vendor" action, pre-select that vendor.
-  const navSelectedId = (location.state as { selectedId?: number } | null)?.selectedId;
+  const navSelectedId = (location.state as { selectedId?: number; openCreate?: boolean } | null)?.selectedId;
+  const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
   const dbVendors = useCollection<any>("vendors", "name");
   const dbBills = useCollection<any>("bills");
   const dbPaymentsMade = useCollection<any>("paymentsMade");
   const dbExpenses = useCollection<any>("expenses");
-  const vendors: Vendor[] = useMemo(
-    () => dbVendors
-      .filter((v) => v.status !== "Archived")
-      .map((v) => ({ id: v.id, name: v.name, contact: v.contact || v.email || v.subtitle || "—", amount: -(v.payable || 0) })),
-    [dbVendors],
-  );
   // Create Vendor renders as an inline right panel (per reference), not a modal.
-  const [createMode, setCreateMode] = useState(false);
+  const [createMode, setCreateMode] = useState(openCreateFromNav);
+  useEffect(() => {
+    if (openCreateFromNav) {
+      setCreateMode(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [openCreateFromNav, location.pathname, navigate]);
   const [selectedId, setSelectedId] = useState(navSelectedId ?? 1);
   useEffect(() => { if (navSelectedId != null) { setSelectedId(navSelectedId); setEditMode(false); } }, [navSelectedId]);
   const [tab, setTab] = useState<"Overview" | "Details" | "Settings">("Overview");
-  const [sortBy, setSortBy] = useState("Name");
+  const [sortBy, setSortBy] = useState("Created On");
   const [createdOn, setCreatedOn] = useState("All");
+  const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("Active");
   const [search, setSearch] = useState("");
+  const vendors: Vendor[] = useMemo(
+    () => dbVendors
+      .filter((v) => {
+        const st = String(v.status || "Active");
+        if (statusFilter === "Archived") return st === "Archived";
+        if (statusFilter === "Trash") return st === "Trash" || st === "Inactive";
+        return st !== "Archived" && st !== "Trash" && st !== "Inactive";
+      })
+      .map((v) => ({ id: v.id, name: v.name, contact: v.contact || v.email || v.subtitle || "—", amount: -(v.payable || 0) })),
+    [dbVendors, statusFilter],
+  );
   const [activityFilter, setActivityFilter] = useState("All");
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
   // selection-bar bulk actions: merge picker → confirm alert / archive / delete alerts
@@ -630,11 +644,11 @@ export const Vendors: React.FC = () => {
 
   const filtered = useMemo(() => {
     let list = vendors.filter((c) => search.trim() === "" || (c.name || "").toLowerCase().includes(search.toLowerCase()));
-    list = [...list].sort((a, b) =>
-      sortBy === "Payable" || sortBy === "Total" || sortBy === "Due" || sortBy === "Paid"
-        ? b.amount - a.amount
-        : (a.name || "").localeCompare(b.name || ""),
-    );
+    list = [...list].sort((a, b) => {
+      if (sortBy === "Created On") return b.id - a.id;
+      if (sortBy === "Payable" || sortBy === "Total" || sortBy === "Due" || sortBy === "Paid") return b.amount - a.amount;
+      return (a.name || "").localeCompare(b.name || "");
+    });
     return list;
   }, [vendors, search, sortBy]);
 
@@ -766,17 +780,52 @@ export const Vendors: React.FC = () => {
     setTab(t);
   };
 
-  if (!selected && !createMode)
+  if (!selected && !createMode) {
+    const hasActiveFilters = statusFilter !== "Active" || !!search.trim() || createdOn !== "All";
+    if (hasActiveFilters) {
+      return (
+        <div className="module-workspace">
+          <ResizableListPanel onCreate={() => { setCreateMode(true); setEditMode(false); }} createTitle="Create Vendor">
+            <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+              <h2 className="text-base font-semibold text-gray-900 tracking-tight">Vendors</h2>
+            </div>
+            <div className="px-3 py-2 border-b border-gray-300">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search vendors..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+              </div>
+            </div>
+            <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
+              <Dropdown trigger={<span className={`inline-flex items-center gap-1 text-xs border border-dashed rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400 ${statusFilter === "Trash" ? "text-red-500 border-red-300" : "text-gray-600 border-gray-300"}`}><Plus className="w-3 h-3" />Status{statusFilter !== "Active" ? ` | ${statusFilter}` : ""}</span>}>
+                {(close) => statusOptions.map((o) => (
+                  <button key={o} onClick={() => { setStatusFilter(o); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${o === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{o} {o === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+                ))}
+              </Dropdown>
+            </div>
+            <div className="flex-1 flex items-center justify-center px-6 text-center">
+              <div>
+                <div className="text-sm font-medium text-gray-900">
+                  {statusFilter === "Trash" ? "No trashed vendors" : statusFilter === "Archived" ? "No archived vendors" : "No matching vendors"}
+                </div>
+                <div className="mt-1 text-xs text-gray-500">Try clearing filters to see active vendors.</div>
+              </div>
+            </div>
+          </ResizableListPanel>
+          <div className="flex-1" />
+        </div>
+      );
+    }
     return (
       <div className="flex h-full bg-[#FAFBFC] items-center justify-center">
         <button onClick={() => setCreateMode(true)} className="px-5 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Vendor</button>
       </div>
     );
+  }
 
   return (
     <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel>
+      <ResizableListPanel onCreate={() => { setCreateMode(true); setEditMode(false); }} createTitle="Create Vendor" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
@@ -821,13 +870,17 @@ export const Vendors: React.FC = () => {
         </div>
 
         {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-300">
+        <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
               <button key={o} onClick={() => { setSortBy(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === sortBy && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 cursor-pointer hover:border-gray-400"><Plus className="w-3 h-3" />Status</span>
+          <Dropdown trigger={<span className={`inline-flex items-center gap-1 text-xs border border-dashed rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400 ${statusFilter === "Trash" ? "text-red-500 border-red-300" : "text-gray-600 border-gray-300"}`}><Plus className="w-3 h-3" />Status{statusFilter !== "Active" ? ` | ${statusFilter}` : ""}</span>}>
+            {(close) => statusOptions.map((o) => (
+              <button key={o} onClick={() => { setStatusFilter(o); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${o === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{o} {o === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+            ))}
+          </Dropdown>
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Created On | {createdOn}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => createdOptions.map((o) => (
               <button key={o} onClick={() => { setCreatedOn(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === createdOn && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -837,7 +890,7 @@ export const Vendors: React.FC = () => {
 
         {/* rows */}
         <div className="relative flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 overflow-y-auto hover-scrollbar">
           {filtered.map((c) => {
             const active = !selectMode && c.id === selectedId;
             const isChecked = checked.has(c.id);
@@ -856,10 +909,6 @@ export const Vendors: React.FC = () => {
             );
           })}
           </div>
-          {/* FAB */}
-          {!selectMode && (
-            <button onClick={() => { setCreateMode(true); setEditMode(false); }} className="absolute bottom-6 right-6 z-20 flex w-12 h-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600" title="Create Vendor"><Plus className="w-6 h-6" /></button>
-          )}
         </div>
 
         {/* footer */}
@@ -882,7 +931,7 @@ export const Vendors: React.FC = () => {
           </div>
         </section>
       ) : createMode ? (
-        <VendorForm title="Create Vendor" onClose={() => setCreateMode(false)} onSaved={(id) => setSelectedId(id)} />
+        <VendorForm title="Create Vendor" onClose={() => setCreateMode(false)} onSaved={(id) => { setSortBy("Created On"); setCreateMode(false); setSelectedId(id); }} />
       ) : editMode ? (
         <VendorForm title="Edit Vendor" initial={selectedDb} onClose={() => setEditMode(false)} onSaved={(id) => setSelectedId(id)} />
       ) : (

@@ -85,6 +85,7 @@ export interface DeliveryChallanListParams {
   dateFrom?: string;
   dateTo?: string;
   dateField?: string;
+  isDeleted?: boolean;
 }
 
 const FALLBACK_PAGINATION: TPartyPagination = {
@@ -144,7 +145,8 @@ export async function fetchDeliveryChallans(params: DeliveryChallanListParams): 
   };
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
-  if (params.status && params.status !== "All") query.status = params.status;
+  if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;
@@ -175,4 +177,22 @@ export async function updateDeliveryChallan(id: string, payload: Record<string, 
 
 export async function deleteDeliveryChallan(id: string): Promise<void> {
   await api.raw.delete(`/delivery-challan/delete/${id}`);
+}
+
+export async function hardDeleteDeliveryChallans(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/delivery-challan/hard-delete/${ids.join(",")}`);
+}
+
+export async function hardDeleteDeliveryChallan(id: string): Promise<void> {
+  await hardDeleteDeliveryChallans([id]);
+}
+
+export async function restoreDeliveryChallan(id: string): Promise<void> {
+  await api.raw.post(`/delivery-challan/restore/${id}`);
+}
+
+export async function restoreDeliveryChallans(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await Promise.all(ids.map((id) => restoreDeliveryChallan(id)));
 }

@@ -155,13 +155,19 @@ const periodOptions = [
   "Last 12 Months", "Last Year", "This Financial Year", "Last Financial Year",
 ];
 
-// Weekly chart data (mirrors "3–29 / 52")
-const chartData = Array.from({ length: 26 }, (_, i) => ({
-  name: `${["Jan", "Feb", "Mar", "Apr", "May", "Jun"][Math.floor(i / 5) % 6]} ${((i % 4) + 1) * 7}`,
-  Sales: Math.round(1500 + Math.random() * 9000),
-  Overdue: Math.round(Math.random() * 2500),
-  Paid: Math.round(1000 + Math.random() * 6000),
-}));
+// Weekly chart data — deterministic so re-renders don't reshuffle the chart.
+const chartData = Array.from({ length: 26 }, (_, i) => {
+  const seed = (n: number) => {
+    const x = Math.sin((i + 1) * (n + 12.9898)) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  return {
+    name: `${["Jan", "Feb", "Mar", "Apr", "May", "Jun"][Math.floor(i / 5) % 6]} ${((i % 4) + 1) * 7}`,
+    Sales: Math.round(1500 + seed(1) * 9000),
+    Overdue: Math.round(seed(2) * 2500),
+    Paid: Math.round(1000 + seed(3) * 6000),
+  };
+});
 
 const donutData = [
   { name: "Sales", value: 13797, color: "#007aff" },
@@ -280,9 +286,9 @@ export const Dashboard: React.FC = () => {
   const shownCards = allCards.filter((c) => visible[c.key] !== false);
 
   return (
-    <div className="module-page-shell overflow-auto">
+    <div className="dashboard-shell custom-scrollbar">
       {/* ── Page heading row ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-12 bg-white border-b border-gray-200">
+      <div className="dashboard-title-bar flex items-center justify-between gap-2">
         <h1 className="text-lg font-normal text-gray-900">Summary</h1>
         <div className="flex items-center gap-1">
           {/* Period dropdown */}
