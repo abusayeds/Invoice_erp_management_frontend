@@ -347,14 +347,6 @@ export const Bills: React.FC = () => {
   const dbBills = useCollection<any>("bills");
   const dbVendors = useCollection<any>("vendors", "name");
   const vendorList = useMemo(() => dbVendors.map((v) => v.name), [dbVendors]);
-  const billsLocal: Bill[] = useMemo(
-    () => dbBills.slice().sort((a, b) => b.id - a.id).map((b) => ({
-      id: b.id, name: dbVendors.find((v) => v.id === b.vendorId)?.name || "—",
-      number: b.number, note: b.notes || "Mollit fugiat elit", date: b.date, due: b.due,
-      amount: fmtMoney(b.amountDue ?? b.total ?? 0), status: b.status,
-    })),
-    [dbBills, dbVendors],
-  );
 
   // Opened from an activity link / Header (+) → pre-select or open create.
   const location = useLocation();
@@ -408,7 +400,6 @@ export const Bills: React.FC = () => {
 
   const bills: Bill[] = useMemo(() => {
     const rows = backendBills?.rows ?? [];
-    if (rows.length === 0) return billsLocal;
     return rows.map((row, index) => {
       const linked = dbBills.find((b) => String(b._id) === row._id) || dbBills.find((b) => String(b.number).replace(/^#/, "") === row.number);
       return {
@@ -422,7 +413,7 @@ export const Bills: React.FC = () => {
         status: row.status as Bill["status"],
       };
     });
-  }, [backendBills?.rows, billsLocal, dbBills]);
+  }, [backendBills?.rows, dbBills]);
 
   const filtered = useMemo(() => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;

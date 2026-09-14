@@ -479,17 +479,8 @@ export const PurchaseInvoices: React.FC = () => {
     staleTime: 15_000,
   });
   const listPagination = backendList?.pagination;
-  const invoicesLocal: Invoice[] = useMemo(
-    () => dbInvoices.slice().sort((a, b) => b.id - a.id).map((d) => ({
-      id: d.id, name: dbVendors.find((v) => v.id === d.vendorId)?.name || "—",
-      number: d.number, note: d.notes || "No Notes", date: d.date, due: d.due,
-      amount: fmtMoney(d.amountDue ?? d.total ?? 0), status: d.status,
-    })),
-    [dbInvoices, dbVendors],
-  );
   const invoices: Invoice[] = useMemo(() => {
     const rows = backendList?.rows ?? [];
-    if (rows.length === 0) return invoicesLocal;
     return rows.map((row, index) => {
       const linked = dbInvoices.find((d) => String(d._id) === row._id) || dbInvoices.find((d) => String(d.number).replace(/^#/, "") === row.number);
       return {
@@ -503,7 +494,7 @@ export const PurchaseInvoices: React.FC = () => {
         status: row.status as Invoice["status"],
       };
     });
-  }, [backendList?.rows, invoicesLocal, dbInvoices]);
+  }, [backendList?.rows, dbInvoices]);
 
   const filtered = useMemo(() => {
     const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;

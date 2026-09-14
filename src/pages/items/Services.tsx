@@ -10,10 +10,14 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchServices, deleteService, type ServiceListRow } from "@/services/servicesApi";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import {
   Search,
@@ -31,7 +35,8 @@ import {
 
 /* ── Types & data ──────────────────────────────────────────────── */
 interface Service {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   note: string;
   price: string;
@@ -41,20 +46,23 @@ interface Service {
   tax: string;
 }
 
-const services: Service[] = [
-  { id: 1, name: "demo name", note: "", price: "$0.00", sac: "dg", qty: "1", unit: "box", tax: "new test tax" },
-  { id: 2, name: "pen service", note: "", price: "$0.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 3, name: "qwre", note: "", price: "$12.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 4, name: "qwre", note: "", price: "$12.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 5, name: "Service 1", note: "this is Service 1", price: "$45.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 6, name: "Service 1", note: "this is Service 1", price: "$45.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 7, name: "Service 2", note: "this is service 2", price: "$40.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 8, name: "Service 2", note: "this is service 2", price: "$40.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 9, name: "smt", note: "this is service 4", price: "$65.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 10, name: "smt", note: "this is service 4", price: "$65.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 11, name: "sta", note: "hlw .........", price: "$56.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-  { id: 12, name: "sta", note: "hlw .........", price: "$56.00", sac: "—", qty: "1", unit: "box", tax: "Test Tax" },
-];
+const mapServiceRow = (row: ServiceListRow): Service => ({
+  id: row._id,
+  backendId: row._id,
+  name: row.name,
+  note: row.note,
+  price: money(row.price),
+  sac: row.sac,
+  qty: row.qty,
+  unit: row.unit,
+  tax: row.tax,
+});
+
+const serviceSortField = (label: string) => {
+  if (label === "Rate") return "rate";
+  if (label === "Created On") return "createdAt";
+  return "serviceName";
+};
 
 const sortFields = ["Name", "Rate", "Created On"];
 const statusList = ["All", "Active", "Archived", "Trash"];
@@ -205,10 +213,14 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const Services: React.FC = () => {
-  const [selectedId, setSelectedId] = useState(1);
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState("");
   const [sortBy, setSortBy] = useState("Created On");
+  const [sortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const location = useLocation();
   const navigate = useNavigate();
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
@@ -223,40 +235,49 @@ export const Services: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const dbServices = useCollection<any>("services", "name");
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, statusFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["services-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchServices({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(serviceSortField(sortBy), sortDir),
+      isDeleted: statusFilter === "Trash" || undefined,
+      isArchive: statusFilter === "Archived" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
   const services: Service[] = useMemo(
-    () => dbServices.map((s) => ({
-      id: s.id, name: s.name, note: s.note || "", price: money(s.price),
-      sac: s.sac || "—", qty: String(s.qty ?? "1"), unit: s.unit || "box",
-      tax: ({ 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" } as Record<number, string>)[s.taxId] || "Test Tax",
-    })),
-    [dbServices],
+    () => (listData?.rows ?? []).map(mapServiceRow),
+    [listData?.rows],
   );
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = services.filter(
-      (i) =>
-        statusFilter !== "Trash" &&
-        statusFilter !== "Archived" &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase())),
-    );
-    list = [...list].sort((a, b) => {
-      if (sortBy === "Created On") return b.id - a.id;
-      if (sortBy === "Rate") return toNum(b.price) - toNum(a.price);
-      return a.name.localeCompare(b.name);
-    });
-    return list;
-  }, [services, sortBy, search, statusFilter]);
-
+  const filtered = services;
   const selected = services.find((i) => i.id === selectedId) || services[0];
+
+  useEffect(() => {
+    if (services.length > 0 && !services.some((p) => p.id === selectedId)) {
+      setSelectedId(services[0].id);
+    }
+  }, [services, selectedId]);
+
+  const dbServices = useCollection<any>("services", "name");
+  const selectedLocal = dbServices.find((s) => String(s._id) === selected?.backendId);
   const checkedItems = services.filter((i) => checked.has(i.id));
 
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -296,7 +317,7 @@ export const Services: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search services..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -337,18 +358,21 @@ export const Services: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-xs text-gray-500">{filtered.length} Services</div>
-        </div>
+        <ListSidebarFooter
+          total={`${listPagination?.totalData ?? filtered.length}`}
+          countLabel="Services"
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {mode === "create" ? (
-        <ServiceForm mode="create" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("services", { name: d.name || "Untitled", note: d.note, price: parseMoney(d.rate), sac: d.sac, qty: parseMoney(d.qty) || 1, unit: d.unit, taxId: ({ "new test tax": 1, "Test Tax": 2, VAT: 3, GST: 4 } as Record<string, number>)[d.tax] || 2, status: "Active" }); }} />
-      ) : mode === "edit" ? (
-        <ServiceForm mode="edit" service={selected} onClose={() => setMode("view")} onSave={async (d) => { await repo.update("services", selected.id, { name: d.name, note: d.note, price: parseMoney(d.rate), sac: d.sac, qty: parseMoney(d.qty) || 1, unit: d.unit, taxId: ({ "new test tax": 1, "Test Tax": 2, VAT: 3, GST: 4 } as Record<string, number>)[d.tax] || 2 }); }} />
-      ) : (
+        <ServiceForm mode="create" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("services", { name: d.name || "Untitled", note: d.note, price: parseMoney(d.rate), sac: d.sac, qty: parseMoney(d.qty) || 1, unit: d.unit, taxId: ({ "new test tax": 1, "Test Tax": 2, VAT: 3, GST: 4 } as Record<string, number>)[d.tax] || 2, status: "Active" }); void queryClient.invalidateQueries({ queryKey: ["services-list"] }); }} />
+      ) : mode === "edit" && selected ? (
+        <ServiceForm mode="edit" service={selected} onClose={() => setMode("view")} onSave={async (d) => { if (selectedLocal?.id != null) await repo.update("services", selectedLocal.id, { name: d.name, note: d.note, price: parseMoney(d.rate), sac: d.sac, qty: parseMoney(d.qty) || 1, unit: d.unit, taxId: ({ "new test tax": 1, "Test Tax": 2, VAT: 3, GST: 4 } as Record<string, number>)[d.tax] || 2 }); void queryClient.invalidateQueries({ queryKey: ["services-list"] }); }} />
+      ) : selected ? (
         <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}
           <div className="module-title-bar">
@@ -361,7 +385,7 @@ export const Services: React.FC = () => {
                   <>
                     <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</button>
                     <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"><Archive className="w-4 h-4" /> Archive</button>
-                    <button onClick={async () => { await repo.remove("services", selected.id); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
+                    <button onClick={async () => { if (selected?.backendId) { await deleteService(selected.backendId); void queryClient.invalidateQueries({ queryKey: ["services-list"] }); } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
                   </>
                 )}
               </Dropdown>
@@ -396,10 +420,10 @@ export const Services: React.FC = () => {
             <div className="text-sm text-gray-800 mt-1">{selected.note}</div>
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* ════════ MODALS ════════ */}
-      {mergeOpen && <MergeModal onClose={() => setMergeOpen(false)} items={checkedItems.length ? checkedItems : services.slice(4, 6)} />}
+      {mergeOpen && <MergeModal onClose={() => setMergeOpen(false)} items={checkedItems.length ? checkedItems : services.slice(0, 2)} />}
       {settingsOpen && <AppSettingsModal initialTab="Service" onClose={() => setSettingsOpen(false)} />}
     </div>
   );

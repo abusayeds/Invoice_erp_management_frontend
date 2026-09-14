@@ -1006,20 +1006,9 @@ export const SalesInvoice: React.FC = () => {
     setPage(1);
   }, [sortBy, sortDir, statusFilter, customerFilter]);
 
-  // live from the shared datastore (customer name resolved by id)
+  // live from the shared datastore (used for detail/create helpers — not list source)
   const dbInvoices = useCollection<any>("invoices");
   const dbCustomers = useCollection<any>("customers", "name");
-  const localInvoices: Invoice[] = useMemo(
-    () => dbInvoices.slice().sort((a, b) => b.id - a.id).map((inv) => ({
-      id: inv.id,
-      backendId: inv._id,
-      name: customerDisplayName(dbCustomers.find((c) => c.id === inv.customerId)) || inv.name || "—",
-      customerSubtitle: customerDisplaySubtitle(dbCustomers.find((c) => c.id === inv.customerId)),
-      number: inv.number, note: inv.notes || "No Notes", date: inv.date, due: inv.due,
-      amount: fmtMoney(inv.total), currency: inv.currency || "USD", status: inv.status,
-    })),
-    [dbInvoices, dbCustomers],
-  );
   const { data: backendInvoiceList } = useQuery({
     queryKey: ["sales-invoice-backend-list", page, search, sortBy, sortDir, statusFilter],
     queryFn: () =>
@@ -1038,23 +1027,7 @@ export const SalesInvoice: React.FC = () => {
 
   const filtered = useMemo(() => {
     const backendRows = backendInvoiceList?.rows ?? [];
-    if (backendRows.length === 0 && (search || statusFilter !== "All")) return [];
-
-    const sourceRows = backendRows.length > 0 ? backendRows : localInvoices.map((item) => ({
-      _id: item.backendId || String(item.id),
-      number: item.number.replace(/^#/, ""),
-      customerName: item.name,
-      customerSubtitle: item.customerSubtitle || "",
-      amount: Number(item.amount.replace(/[^0-9.-]/g, "")) || 0,
-      dateLabel: item.date,
-      status: item.status,
-      currency: item.currency || "USD",
-      dueAmount: 0,
-      paidAmount: 0,
-      customerId: "",
-    }));
-
-    return sourceRows
+    return backendRows
       .filter((row) => customerFilter === null || customerFilter.includes(row.customerName))
       .map((row) => {
         const linkedLocal =
@@ -1075,7 +1048,7 @@ export const SalesInvoice: React.FC = () => {
           status: (["Draft", "Paid", "Partial", "Overdue"].includes(row.status) ? row.status : "Draft") as Status,
         } satisfies Invoice;
       });
-  }, [backendInvoiceList?.rows, customerFilter, dbInvoices, localInvoices, search, statusFilter]);
+  }, [backendInvoiceList?.rows, customerFilter, dbInvoices]);
 
   const listDue = useMemo(
     () => filtered.reduce((sum, item) => sum + (Number(item.amount.replace(/[^0-9.-]/g, "")) || 0), 0),

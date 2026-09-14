@@ -11,8 +11,11 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchExpenses, deleteExpense, deleteExpenses, type ExpenseListRow } from "@/services/expensesApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -44,7 +47,8 @@ import {
 
 /* ── Types & data ──────────────────────────────────────────────── */
 interface Expense {
-  id: number;
+  id: string;
+  backendId: string;
   number: string;
   vendor: string;
   category: string;
@@ -54,15 +58,29 @@ interface Expense {
   amount: string;
 }
 
-const expenses: Expense[] = [
-  { id: 2, number: "#2", vendor: "SST", category: "Accountants", defaultTaxes: "Test Tax", note: "No Notes", date: "Jun 16, 2026", amount: "$0.00" },
-  { id: 3, number: "#3", vendor: "SST", category: "Advisers", defaultTaxes: "", note: "No Notes", date: "Jul 28, 1978", amount: "$0.00" },
-];
+const mapExpenseRow = (row: ExpenseListRow): Expense => ({
+  id: row._id,
+  backendId: row._id,
+  number: row.number.startsWith("#") ? row.number : `#${String(row.number).replace(/^#/, "")}`,
+  vendor: row.vendorName,
+  category: row.category,
+  defaultTaxes: "",
+  note: row.note,
+  date: row.dateLabel,
+  amount: fmtMoney(row.amount),
+});
+
+const expSortField = (label: string) => {
+  if (label === "Amount") return "total";
+  if (label === "Expense #") return "invoice_number";
+  if (label === "Category") return "category";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "vendor_name";
+  return "date";
+};
 
 const sortFields = ["Name", "First Name", "Last Name", "Expense Date", "Expense #", "Category", "Amount"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList = ["All", "Trash"];
-const vendorList = ["bdcalling", "bipul company", "Ex aut sequi ad libe", "Explicabo Doloremqu", "Officiis ullam labor", "SSE", "SST"];
 const categoryList = ["Accountants", "Advisers", "Advertising", "Bank Fees", "Office Supplies", "Travel", "Utilities", "Meals & Entertainment"];
 const taxList = ["Test Tax", "new test tax", "VAT", "GST"];
 const recurringList = ["Never", "Daily", "Weekly", "Monthly", "Yearly"];
@@ -464,28 +482,54 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
 };
 
 export const Expenses: React.FC = () => {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const dbExpenses = useCollection<any>("expenses");
   const dbVendors = useCollection<any>("vendors", "name");
-  const vendorList = useMemo(() => dbVendors.map((v) => v.name), [dbVendors]);
-  const expenses: Expense[] = useMemo(
-    () => dbExpenses.slice().sort((a, b) => b.id - a.id).map((e) => ({
-      id: e.id, number: e.number, vendor: dbVendors.find((v) => v.id === e.vendorId)?.name || "—",
-      category: e.category || "—", defaultTaxes: e.defaultTaxes || "", note: e.notes || "No Notes",
-      date: e.date, amount: fmtMoney(e.total ?? e.amount),
-    })),
-    [dbExpenses, dbVendors],
-  );
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navSelectedId = navState?.selectedId;
   const [expModal, setExpModal] = useState(false);
-  const [selectedId, setSelectedId] = useState(2);
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
+  useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
   const [sortBy, setSortBy] = useState("Expense Date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "email">(null);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, vendorFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["expenses-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchExpenses({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(expSortField(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+  const expenses: Expense[] = useMemo(
+    () => (listData?.rows ?? []).map(mapExpenseRow).filter((row) => !vendorFilter || row.vendor === vendorFilter),
+    [listData?.rows, vendorFilter],
+  );
+  const vendorList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.vendorName).filter((n) => n && n !== "—"))],
+    [listData?.rows],
+  );
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
   const [mode, setMode] = useState<"view" | "create" | "edit">(openCreateFromNav ? "create" : "view");
   useEffect(() => {
@@ -497,29 +541,28 @@ export const Expenses: React.FC = () => {
   const [dupOpen, setDupOpen] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = expenses.filter(
-      (i) =>
-        (vendorFilter === null || i.vendor === vendorFilter) &&
-        (search.trim() === "" || i.vendor.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search) || i.category.toLowerCase().includes(search.toLowerCase())),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Amount") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Expense #") r = a.id - b.id;
-      else if (sortBy === "Category") r = a.category.localeCompare(b.category);
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.vendor.localeCompare(b.vendor);
-      else r = a.id - b.id; // Expense Date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [expenses, sortBy, sortDir, vendorFilter, search]);
-
+  const filtered = expenses;
   const selected = expenses.find((i) => i.id === selectedId) || expenses[0];
-  const selectedDb: any = dbExpenses.find((e) => e.id === (selected?.id ?? selectedId)) || {};
+  const selectedDb: any =
+    dbExpenses.find((e) => String(e._id) === selected?.backendId || String(e.id) === selectedId) ||
+    (selected
+      ? {
+          _id: selected.backendId,
+          number: selected.number,
+          category: selected.category,
+          notes: selected.note,
+          date: selected.date,
+          total: parseFloat(selected.amount.replace(/[^0-9.-]/g, "")) || 0,
+        }
+      : {});
+
+  useEffect(() => {
+    if (expenses.length > 0 && !expenses.some((p) => p.id === selectedId)) {
+      setSelectedId(expenses[0].id);
+    }
+  }, [expenses, selectedId]);
   const selectedVendor: any = dbVendors.find((v) => v.id === selectedDb.vendorId) || {};
   const expTotal = selectedDb.total ?? selectedDb.amount ?? 0;
 
@@ -557,27 +600,33 @@ export const Expenses: React.FC = () => {
     const { id, number, createdAt, updatedAt, ...rest } = selectedDb;
     const n = await nextNumber("expenses");
     const newId = await repo.add("expenses", { ...rest, number: "#" + n, ts: Date.now() });
-    setSelectedId(newId);
+    setSelectedId(String(newId));
+    void queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
     showToast("Expense duplicated", "success");
   };
   const trashCurrent = async () => {
-    await repo.remove("expenses", selectedDb.id);
-    showToast(`Expense ${selectedDb.number} moved to trash`, "success");
-    setSelectedId(expenses.find((e) => e.id !== selectedDb.id)?.id ?? 0);
+    const id = selected?.id;
+    if (!id) return;
+    await deleteExpense(id);
+    showToast(`Expense ${selected?.number} moved to trash`, "success");
+    setSelectedId(expenses.find((e) => e.id !== id)?.id ?? "");
+    void queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
     setConfirmAction(null);
   };
   const trashSelectedExp = async () => {
     const ids = [...checked];
-    await repo.removeMany("expenses", ids);
+    if (ids.length === 0) { showToast("Select expenses to delete", "warning"); return; }
+    await deleteExpenses(ids);
     showToast(`${ids.length} ${ids.length === 1 ? "expense" : "expenses"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(expenses.find((e) => !ids.includes(e.id))?.id ?? 0);
+    if (ids.includes(selectedId)) setSelectedId(expenses.find((e) => !ids.includes(e.id))?.id ?? "");
+    void queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
     setConfirmAction(null);
     exitSelect();
   };
   /* Selection-bar Create Invoice — one invoice from all checked expenses. */
   const createInvoiceFromSelected = async () => {
     if (checked.size === 0) { showToast("Select expenses to create an invoice", "warning"); return; }
-    const rows = dbExpenses.filter((e) => checked.has(e.id));
+    const rows = dbExpenses.filter((e) => checked.has(String(e._id)) || checked.has(String(e.id)));
     exitSelect();
     await invoiceFromExpenses(rows);
   };
@@ -588,7 +637,7 @@ export const Expenses: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = expenses.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -627,7 +676,7 @@ export const Expenses: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-200">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search expenses..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search expenses..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -641,7 +690,7 @@ export const Expenses: React.FC = () => {
                 ))}
                 <div className="border-t border-gray-200 my-1" />
                 {sortDirections.map((d) => (
-                  <button key={d} onClick={() => { setSortDir(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
+                  <button key={d} onClick={() => { setSortDir(d as "Ascending" | "Descending"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
                 ))}
               </>
             )}
@@ -694,12 +743,18 @@ export const Expenses: React.FC = () => {
           </div>
         </div>
 
-        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Expenses`} />
+        <ListSidebarFooter
+          total={money(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Expenses`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {expModal ? (
-        <ExpenseFormLive onClose={() => setExpModal(false)} onSaved={(id) => { setMode("view"); setSelectedId(id); }} />
+        <ExpenseFormLive onClose={() => setExpModal(false)} onSaved={(id) => { setMode("view"); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["expenses-list"] }); }} />
       ) : selectMode ? (
         <section className="module-empty-panel">
           <div className="text-center">
@@ -710,7 +765,7 @@ export const Expenses: React.FC = () => {
           </div>
         </section>
       ) : mode !== "view" ? (
-        <ExpenseFormLive initial={selectedDb} onClose={() => setMode("view")} onSaved={(id) => setSelectedId(id)} />
+        <ExpenseFormLive initial={selectedDb} onClose={() => setMode("view")} onSaved={(id) => { setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["expenses-list"] }); }} />
       ) : (
         <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}

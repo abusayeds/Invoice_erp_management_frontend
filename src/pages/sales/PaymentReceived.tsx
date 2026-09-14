@@ -10,11 +10,14 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
 import { showToast } from "@/utils/toast";
 import {
   Search,
@@ -38,7 +41,8 @@ import {
 
 /* ── Types & data ──────────────────────────────────────────────── */
 interface Payment {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   number: string;
   note: string;
@@ -47,26 +51,43 @@ interface Payment {
   method: string;
 }
 
-const payments: Payment[] = [
-  { id: 13, name: "bdcalling", number: "#todays", note: "No Notes", date: "Today 08:24 PM", amount: "$0.00", method: "Master Card" },
-  { id: 12, name: "STT", number: "#13334", note: "No Notes", date: "Jun 18, 2026", amount: "$0.00", method: "Cash" },
-  { id: 11, name: "SMT", number: "#12", note: "hi", date: "Jun 18, 2026", amount: "$0.00", method: "SNC" },
-  { id: 10, name: "STA", number: "#11", note: "9", date: "Jun 17, 2026", amount: "$1,730.00", method: "Cash" },
-  { id: 9, name: "Harum ut dolore aliq", number: "#10", note: "13 hi", date: "Jun 17, 2026", amount: "$12,303.16", method: "Master Card" },
-  { id: 8, name: "Dolor perspiciatis", number: "#9", note: "8", date: "Jun 17, 2026", amount: "$20,178.72", method: "Vitae voluptatum acc" },
-  { id: 7, name: "SMT", number: "#6", note: "5", date: "Jun 16, 2026", amount: "$1,725.00", method: "SNC" },
-  { id: 6, name: "sayed cpy 1", number: "#5", note: "4", date: "Jun 16, 2026", amount: "$450.00", method: "iZettle" },
-  { id: 5, name: "sayed cpy", number: "#4", note: "3", date: "Jun 16, 2026", amount: "$139.60", method: "iZettle" },
-  { id: 4, name: "SMT", number: "#3", note: "No Notes", date: "Jun 16, 2026", amount: "$1,700.00", method: "Cash" },
-  { id: 3, name: "STA", number: "#2", note: "2", date: "Jun 16, 2026", amount: "$50.00", method: "Cash" },
-  { id: 2, name: "STT", number: "#1", note: "1", date: "Apr 27, 2026", amount: "$0.00", method: "Cash" },
-];
+const paymentCustomerName = (doc: BackendPaymentReceivedDoc): string => {
+  const c = doc.customer_id;
+  if (c && typeof c === "object") {
+    return (c as any).businessProfile?.companyName?.trim() || (c as any).name?.trim() || "—";
+  }
+  return "—";
+};
+
+const formatPayDate = (value?: string): string => {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const mapPaymentRow = (doc: BackendPaymentReceivedDoc): Payment => ({
+  id: doc._id,
+  backendId: doc._id,
+  name: paymentCustomerName(doc),
+  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : "—",
+  note: doc.notes || "No Notes",
+  date: formatPayDate(doc.date || doc.createdAt),
+  amount: fmtMoney(doc.total || 0),
+  method: Array.isArray(doc.payment_method) && doc.payment_method[0] ? String(doc.payment_method[0]) : "Cash",
+});
 
 const sortFields = ["Name", "First Name", "Last Name", "Payment date", "Payment #", "Amount"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList = ["All", "Trash"];
-const customerList = ["bdcalling", "STT", "SMT", "STA", "Harum ut dolore aliq", "Dolor perspiciatis", "sayed cpy", "sayed cpy 1"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
+
+const paySortField = (label: string) => {
+  if (label === "Amount") return "total";
+  if (label === "Payment #") return "payment_number";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "customer_name";
+  return "date";
+};
 
 /* ── Outside-click dropdown ────────────────────────────────────── */
 const Dropdown: React.FC<{
@@ -194,8 +215,8 @@ const EmailModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p 
 /* ── Record Payment modal (pays a live invoice → updates it) ───── */
 const payMethods = ["Cash", "Master Card", "iZettle", "Stripe", "PayPal", "Bank Transfer", "SNC"];
 
-const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: number) => void; record?: any }> = ({ onClose, onSaved, record }) => {
-  const isEdit = !!record?.id;
+const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | number) => void; record?: any }> = ({ onClose, onSaved, record }) => {
+  const isEdit = !!(record?.id || record?._id);
   const invoices = useCollection<any>("invoices");
   const customers = useCollection<any>("customers", "name");
   const unpaid = useMemo(() => invoices.filter((i) => (i.amountDue || 0) > 0).sort((a, b) => b.id - a.id), [invoices]);
@@ -289,24 +310,15 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: number) =
 };
 
 export const PaymentReceived: React.FC = () => {
-  const dbPayments = useCollection<any>("paymentsReceived");
-  const dbCustomers = useCollection<any>("customers", "name");
-  const payments: Payment[] = useMemo(
-    () => dbPayments.slice().sort((a, b) => b.id - a.id).map((p) => ({
-      id: p.id, name: dbCustomers.find((c) => c.id === p.customerId)?.name || "—",
-      number: p.number, note: p.notes || "No Notes", date: p.date, amount: fmtMoney(p.amount), method: p.method || "Cash",
-    })),
-    [dbPayments, dbCustomers],
-  );
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  // Opened from an activity link / Header create menu.
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
   const navSelectedId = navState?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 0);
-  useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
+  useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   useEffect(() => {
     if (navState?.openCreate) {
       setCreateOpen(true);
@@ -314,47 +326,63 @@ export const PaymentReceived: React.FC = () => {
     }
   }, [navState?.openCreate, location.pathname, navigate]);
   const [sortBy, setSortBy] = useState("Payment date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "preview" | "email">(null);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = payments.filter(
-      (i) =>
-        (statusFilter === "All" || (statusFilter === "Trash" ? false : true)) &&
-        (customerFilter === null || i.name === customerFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Amount") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Payment #") r = a.id - b.id;
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id; // Payment date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [payments, sortBy, sortDir, customerFilter, search, statusFilter]);
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
 
+  const { data: listData } = useQuery({
+    queryKey: ["payment-received-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchPaymentReceived({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(paySortField(sortBy), sortDir),
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+  const payments: Payment[] = useMemo(
+    () => (listData?.rows ?? []).map(mapPaymentRow).filter((row) => !customerFilter || row.name === customerFilter),
+    [listData?.rows, customerFilter],
+  );
+  const customerList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map(mapPaymentRow).map((p) => p.name).filter((n) => n && n !== "—"))],
+    [listData?.rows],
+  );
+
+  const filtered = payments;
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
-  const selectedDb: any = dbPayments.find((d) => d.id === (selected?.id ?? selectedId)) || {};
+  const dbPayments = useCollection<any>("paymentsReceived");
+  const selectedDb: any = dbPayments.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {
+    number: selected?.number,
+    notes: selected?.note,
+    date: selected?.date,
+    amount: selected ? parseFloat(selected.amount.replace(/[^0-9.-]/g, "")) || 0 : 0,
+    method: selected?.method,
+    _id: selected?.backendId,
+  };
 
-  // Keep selectedId pointing at a real payment so the detail, edit and PDF preview
-  // all use the same record (the hardcoded default id often matches nothing, which
-  // made the receipt PDF render a different payment than the one shown).
   useEffect(() => {
     if (payments.length > 0 && !payments.some((p) => p.id === selectedId)) {
       setSelectedId(payments[0].id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payments]);
+  }, [payments, selectedId]);
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -362,14 +390,16 @@ export const PaymentReceived: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = payments.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   const bulkTrash = async () => {
     const ids = [...checked];
     if (ids.length === 0) { showToast("Select payments to delete", "info"); return; }
-    await repo.removeMany("paymentsReceived", ids);
-    showToast(`${ids.length} ${ids.length === 1 ? "payment" : "payments"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(payments.find((i) => !ids.includes(i.id))?.id ?? 0);
+    if (statusFilter === "Trash") await hardDeletePaymentReceivedMany(ids);
+    else await Promise.all(ids.map((id) => deletePaymentReceived(id)));
+    showToast(`${ids.length} ${ids.length === 1 ? "payment" : "payments"} ${statusFilter === "Trash" ? "permanently deleted" : "moved to trash"}`, "success");
+    void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] });
+    if (ids.includes(selectedId)) setSelectedId(payments.find((i) => !ids.includes(i.id))?.id ?? "");
     exitSelect();
   };
   useEffect(() => {
@@ -421,7 +451,7 @@ export const PaymentReceived: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search payments..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search payments..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -493,14 +523,20 @@ export const PaymentReceived: React.FC = () => {
           </div>
         </div>
 
-        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Payments`} />
+        <ListSidebarFooter
+          total={money(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Payments`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen ? (
-        <RecordPaymentForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSortBy("Payment date"); setSelectedId(id); }} />
+        <RecordPaymentForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSortBy("Payment date"); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] }); }} />
       ) : editOpen ? (
-        <RecordPaymentForm key={selectedId} record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
+        <RecordPaymentForm key={selectedId} record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">

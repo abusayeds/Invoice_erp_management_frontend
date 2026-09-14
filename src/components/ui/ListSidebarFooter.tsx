@@ -1,6 +1,6 @@
 /**
- * Shared list-sidebar footer: total (distinct color) + count + backend prev/next arrows.
- * Arrows render only when previous/next pages exist.
+ * Shared list-sidebar footer: one line — prev | total · count | next.
+ * White text/arrows on dark bar. Arrows always visible; disabled when no page.
  */
 import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -9,9 +9,9 @@ import type { TPartyPagination } from "@/services/customerTypes";
 export const LIST_PAGE_SIZE = 20;
 
 export type ListSidebarFooterProps = {
-  /** Amount / summary line (e.g. "$1,200.00 Due") — uses a distinct color from the old gray footer. */
+  /** Amount / summary (e.g. "$1,200.00 Due") */
   total: React.ReactNode;
-  /** Count line (e.g. "12 Invoices") */
+  /** Count line joined with total in the center (e.g. "12 Invoices") */
   countLabel: string;
   pagination?: Pick<TPartyPagination, "totalPage" | "currentPage" | "totalData"> | null;
   page?: number;
@@ -27,44 +27,40 @@ export function ListSidebarFooter({
 }: ListSidebarFooterProps) {
   const current = page ?? pagination?.currentPage ?? 1;
   const totalPage = Math.max(1, pagination?.totalPage ?? 1);
-  const showPrev = !!onPageChange && current > 1;
-  const showNext = !!onPageChange && current < totalPage;
-  const showPager = showPrev || showNext;
+  const canPrev = !!onPageChange && current > 1;
+  const canNext = !!onPageChange && current < totalPage;
+
+  const arrowBtn =
+    "w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-colors disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent text-white hover:bg-slate-600";
 
   return (
-    <div className="px-4 py-3 border-t border-slate-200 bg-slate-100">
-      <div className="text-sm font-semibold text-center text-sky-700">{total}</div>
-      <div className="mt-0.5 text-xs text-center text-slate-500">{countLabel}</div>
-      {showPager && (
-        <div className="mt-2 flex items-center justify-between">
-          {showPrev ? (
-            <button
-              type="button"
-              title="Previous page"
-              aria-label="Previous page"
-              onClick={() => onPageChange!(current - 1)}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-slate-600 hover:bg-white hover:text-sky-700"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          ) : (
-            <span className="w-8 h-8" aria-hidden />
-          )}
-          {showNext ? (
-            <button
-              type="button"
-              title="Next page"
-              aria-label="Next page"
-              onClick={() => onPageChange!(current + 1)}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-slate-600 hover:bg-white hover:text-sky-700"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <span className="w-8 h-8" aria-hidden />
-          )}
-        </div>
-      )}
+    <div className="flex items-center gap-2 px-3 py-2.5 border-t border-slate-600 bg-slate-700">
+      <button
+        type="button"
+        title="Previous page"
+        aria-label="Previous page"
+        disabled={!canPrev}
+        onClick={() => canPrev && onPageChange!(current - 1)}
+        className={arrowBtn}
+      >
+        <ChevronLeft className="w-5 h-5" strokeWidth={2} />
+      </button>
+
+      <div className="min-w-0 flex-1 text-center leading-tight">
+        <div className="text-base font-semibold text-white truncate">{total}</div>
+        <div className="text-sm text-white/90 truncate">{countLabel}</div>
+      </div>
+
+      <button
+        type="button"
+        title="Next page"
+        aria-label="Next page"
+        disabled={!canNext}
+        onClick={() => canNext && onPageChange!(current + 1)}
+        className={arrowBtn}
+      >
+        <ChevronRight className="w-5 h-5" strokeWidth={2} />
+      </button>
     </div>
   );
 }

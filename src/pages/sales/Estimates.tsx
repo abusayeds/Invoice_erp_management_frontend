@@ -292,18 +292,6 @@ export const Estimates: React.FC = () => {
 
   const dbEstimates = useCollection<any>("estimates");
   const dbCustomers = useCollection<any>("customers", "name");
-  const localRows = useMemo<EstimateRow[]>(() => dbEstimates.slice().sort((a, b) => b.id - a.id).map((item) => ({
-    id: item.id,
-    backendId: item._id || String(item.id),
-    name: customerDisplayName(dbCustomers.find((c) => c.id === item.customerId)) || item.customerName || "—",
-    customerSubtitle: customerDisplaySubtitle(dbCustomers.find((c) => c.id === item.customerId)),
-    number: item.number,
-    note: item.notes || "No Notes",
-    date: item.date,
-    amount: fmtMoney(item.total),
-    status: item.status || "Draft",
-    currency: item.currency || "USD",
-  })), [dbCustomers, dbEstimates]);
 
   const dateRange = dateRangeFor(dateFilter);
   useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
@@ -328,19 +316,7 @@ export const Estimates: React.FC = () => {
 
   const filtered = useMemo<EstimateRow[]>(() => {
     const rows = backendList?.rows ?? [];
-    if (rows.length === 0 && (search || customerFilter || dateFilter !== "All" || statusFilter !== "All")) return [];
-    const source = rows.length > 0 ? rows : localRows.map((item) => ({
-      _id: item.backendId,
-      number: item.number.replace(/^#/, ""),
-      customerName: item.name,
-      customerSubtitle: item.customerSubtitle,
-      amount: numberValue(item.amount.replace(/[^0-9.-]/g, "")),
-      dateLabel: item.date,
-      status: item.status,
-      currency: item.currency,
-      customerId: "",
-    }));
-    return source.map((row) => {
+    return rows.map((row) => {
       const linkedLocal = dbEstimates.find((item) => item._id === row._id) || dbEstimates.find((item) => String(item.number).replace(/^#/, "") === row.number);
       return {
         id: linkedLocal?.id ?? (Number(row.number) || Math.abs(String(row._id).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))),
@@ -355,7 +331,7 @@ export const Estimates: React.FC = () => {
         currency: row.currency || "USD",
       };
     });
-  }, [backendList?.rows, customerFilter, dateFilter, dbCustomers, dbEstimates, localRows, search, statusFilter]);
+  }, [backendList?.rows, dbCustomers, dbEstimates]);
 
   useEffect(() => {
     if (filtered.length > 0 && !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);

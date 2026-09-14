@@ -11,10 +11,14 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney, db } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchProducts, deleteProduct, type ProductListRow } from "@/services/productsApi";
 import { showToast } from "@/utils/toast";
 import { api } from "../../lib/api/client";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
@@ -39,13 +43,14 @@ import {
 
 /* ── Types & data ──────────────────────────────────────────────── */
 interface Product {
-  id: number;
+  id: string;
+  backendId: string;
   image?: string | null;
   name: string;
   category: string;
   note: string;
   price: string;
-  stock: number | null; // null = no inventory tracking (no Stock line)
+  stock: number | null;
   sku: string;
   qty: string;
   unit: string;
@@ -59,26 +64,38 @@ interface Product {
   toBilled: string;
 }
 
-const D = { buyTax: "Test Tax", sellTax: "Test Tax", onHand: "0.00", committed: "0.00", available: "0.00", toInvoiced: "0.00", toBilled: "0.00" };
-const products: Product[] = [
-  { id: 1, name: "cat", category: "Advisers", note: "No Notes", price: "$321.00", stock: 0, sku: "3213", qty: "1", unit: "box", buyPrice: "$54.00", buyTax: "new test tax", sellTax: "Test Tax", onHand: "0.00", committed: "-1.00", available: "1.00", toInvoiced: "-1.00", toBilled: "0.00" },
-  { id: 2, name: "Drive", category: "Bookkeepers", note: "hi products , this is drive", price: "$236.00", stock: 167, sku: "5245", qty: "11", unit: "cm", buyPrice: "$236.00", ...D, onHand: "167.00", committed: "-22.00", available: "189.00", toInvoiced: "-22.00", toBilled: "189.00" },
-  { id: 3, name: "dwccwc", category: "No Category", note: "No Notes", price: "$2.00", stock: null, sku: "—", qty: "0", unit: "pcs", buyPrice: "$2.00", ...D },
-  { id: 4, name: "dwccwc", category: "No Category", note: "No Notes", price: "$2.00", stock: 0, sku: "—", qty: "0", unit: "pcs", buyPrice: "$2.00", ...D },
-  { id: 5, name: "hi", category: "No Category", note: "No Notes", price: "$0.00", stock: null, sku: "—", qty: "0", unit: "pcs", buyPrice: "$0.00", ...D },
-  { id: 6, name: "hi", category: "No Category", note: "No Notes", price: "$0.00", stock: 0, sku: "—", qty: "0", unit: "pcs", buyPrice: "$0.00", ...D },
-  { id: 7, name: "pen", category: "Accountants", note: "No Notes", price: "$0.00", stock: 0, sku: "—", qty: "0", unit: "pcs", buyPrice: "$0.00", ...D },
-  { id: 8, name: "Pen drive", category: "Advisers", note: "hi this is pen drive product", price: "$98.00", stock: 24, sku: "—", qty: "1", unit: "box", buyPrice: "$98.00", ...D, onHand: "24.00", committed: "0.00", available: "24.00", toInvoiced: "0.00", toBilled: "24.00" },
-  { id: 9, name: "Product 1", category: "Websites", note: "this is product 1", price: "$25.00", stock: 12, sku: "—", qty: "1", unit: "pcs", buyPrice: "$25.00", ...D, onHand: "12.00", committed: "0.00", available: "12.00", toInvoiced: "0.00", toBilled: "12.00" },
-  { id: 10, name: "Product 1", category: "Websites", note: "this is product 1", price: "$25.00", stock: 12, sku: "—", qty: "1", unit: "pcs", buyPrice: "$25.00", ...D, onHand: "12.00", committed: "0.00", available: "12.00", toInvoiced: "0.00", toBilled: "12.00" },
-  { id: 11, name: "Product 2", category: "Websites", note: "No Notes", price: "$25.00", stock: 8, sku: "—", qty: "1", unit: "pcs", buyPrice: "$25.00", ...D, onHand: "8.00", committed: "0.00", available: "8.00", toInvoiced: "0.00", toBilled: "8.00" },
-  { id: 12, name: "test", category: "No Category", note: "No Notes", price: "$0.00", stock: 0, sku: "—", qty: "0", unit: "pcs", buyPrice: "$0.00", ...D },
-  { id: 13, name: "xyz", category: "No Category", note: "No Notes", price: "$0.00", stock: null, sku: "—", qty: "0", unit: "pcs", buyPrice: "$0.00", ...D },
-];
+const mapProductRow = (row: ProductListRow): Product => ({
+  id: row._id,
+  backendId: row._id,
+  image: row.image,
+  name: row.name,
+  category: row.category,
+  note: row.note,
+  price: money(row.price),
+  stock: row.stock,
+  sku: row.sku,
+  qty: row.qty,
+  unit: row.unit,
+  buyPrice: money(row.buyPrice),
+  buyTax: "—",
+  sellTax: "—",
+  onHand: row.onHand,
+  committed: row.committed,
+  available: row.available,
+  toInvoiced: row.toInvoiced,
+  toBilled: row.toBilled,
+});
+
+const productSortField = (label: string) => {
+  if (label === "Price") return "pricing.sellPrice";
+  if (label === "Stock") return "stock.onHandStock";
+  if (label === "Category") return "category";
+  if (label === "Created On") return "createdAt";
+  return "productName";
+};
 
 const sortFields = ["Name", "Price", "Stock", "Category", "Created On"];
 const statusList = ["All", "Active", "Archived", "Trash"];
-const categoryList = ["Advisers", "Bookkeepers", "Accountants", "Websites", "No Category"];
 const unitTypes = ["box", "cm", "kg", "pcs", "ft"];
 const taxList = ["Test Tax", "new test tax", "VAT", "GST"];
 
@@ -524,11 +541,15 @@ const ProductForm: React.FC<{ mode: "create" | "edit" | "variation"; product?: P
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const Product: React.FC = () => {
-  const [selectedId, setSelectedId] = useState(1);
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState("");
   const [sortBy, setSortBy] = useState("Created On");
+  const [sortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const location = useLocation();
   const navigate = useNavigate();
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
@@ -542,47 +563,52 @@ export const Product: React.FC = () => {
   const [modal, setModal] = useState<null | "stock" | "variation" | "settings">(null);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  // live from the shared datastore
-  const dbProducts = useCollection<any>("products", "name");
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, statusFilter, categoryFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["products-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchProducts({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(productSortField(sortBy), sortDir),
+      isDeleted: statusFilter === "Trash" || undefined,
+      isArchive: statusFilter === "Archived" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
   const products: Product[] = useMemo(
-    () => dbProducts.map((p) => ({
-      id: p.id, image: p.image || null, name: p.name, category: p.category || "No Category", note: p.note || "No Notes",
-      price: money(p.price), stock: p.stock ?? null, sku: p.sku || "—",
-      qty: String(p.qty ?? p.stock ?? "0"), unit: p.unit || "pcs",
-      buyPrice: money(p.buyPrice), buyTax: p.buyTax || "Test Tax", sellTax: p.sellTax || "Test Tax",
-      // stored stock-status fields win; otherwise derive from stock as before
-      onHand: p.onHand ?? Number(p.stock ?? 0).toFixed(2), committed: p.committed ?? "0.00", available: p.available ?? Number(p.stock ?? 0).toFixed(2),
-      toInvoiced: p.toInvoiced ?? "0.00", toBilled: p.toBilled ?? Number(p.stock ?? 0).toFixed(2),
-    })),
-    [dbProducts],
+    () => (listData?.rows ?? []).map(mapProductRow).filter((row) => !categoryFilter || row.category === categoryFilter),
+    [listData?.rows, categoryFilter],
+  );
+  const categoryList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.category).filter((c) => c && c !== "No Category"))],
+    [listData?.rows],
   );
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = products.filter(
-      (i) =>
-        statusFilter !== "Trash" &&
-        statusFilter !== "Archived" &&
-        (categoryFilter === null || i.category === categoryFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase())),
-    );
-    list = [...list].sort((a, b) => {
-      if (sortBy === "Created On") return b.id - a.id;
-      if (sortBy === "Price") return toNum(b.price) - toNum(a.price);
-      if (sortBy === "Stock") return (b.stock ?? -1) - (a.stock ?? -1);
-      if (sortBy === "Category") return a.category.localeCompare(b.category);
-      return a.name.localeCompare(b.name);
-    });
-    return list;
-  }, [products, sortBy, categoryFilter, search, statusFilter]);
-
+  const filtered = products;
   const selected = products.find((i) => i.id === selectedId) || products[0];
+
+  useEffect(() => {
+    if (products.length > 0 && !products.some((p) => p.id === selectedId)) {
+      setSelectedId(products[0].id);
+    }
+  }, [products, selectedId]);
+
+  const dbProducts = useCollection<any>("products", "name");
+  const selectedLocal = dbProducts.find((p) => String(p._id) === selected?.backendId);
 
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -590,7 +616,7 @@ export const Product: React.FC = () => {
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim();
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!categoryFilter;
   if (!selected && mode !== "create" && !hasActiveFilters) return <ListEmptyState title="No products yet" onCreate={() => setMode("create")} createLabel="New Product" />;
 
   return (
@@ -621,7 +647,7 @@ export const Product: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search products..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -678,10 +704,13 @@ export const Product: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <div className="px-4 py-3 border-t border-gray-200 text-center bg-gray-50">
-          <div className="text-xs text-gray-500">{filtered.length} Products</div>
-        </div>
+        <ListSidebarFooter
+          total={`${listPagination?.totalData ?? filtered.length}`}
+          countLabel="Products"
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
@@ -692,10 +721,10 @@ export const Product: React.FC = () => {
           </div>
         </section>
       ) : mode === "create" ? (
-        <ProductForm mode="create" title="Create Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("products", { name: d.name || "Untitled", category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled, taxId: 1, status: "Active" }); }} />
-      ) : mode === "edit" ? (
-        <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.update("products", selected.id, { name: d.name, category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); }} />
-      ) : (
+        <ProductForm mode="create" title="Create Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("products", { name: d.name || "Untitled", category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled, taxId: 1, status: "Active" }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
+      ) : mode === "edit" && selected ? (
+        <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { if (selectedLocal?.id != null) await repo.update("products", selectedLocal.id, { name: d.name, category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
+      ) : selected ? (
         <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}
           <div className="module-title-bar">
@@ -710,7 +739,7 @@ export const Product: React.FC = () => {
                     <button onClick={() => { setModal("variation"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Layers className="w-4 h-4 text-gray-400" /> Add Variation</button>
                     <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</button>
                     <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"><Archive className="w-4 h-4" /> Archive</button>
-                    <button onClick={async () => { await repo.remove("products", selected.id); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
+                    <button onClick={async () => { if (selected?.backendId) { await deleteProduct(selected.backendId); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
                   </>
                 )}
               </Dropdown>
@@ -766,11 +795,11 @@ export const Product: React.FC = () => {
             <div className="text-sm text-gray-800 mt-1">{selected.note === "No Notes" ? "" : selected.note}</div>
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* ════════ MODALS ════════ */}
-      {modal === "stock" && <UpdateStockModal onClose={() => setModal(null)} product={selected} />}
-      {modal === "variation" && <ProductForm mode="variation" product={selected} title={selected.name} asModal onClose={() => setModal(null)} />}
+      {modal === "stock" && selected && <UpdateStockModal onClose={() => setModal(null)} product={selected} />}
+      {modal === "variation" && selected && <ProductForm mode="variation" product={selected} title={selected.name} asModal onClose={() => setModal(null)} />}
       {modal === "settings" && <AppSettingsModal initialTab="Product" onClose={() => setModal(null)} />}
     </div>
   );

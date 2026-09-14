@@ -12,8 +12,11 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchVendorPayments, type VendorPaymentListRow } from "@/services/vendorPaymentsApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
@@ -40,7 +43,8 @@ import {
 
 /* ── Types & data ──────────────────────────────────────────────── */
 interface Payment {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   number: string;
   note: string;
@@ -50,20 +54,28 @@ interface Payment {
   billNo: string;
 }
 
-const payments: Payment[] = [
-  { id: 7, name: "bipul company", number: "#998", note: "6", date: "Today 08:54 PM", amount: "$0.00", method: "Stripe", billNo: "#6" },
-  { id: 6, name: "Officiis ullam labor", number: "#576", note: "Exercitationem earum", date: "Jul 16, 2018", amount: "$0.00", method: "Sint exercitation es", billNo: "#5" },
-  { id: 5, name: "Ut ut nulla voluptat", number: "#229", note: "Dolore officia facil", date: "Apr 20, 2018", amount: "$0.00", method: "Itaque qui dolore es", billNo: "#4" },
-  { id: 4, name: "Explicabo Doloremqu", number: "#774", note: "Assumenda incididunt", date: "Dec 26, 2015", amount: "$0.00", method: "Ducimus ut dictamn", billNo: "#3" },
-  { id: 3, name: "Ex aut sequi ad libe", number: "#945", note: "Aliqua Ut adipisci", date: "Jul 5, 1996", amount: "$0.00", method: "Obcaecati maxime", billNo: "#2" },
-  { id: 2, name: "Est lorem ut maxime", number: "#997", note: "Et veniam adipisici", date: "May 25, 1990", amount: "$0.00", method: "Consequuntur esse", billNo: "#1" },
-  { id: 1, name: "Est officiis nihil", number: "#398", note: "Officiis libero volu", date: "Nov 16, 1984", amount: "$0.00", method: "Vitae voluptatum acc", billNo: "#0" },
-];
+const mapPaymentRow = (row: VendorPaymentListRow): Payment => ({
+  id: row._id,
+  backendId: row._id,
+  name: row.vendorName,
+  number: row.number.startsWith("#") ? row.number : `#${String(row.number).replace(/^#/, "")}`,
+  note: row.note,
+  date: row.dateLabel,
+  amount: fmtMoney(row.amount),
+  method: row.method,
+  billNo: row.billNo,
+});
+
+const paySortField = (label: string) => {
+  if (label === "Amount") return "total";
+  if (label === "Payment #") return "payment_number";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "vendor_name";
+  return "date";
+};
 
 const sortFields = ["Name", "First Name", "Last Name", "Payment date", "Payment #", "Amount"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList = ["All", "Trash"];
-const vendorList = ["bipul company", "Officiis ullam labor", "Ut ut nulla voluptat", "Explicabo Doloremqu", "Ex aut sequi ad libe", "Est lorem ut maxime", "Est officiis nihil"];
 const paymentTypes = ["Stripe", "Paypal", "Venmo", "Cash", "Bank", "Custom", "UPI", "Google Pay", "Apple Pay", "Square"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
@@ -329,20 +341,12 @@ const RecordPaymentMadeModal: React.FC<{ onClose: () => void; onSaved: (id: numb
 };
 
 export const PaymentMade: React.FC = () => {
+  const queryClient = useQueryClient();
   const dbPayments = useCollection<any>("paymentsMade");
   const dbVendors = useCollection<any>("vendors", "name");
-  const dbBills = useCollection<any>("bills");
-  const payments: Payment[] = useMemo(
-    () => dbPayments.slice().sort((a, b) => b.id - a.id).map((p) => ({
-      id: p.id, name: dbVendors.find((v) => v.id === p.vendorId)?.name || "—",
-      number: p.number, note: p.notes || "No Notes", date: p.date, amount: fmtMoney(p.amount),
-      method: p.method || "Cash", billNo: dbBills.find((b) => b.id === p.billId)?.number || "—",
-    })),
-    [dbPayments, dbVendors, dbBills],
-  );
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   useEffect(() => {
     if (navState?.openCreate) {
@@ -350,40 +354,58 @@ export const PaymentMade: React.FC = () => {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [navState?.openCreate, location.pathname, navigate]);
-  // Opened from an activity link → pre-select that payment.
   const navSelectedId = navState?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 7);
-  useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
+  useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   const [sortBy, setSortBy] = useState("Payment date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "preview" | "email" | "edit">(null);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = payments.filter(
-      (i) =>
-        (vendorFilter === null || i.name === vendorFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Amount") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Payment #") r = a.id - b.id;
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id; // Payment date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [payments, sortBy, sortDir, vendorFilter, search]);
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
 
+  const { data: listData } = useQuery({
+    queryKey: ["vendor-payments-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchVendorPayments({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(paySortField(sortBy), sortDir),
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+  const payments: Payment[] = useMemo(
+    () => (listData?.rows ?? []).map(mapPaymentRow).filter((row) => !vendorFilter || row.name === vendorFilter),
+    [listData?.rows, vendorFilter],
+  );
+  const vendorList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.vendorName).filter((n) => n && n !== "—"))],
+    [listData?.rows],
+  );
+
+  const filtered = payments;
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
+
+  useEffect(() => {
+    if (payments.length > 0 && !payments.some((p) => p.id === selectedId)) {
+      setSelectedId(payments[0].id);
+    }
+  }, [payments, selectedId]);
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -391,7 +413,7 @@ export const PaymentMade: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = payments.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -440,7 +462,7 @@ export const PaymentMade: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search payments..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search payments..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -454,7 +476,7 @@ export const PaymentMade: React.FC = () => {
                 ))}
                 <div className="border-t border-gray-200 my-1" />
                 {sortDirections.map((d) => (
-                  <button key={d} onClick={() => { setSortDir(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
+                  <button key={d} onClick={() => { setSortDir(d as "Ascending" | "Descending"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
                 ))}
               </>
             )}
@@ -512,7 +534,13 @@ export const PaymentMade: React.FC = () => {
           </div>
         </div>
 
-        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Payments`} />
+        <ListSidebarFooter
+          total={money(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Payments`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
@@ -590,9 +618,20 @@ export const PaymentMade: React.FC = () => {
 
       {/* ════════ MODALS ════════ */}
       {modal === "edit" && <EditModal onClose={() => setModal(null)} p={selected} />}
-      {modal === "preview" && (() => { const d: any = dbPayments.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="paymentMade" recordId={d.id} title={`Payment Made `} onClose={() => setModal(null)} />; })()}
+      {modal === "preview" && (() => {
+        const d: any = dbPayments.find((x) => String(x._id) === selectedId || String(x.id) === selectedId) || {};
+        return <PdfPreviewModal docType="paymentMade" recordId={d.id} title="Payment Made " onClose={() => setModal(null)} />;
+      })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} p={selected} />}
-      {createOpen && <RecordPaymentMadeModal onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />}
+      {createOpen && (
+        <RecordPaymentMadeModal
+          onClose={() => setCreateOpen(false)}
+          onSaved={(id) => {
+            setSelectedId(String(id));
+            void queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
+          }}
+        />
+      )}
     </div>
   );
 };

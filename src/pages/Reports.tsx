@@ -1,21 +1,34 @@
 /**
  * File: src/pages/Reports.tsx
- * Reports — two-pane report browser matching the reference design.
- * Left: "Reports" nav — collapsible categories (Business Overview / Sales /
- *       Purchases & Expenses / Items / Projects & Time Sheet / Taxes) each
- *       holding report links. Right: the selected report — title bar with
- *       Eye/Download/Print/WhatsApp/Mail, a filter-pill row ("Columns: N
- *       Selected" + report-specific filters), a data grid, a totals row and
- *       pagination. Eye/Download → PDF preview / export menu (CSV/PDF/XLS/HTML).
- * Backend not wired (per request) — data is hardcoded to match the design.
+ * Reports hub — Business Overview matches client Bill Report UI:
+ * flush left, borderless table, pill filters (Label | Value), live backend data.
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, downloadDocPdf } from "@/lib/db";
 import {
-  Search,
-  Plus,
+  loadReportView,
+  reportFilterKind,
+  today,
+  yearStart,
+  yearEnd,
+  type ReportView,
+} from "@/services/reportsApi";
+import type { BusinessOverviewView } from "@/services/businessOverviewApi";
+import type { DatePeriodKey, ReportFilters } from "@/services/reportTypes";
+import {
+  exportReportCsv,
+  exportReportHtml,
+  exportReportPdf,
+  exportReportXlsx,
+  type ExportGrid,
+} from "@/lib/reportExport";
+import { fetchCustomers } from "@/services/customersApi";
+import { fetchVendors } from "@/services/vendorsApi";
+import { fetchProducts } from "@/services/productsApi";
+import { api } from "@/lib/api/client";
+import {
   ChevronDown,
   ChevronUp,
   Check,
@@ -28,141 +41,83 @@ import {
   X,
   XCircle,
   Settings,
+  Loader2,
+  Plus,
 } from "lucide-react";
 
-/* ── money helpers ─────────────────────────────────────────────── */
-const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/* ── normalized report shape ───────────────────────────────────── */
-interface Col { label: string; right?: boolean; }
-interface Report {
-  name: string;
-  columnsSelected: number;
-  filters: string[];        // dashed filter pills (after the blue Columns pill)
-  cols: Col[];
-  rows: string[][];
-  totals: string[];         // totals row (formatted, aligned to cols)
-}
-
-/* ── Invoice Aging Report ──────────────────────────────────────── */
-const agingData: { name: string; b: [number, number, number, number] }[] = [
-  { name: "rahim", b: [0, 0, 0, 0] },
-  { name: "Dolore quidem nisi d", b: [0, 0, 0, 0] },
-  { name: "sayed cpy 1", b: [0, 0, 0, 0] },
-  { name: "STA", b: [0, 0, 52, 0] },
-  { name: "Harum ut dolore aliq", b: [0, 0, 0, 0] },
-  { name: "Sed aliquip eaque co", b: [0, 0, 0, 0] },
-  { name: "bdcalling", b: [0, 0, 0, 0] },
-  { name: "Dolor perspiciatis", b: [0, 0, 0, 0] },
-  { name: "Dignissimos quae ull", b: [0, 0, 0, 0] },
-  { name: "Vitae pariatur Vero", b: [0, 0, 0, 0] },
-  { name: "STT", b: [0, 0, 0, 55] },
-  { name: "Temporibus est dese", b: [0, 0, 0, 0] },
-  { name: "sayed cpy", b: [0, 0, 0, 0] },
-  { name: "SMT", b: [50, 160, 0, 0] },
-  { name: "Unknown Customer", b: [0, 0, 0, 0] },
-];
-const buildAging = (invoices: any[], customers: any[]): Report => {
-  const cols: Col[] = [{ label: "Name" }, { label: "0-30 Days", right: true }, { label: "31-60 Days", right: true }, { label: "61-90 Days", right: true }, { label: ">90 Days", right: true }, { label: "Total Outstanding", right: true }];
-  const now = Date.now();
-  const byCust: Record<number, number[]> = {};
-  invoices.forEach((inv) => {
-    const due = inv.amountDue || 0;
-    if (due <= 0) return;
-    const days = (now - (inv.ts || now)) / 86400000;
-    const bi = days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3;
-    (byCust[inv.customerId] ||= [0, 0, 0, 0])[bi] += due;
-  });
-  const sums = [0, 0, 0, 0, 0];
-  const rows = Object.entries(byCust).map(([cid, b]) => {
-    const total = b.reduce((s, n) => s + n, 0);
-    b.forEach((n, i) => (sums[i] += n));
-    sums[4] += total;
-    const name = customers.find((c) => c.id === Number(cid))?.name || "—";
-    return [name, ...b.map(money), money(total)];
-  });
-  return { name: "Invoice Aging Report", columnsSelected: 6, filters: ["All Date", "Report Type: PDF", "Customers : All", "Status: All"], cols, rows, totals: [`Total (${rows.length})`, ...sums.map(money)] };
-};
-
-/* ── Sales Report ──────────────────────────────────────────────── */
-const salesData = [
-  { sr: 16, type: "Invoice", cust: "bdcalling", status: "Paid", date: "Jun 20, 2026", due: "Jun 27, 2026", tax: 2571.12, ship: 0, sub: 3630.4, paid: 6201.52, amtDue: 0, total: 6201.52 },
-  { sr: 14, type: "Invoice", cust: "Sed aliquip eaque co", status: "Draft", date: "Jun 18, 2026", due: "Jun 18, 2026", tax: 3907.88, ship: 0, sub: 5186.0, paid: 0, amtDue: 9093.88, total: 9093.88 },
-  { sr: 13, type: "Credit Note", cust: "Vitae pariatur Vero", status: "Partial", date: "Jun 17, 2026", due: "Jun 17, 2026", tax: 2811.6, ship: 0, sub: 9022.6, paid: 6201.52, amtDue: 0, total: 9022.6 },
-  { sr: 12, type: "Invoice", cust: "Harum ut dolore aliq", status: "Paid", date: "Jun 15, 2026", due: "Jun 22, 2026", tax: 740.18, ship: 0, sub: 980.0, paid: 1720.18, amtDue: 0, total: 1720.18 },
-  { sr: 11, type: "Sales Receipt", cust: "Dolor perspiciatis", status: "Paid", date: "Jun 14, 2026", due: "Jun 14, 2026", tax: 0, ship: 0, sub: 450.0, paid: 450.0, amtDue: 0, total: 450.0 },
-  { sr: 9, type: "Estimate", cust: "Dignissimos quae ull", status: "Sent", date: "Jun 12, 2026", due: "Jun 19, 2026", tax: 312.0, ship: 0, sub: 4160.0, paid: 0, amtDue: 4472.0, total: 4472.0 },
-  { sr: 8, type: "Invoice", cust: "STA", status: "Unused", date: "Jun 10, 2026", due: "Jun 17, 2026", tax: 215.0, ship: 0, sub: 2150.0, paid: 0, amtDue: 2365.0, total: 2365.0 },
-  { sr: 7, type: "Credit Note", cust: "sayed cpy 1", status: "Unused", date: "Jun 08, 2026", due: "Jun 08, 2026", tax: 0, ship: 0, sub: 0.0, paid: 0, amtDue: 0, total: 0.0 },
-  { sr: 6, type: "Sales Receipt", cust: "rahim", status: "Paid", date: "May 30, 2026", due: "May 30, 2026", tax: 212.0, ship: 0, sub: 1377.0, paid: 1589.0, amtDue: 0, total: 1589.0 },
-  { sr: 5, type: "Invoice", cust: "SMT", status: "Due", date: "Apr 27, 2026", due: "Apr 27, 2026", tax: 0, ship: 0, sub: 160.0, paid: 0, amtDue: 160.0, total: 160.0 },
-];
-const buildSales = (invoices: any[], customers: any[]): Report => {
-  const cols: Col[] = [
-    { label: "Sr. No." }, { label: "Type" }, { label: "Customer" }, { label: "Status" }, { label: "Date" }, { label: "Due Date" },
-    { label: "Tax", right: true }, { label: "Shipping Cost", right: true }, { label: "Sub Total", right: true }, { label: "Amount Paid", right: true }, { label: "Amount Due", right: true }, { label: "Total", right: true },
-  ];
-  const cname = (id: number) => customers.find((c) => c.id === id)?.name || "—";
-  const s = { tax: 0, ship: 0, sub: 0, paid: 0, amtDue: 0, total: 0 };
-  const rows = invoices.slice().sort((a, b) => b.id - a.id).map((inv) => {
-    s.tax += inv.tax || 0; s.ship += inv.shipping || 0; s.sub += inv.subTotal || 0; s.paid += inv.amountPaid || 0; s.amtDue += inv.amountDue || 0; s.total += inv.total || 0;
-    return [String(inv.number).replace("#", ""), "Invoice", cname(inv.customerId), inv.status, inv.date, inv.due, money(inv.tax || 0), money(inv.shipping || 0), money(inv.subTotal || 0), money(inv.amountPaid || 0), money(inv.amountDue || 0), money(inv.total || 0)];
-  });
-  return {
-    name: "Sales Report", columnsSelected: 12,
-    filters: ["Group By None", "Type : All", "All Date", "Report Type: PDF", "Salesperson : All", "Customers : All", "Products: All"],
-    cols, rows,
-    totals: [`Total (${rows.length})`, "", "", "", "", "", money(s.tax), money(s.ship), money(s.sub), money(s.paid), money(s.amtDue), money(s.total)],
-  };
-};
-
-/* ── generic fallback report ───────────────────────────────────── */
-const buildGeneric = (name: string): Report => {
-  const data = [
-    { n: "bdcalling", c: 4, t: 6201.52 }, { n: "Sed aliquip eaque co", c: 2, t: 9093.88 },
-    { n: "Harum ut dolore aliq", c: 3, t: 1720.18 }, { n: "Dolor perspiciatis", c: 1, t: 450.0 },
-    { n: "SMT", c: 1, t: 160.0 },
-  ];
-  let cc = 0, tt = 0;
-  const rows = data.map((r) => { cc += r.c; tt += r.t; return [r.n, String(r.c), money(r.t)]; });
-  return {
-    name, columnsSelected: 3, filters: ["All Date", "Report Type: PDF", "Customers : All"],
-    cols: [{ label: "Name" }, { label: "Count", right: true }, { label: "Total", right: true }],
-    rows, totals: [`Total (${rows.length})`, String(cc), money(tt)],
-  };
-};
-
-/* ── nav structure ─────────────────────────────────────────────── */
 const categories: { title: string; items: string[] }[] = [
-  { title: "Business Overview", items: ["Profit & Loss", "Balance Sheet", "Cash Flow"] },
-  { title: "Sales", items: ["Invoice Aging Report", "Sales Report", "Estimate Report", "Payment Report", "Sales by Customer Report", "Sales by User Report", "Sales Report by Product", "Sales Report by Service", "Sales by Category Report"] },
-  { title: "Purchases & Expenses", items: ["Purchase Report", "Expense Report", "Purchase by Vendor Report", "Bill Aging Report"] },
+  {
+    title: "Business Overview",
+    items: ["Summary Report", "Quarters Report", "Profit by Product Report", "Profit & Loss"],
+  },
+  {
+    title: "Sales",
+    items: [
+      "Invoice Aging Report",
+      "Sales Report",
+      "Estimate Report",
+      "Payment Report",
+      "Sales by Customer Report",
+      "Sales by User Report",
+      "Sales Report by Product",
+      "Sales Report by Service",
+      "Sales by Category Report",
+    ],
+  },
+  {
+    title: "Purchases & Expenses",
+    items: ["Purchase Report", "Expense Report", "Purchase by Vendor Report", "Bill Aging Report"],
+  },
   { title: "Items", items: ["Product Report", "Service Report", "Stock Report"] },
   { title: "Projects & Time Sheet", items: ["Project Report", "Time Log Report"] },
   { title: "Taxes", items: ["Tax Summary Report"] },
 ];
 
-const getReport = (name: string, invoices: any[], customers: any[]): Report =>
-  name === "Invoice Aging Report" ? buildAging(invoices, customers) : name === "Sales Report" ? buildSales(invoices, customers) : buildGeneric(name);
+const DATE_OPTIONS: DatePeriodKey[] = ["All", "This Month", "Last 30 Days", "This Year", "Custom"];
+const REPORT_TYPES = ["PDF", "CSV", "XLSX", "XLS", "HTML"] as const;
+const PRODUCT_TYPES = ["All", "Standard", "Multi-variant"] as const;
 
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
+const isBoReport = (name: string) =>
+  name === "Summary Report" ||
+  name === "Quarters Report" ||
+  name === "Profit by Product Report" ||
+  name === "Profit & Loss";
+
+/* ── Pill dropdown ─────────────────────────────────────────────── */
+const PillDropdown: React.FC<{
+  label: string;
+  value: string;
+  accent?: boolean;
   children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-}> = ({ trigger, children, align = "left" }) => {
+}> = ({ label, value, accent, children }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
+          accent
+            ? "border-blue-500 text-blue-500"
+            : "border-gray-500/70 text-gray-200 hover:border-gray-400"
+        }`}
+      >
+        {accent && <XCircle className="w-3.5 h-3.5" />}
+        <span className={accent ? "text-blue-500" : "text-gray-400"}>{label}</span>
+        <span className="text-gray-500">|</span>
+        <span className={accent ? "text-blue-500 font-medium" : "text-white"}>{value}</span>
+        <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+      </button>
       {open && (
-        <div className={`absolute z-30 mt-2 min-w-[160px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"}`}>
+        <div className="absolute z-40 mt-2 min-w-[220px] max-h-72 overflow-y-auto rounded-md border border-gray-700 bg-[#1a1d22] shadow-xl py-1">
           {children(() => setOpen(false))}
         </div>
       )}
@@ -170,189 +125,825 @@ const Dropdown: React.FC<{
   );
 };
 
-/* ── PDF preview modal ─────────────────────────────────────────── */
-const PdfPreview: React.FC<{ report: Report; onClose: () => void }> = ({ report, onClose }) => {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-  const total = report.totals[report.totals.length - 1] || "$0.00";
-  const download = () => downloadDocPdf({
-    filename: report.name,
-    docTitle: report.name.toUpperCase(),
-    partyLines: [],
-    meta: [["Date", "Jun 21, 2026"], ["Total", total], ["From", "Apr 27, 2026"], ["To", "Jun 21, 2026"]],
-    itemHead: report.cols.map((c) => c.label),
-    itemRows: [...report.rows, report.totals],
-  });
+const MenuItem: React.FC<{
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ active, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-white/5 ${
+      active ? "text-blue-400" : "text-gray-200"
+    }`}
+  >
+    <span className="truncate">{children}</span>
+    {active && <Check className="w-4 h-4 flex-shrink-0" />}
+  </button>
+);
+
+const IconBtn: React.FC<{
+  title: string;
+  disabled?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}> = ({ title, disabled, onClick, children }) => (
+  <button
+    type="button"
+    title={title}
+    disabled={disabled}
+    onClick={onClick}
+    className="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:bg-white/10 disabled:opacity-40"
+  >
+    {children}
+  </button>
+);
+
+const asBo = (report: ReportView | undefined): BusinessOverviewView | null => {
+  if (!report || report.source !== "backend") return null;
+  const bo = report as BusinessOverviewView;
+  if (bo.layout === "summary" || bo.layout === "quarters" || bo.layout === "pnl" || bo.layout === "table") return bo;
+  return null;
+};
+
+const toExportGrid = (report: ReportView): ExportGrid => ({
+  name: report.name,
+  cols: report.cols.map((c) => c.label),
+  rows: report.rows,
+  totals: report.totals,
+  metaLines: [
+    report.meta?.from && report.meta?.to ? `Period: ${report.meta.from} → ${report.meta.to}` : "",
+    report.meta?.asOf ? `As of: ${report.meta.asOf}` : "",
+  ].filter(Boolean),
+});
+
+/* ── Dark borderless layouts ───────────────────────────────────── */
+const SummaryDark: React.FC<{ report: BusinessOverviewView }> = ({ report }) => {
+  const blocks = report.summaryBlocks || [];
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center overflow-y-auto p-4" onMouseDown={onClose}>
-      <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-4xl my-6 rounded-lg overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-3 bg-[#2a2f36] text-white">
-          <h3 className="text-base font-medium">{report.name}</h3>
-          <div className="flex items-center gap-1">
-            <button className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Settings"><Settings className="w-4 h-4" /></button>
-            <button onClick={download} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Download"><Download className="w-4 h-4" /></button>
-            <button className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Print"><Printer className="w-4 h-4" /></button>
-            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Close"><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-        <div className="p-6" style={{ background: "#fff", color: "#111" }}>
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-2xl font-bold">info</div>
-              <div className="text-sm text-gray-600 mt-1">Bangladesh</div>
-              <div className="text-sm text-gray-600">info@inovoic.com</div>
-            </div>
-            <table className="text-sm border border-gray-400 border-collapse">
-              <tbody>
-                {[["Date", "Jun 21, 2026"], ["Total", total], ["From", "Apr 27, 2026"], ["To", "Jun 21, 2026"]].map(([k, v]) => (
-                  <tr key={k}>
-                    <td className="border border-gray-400 px-3 py-1 font-semibold text-right bg-gray-50">{k}</td>
-                    <td className="border border-gray-400 px-4 py-1">{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <h2 className="text-center text-xl font-bold tracking-wide my-8 uppercase">{report.name}</h2>
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr>{report.cols.map((c) => <th key={c.label} className={`border border-gray-400 px-2 py-1.5 font-semibold ${c.right ? "text-right" : "text-left"}`}>{c.label}</th>)}</tr>
-            </thead>
+    <div className="w-full">
+      {blocks.map((block) => (
+        <div key={block.title} className="mb-6">
+          <div className="px-3 py-2 text-sm font-bold text-white bg-[#2a2f36]">{block.title}</div>
+          <table className="w-full text-sm">
             <tbody>
-              {report.rows.map((r, i) => (
-                <tr key={i}>{r.map((cell, j) => <td key={j} className={`border border-gray-400 px-2 py-1.5 ${report.cols[j].right ? "text-right" : "text-left"}`}>{cell}</td>)}</tr>
-              ))}
-              <tr className="font-semibold">{report.totals.map((cell, j) => <td key={j} className={`border border-gray-400 px-2 py-1.5 ${report.cols[j].right ? "text-right" : "text-left"}`}>{cell}</td>)}</tr>
+              {block.lines.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-4 text-gray-500">No data</td>
+                </tr>
+              ) : (
+                block.lines.map((line) => (
+                  <tr key={`${block.title}-${line.label}`} className="hover:bg-white/[0.03]">
+                    <td className="px-3 py-2.5 text-gray-200 font-medium align-top w-[40%]">{line.label}</td>
+                    <td className="px-3 py-2.5 text-right text-white align-top">
+                      {line.values.map((v, i) => (
+                        <div key={i} className={v.includes("Paid") || i === 0 ? "" : "text-gray-300"}>
+                          {v}
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
-      </div>
+      ))}
     </div>
+  );
+};
+
+const QuartersDark: React.FC<{ report: BusinessOverviewView; visibleCols: Set<string> }> = ({
+  report,
+  visibleCols,
+}) => {
+  const blocks = report.quarterBlocks || [];
+  const show = (label: string) => visibleCols.has(label);
+  return (
+    <div className="w-full">
+      {blocks.length === 0 ? (
+        <div className="px-3 py-8 text-sm text-gray-500">No quarter data for the selected filters.</div>
+      ) : (
+        blocks.map((q) => (
+          <div key={q.title} className="mb-8">
+            <div className="px-3 py-2 text-sm font-bold text-white">{q.title}</div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#2a2f36] text-white">
+                  {show("Month") && <th className="px-3 py-2.5 text-left text-xs font-bold">Month</th>}
+                  {show("Paid") && <th className="px-3 py-2.5 text-right text-xs font-bold">Paid</th>}
+                  {show("Due") && <th className="px-3 py-2.5 text-right text-xs font-bold">Due</th>}
+                  {show("Overdue") && <th className="px-3 py-2.5 text-right text-xs font-bold">Overdue</th>}
+                  {show("Total") && <th className="px-3 py-2.5 text-right text-xs font-bold">Total</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {q.months.map((m) => (
+                  <tr key={m.label} className="hover:bg-white/[0.03]">
+                    {show("Month") && <td className="px-3 py-2.5 text-white font-semibold">{m.label}</td>}
+                    {show("Paid") && <td className="px-3 py-2.5 text-right text-gray-200">{m.paid}</td>}
+                    {show("Due") && <td className="px-3 py-2.5 text-right text-gray-200">{m.due}</td>}
+                    {show("Overdue") && <td className="px-3 py-2.5 text-right text-gray-200">{m.overdue}</td>}
+                    {show("Total") && <td className="px-3 py-2.5 text-right text-white font-medium">{m.total}</td>}
+                  </tr>
+                ))}
+                <tr className="font-semibold text-white">
+                  {show("Month") && <td className="px-3 py-2.5">Total</td>}
+                  {show("Paid") && <td className="px-3 py-2.5 text-right">{q.totals.paid}</td>}
+                  {show("Due") && <td className="px-3 py-2.5 text-right">{q.totals.due}</td>}
+                  {show("Overdue") && <td className="px-3 py-2.5 text-right">{q.totals.overdue}</td>}
+                  {show("Total") && <td className="px-3 py-2.5 text-right">{q.totals.total}</td>}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+const TableDark: React.FC<{ report: ReportView; visibleCols: Set<string> }> = ({ report, visibleCols }) => {
+  const cols = report.cols.filter((c) => visibleCols.has(c.label));
+  const idx = report.cols.map((c, i) => (visibleCols.has(c.label) ? i : -1)).filter((i) => i >= 0);
+  const rows = report.rows.map((r) => idx.map((i) => r[i] ?? ""));
+  const totals = idx.map((i) => report.totals[i] ?? "");
+
+  return (
+    <table className="w-full text-sm whitespace-nowrap">
+      <thead>
+        <tr className="bg-[#2a2f36] text-white">
+          {cols.map((c) => (
+            <th key={c.label} className={`px-3 py-2.5 text-xs font-bold ${c.right ? "text-right" : "text-left"}`}>
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={cols.length} className="px-3 py-10 text-center text-gray-500">
+              No rows for the selected filters.
+            </td>
+          </tr>
+        ) : (
+          rows.map((r, i) => (
+            <tr key={i} className="hover:bg-white/[0.03]">
+              {r.map((cell, j) => (
+                <td
+                  key={j}
+                  className={`px-3 py-2.5 ${cols[j]?.right ? "text-right" : "text-left"} ${
+                    j === 0 ? "text-white font-semibold" : "text-gray-200"
+                  }`}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))
+        )}
+        {rows.length > 0 && (
+          <tr className="font-semibold text-white">
+            {totals.map((cell, j) => (
+              <td key={j} className={`px-3 py-2.5 ${cols[j]?.right ? "text-right" : "text-left"}`}>
+                {cell}
+              </td>
+            ))}
+          </tr>
+        )}
+      </tbody>
+    </table>
   );
 };
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const Reports: React.FC = () => {
-  const [open, setOpen] = useState<Record<string, boolean>>({ Sales: true });
-  const [active, setActive] = useState("Invoice Aging Report");
+  const [open, setOpen] = useState<Record<string, boolean>>({ "Business Overview": true });
+  const [active, setActive] = useState("Summary Report");
   const [pdf, setPdf] = useState(false);
 
-  const dbInvoices = useCollection<any>("invoices");
-  const dbCustomers = useCollection<any>("customers");
-  const report = useMemo(() => getReport(active, dbInvoices, dbCustomers), [active, dbInvoices, dbCustomers]);
-  const toolbarIcons = [
-    { icon: Eye, title: "Preview", onClick: () => setPdf(true) },
-    { icon: Printer, title: "Print" },
-    { icon: MessageCircle, title: "WhatsApp" },
-    { icon: Mail, title: "Mail" },
-  ];
+  // Shared / legacy filters
+  const [asOfDate, setAsOfDate] = useState(today());
+  const [fromDate, setFromDate] = useState(yearStart());
+  const [toDate, setToDate] = useState(yearEnd());
+  const [showZero, setShowZero] = useState(false);
+
+  // BO pill filters
+  const [period, setPeriod] = useState<DatePeriodKey>("All");
+  const [contactId, setContactId] = useState("");
+  const [contactRole, setContactRole] = useState<"customer" | "vendor" | "">("");
+  const [contactLabel, setContactLabel] = useState("All");
+  const [customerId, setCustomerId] = useState("");
+  const [customerLabel, setCustomerLabel] = useState("All");
+  const [categoryId, setCategoryId] = useState("");
+  const [categoryLabel, setCategoryLabel] = useState("All");
+  const [productId, setProductId] = useState("");
+  const [productLabel, setProductLabel] = useState("All");
+  const [productType, setProductType] = useState<string>("All");
+  const [reportType, setReportType] = useState<(typeof REPORT_TYPES)[number]>("PDF");
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set());
+
+  const boMode = isBoReport(active);
+  const filterKind = reportFilterKind(active);
+
+  const boFilters: ReportFilters = useMemo(
+    () => ({
+      period,
+      fromDate: period === "Custom" ? fromDate : undefined,
+      toDate: period === "Custom" ? toDate : undefined,
+      contactId: contactId || undefined,
+      contactRole: contactRole || undefined,
+      customerId: customerId || undefined,
+      categoryId: categoryId || undefined,
+      productId: productId || undefined,
+      productType,
+      reportType,
+      showZero,
+      asOfDate,
+    }),
+    [
+      period,
+      fromDate,
+      toDate,
+      contactId,
+      contactRole,
+      customerId,
+      categoryId,
+      productId,
+      productType,
+      reportType,
+      showZero,
+      asOfDate,
+    ],
+  );
+
+  const { data: report, isFetching, isError, error, refetch } = useQuery({
+    queryKey: ["main-reports", active, boMode ? boFilters : null, asOfDate, fromDate, toDate, showZero],
+    queryFn: () =>
+      loadReportView(
+        active,
+        boMode
+          ? boFilters
+          : { asOfDate, fromDate, toDate, showZero },
+      ),
+    staleTime: 15_000,
+  });
+
+  // Option lists from backend
+  const { data: contactOptions = [] } = useQuery({
+    queryKey: ["report-contacts"],
+    queryFn: async () => {
+      const [cust, vend] = await Promise.all([
+        fetchCustomers({ page: 1, limit: 200 }),
+        fetchVendors({ page: 1, limit: 200 }),
+      ]);
+      return [
+        ...cust.rows.map((c) => ({
+          id: c._id,
+          label: c.name || "Customer",
+          role: "customer" as const,
+        })),
+        ...vend.rows.map((v) => ({
+          id: v._id,
+          label: v.company_name || v.name || "Vendor",
+          role: "vendor" as const,
+        })),
+      ];
+    },
+    enabled: active === "Summary Report",
+    staleTime: 60_000,
+  });
+
+  const { data: customerOptions = [] } = useQuery({
+    queryKey: ["report-customers"],
+    queryFn: async () => {
+      const r = await fetchCustomers({ page: 1, limit: 200 });
+      return r.rows.map((c) => ({ id: c._id, label: c.name || "Customer" }));
+    },
+    enabled: active === "Quarters Report",
+    staleTime: 60_000,
+  });
+
+  const { data: categoryOptions = [] } = useQuery({
+    queryKey: ["report-categories"],
+    queryFn: async () => {
+      const data = await api.get<any[]>("/category/all");
+      const list = Array.isArray(data) ? data : [];
+      return list.map((c) => ({ id: String(c._id), label: String(c.category || c.name || "—") }));
+    },
+    enabled: active === "Profit by Product Report",
+    staleTime: 60_000,
+  });
+
+  const { data: productOptions = [] } = useQuery({
+    queryKey: ["report-products", categoryId],
+    queryFn: async () => {
+      const r = await fetchProducts({ page: 1, limit: 200, category: categoryId || undefined });
+      return r.rows.map((p) => ({ id: p._id, label: p.name }));
+    },
+    enabled: active === "Profit by Product Report",
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (report?.cols?.length) {
+      setVisibleCols(new Set(report.cols.map((c) => c.label)));
+    }
+  }, [report?.name, report?.cols]);
+
+  // Reset party filters when switching reports
+  useEffect(() => {
+    setContactId("");
+    setContactRole("");
+    setContactLabel("All");
+    setCustomerId("");
+    setCustomerLabel("All");
+    setCategoryId("");
+    setCategoryLabel("All");
+    setProductId("");
+    setProductLabel("All");
+    setProductType("All");
+    setPeriod("All");
+    setReportType("PDF");
+  }, [active]);
+
+  const display = useMemo(() => {
+    if (!report) return null;
+    return report;
+  }, [report]);
+
+  const bo = asBo(display || undefined);
+
+  const toggleCol = (label: string) => {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        if (next.size > 1) next.delete(label);
+      } else next.add(label);
+      return next;
+    });
+  };
+
+  const runExport = (kind?: string) => {
+    if (!display || display.source === "unavailable") return;
+    const grid = toExportGrid(display);
+    const k = (kind || reportType).toUpperCase();
+    if (k === "CSV") exportReportCsv(grid);
+    else if (k === "XLSX") exportReportXlsx(grid, "xlsx");
+    else if (k === "XLS") exportReportXlsx(grid, "xls");
+    else if (k === "HTML") exportReportHtml(grid);
+    else exportReportPdf(grid);
+  };
+
+  const colCountLabel =
+    visibleCols.size === (report?.cols.length || 0) ? "All" : `${visibleCols.size} Selected`;
 
   return (
-    <div className="flex h-full bg-[#FAFBFC] overflow-hidden">
-      {/* ════════ REPORT NAV ════════ */}
+    <div className="flex h-full bg-[#0f1114] overflow-hidden text-white">
       <ResizableListPanel>
-        <div className="h-12 flex items-center px-4 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-900">Reports</h2>
+        <div className="h-12 flex items-center px-4 border-b border-white/10 bg-[#15181d]">
+          <h2 className="text-base font-semibold text-white">Reports</h2>
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#15181d]">
           {categories.map((cat) => {
             const isOpen = !!open[cat.title];
             return (
               <div key={cat.title}>
-                <button onClick={() => setOpen((o) => ({ ...o, [cat.title]: !o[cat.title] }))}
-                  className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-200 hover:bg-gray-50">
-                  <span className="text-sm font-bold text-gray-900">{cat.title}</span>
-                  {isOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+                <button
+                  type="button"
+                  onClick={() => setOpen((o) => ({ ...o, [cat.title]: !o[cat.title] }))}
+                  className="w-full flex items-center justify-between px-4 py-3 border-b border-white/10 hover:bg-white/5"
+                >
+                  <span className="text-sm font-bold text-white">{cat.title}</span>
+                  {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                 </button>
-                {isOpen && cat.items.map((it) => (
-                  <button key={it} onClick={() => setActive(it)}
-                    className={`w-full text-left px-5 py-3 border-b border-gray-200 text-sm ${it === active ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{it}</button>
-                ))}
+                {isOpen &&
+                  cat.items.map((it) => (
+                    <button
+                      key={it}
+                      type="button"
+                      onClick={() => setActive(it)}
+                      className={`w-full text-left px-5 py-3 border-b border-white/10 text-sm ${
+                        it === active ? "bg-white/10 text-white font-medium" : "text-gray-400 hover:bg-white/5"
+                      }`}
+                    >
+                      {it}
+                    </button>
+                  ))}
               </div>
             );
           })}
         </div>
       </ResizableListPanel>
 
-      {/* ════════ REPORT VIEW ════════ */}
-      <section className="flex-1 flex flex-col overflow-hidden">
-        {/* title bar */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <AlignLeft className="w-5 h-5 text-gray-500" />
-            <h1 className="text-lg font-semibold text-gray-900">{report.name}</h1>
+      <section className="flex-1 flex flex-col overflow-hidden bg-[#0f1114] min-w-0">
+        {/* Header — flush */}
+        <div className="flex items-center justify-between px-3 py-3 border-b border-white/10">
+          <div className="flex items-center gap-3 min-w-0">
+            <AlignLeft className="w-5 h-5 text-gray-400 flex-shrink-0" />
+            <h1 className="text-lg font-semibold text-white truncate">{active}</h1>
+            {isFetching && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPdf(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Preview"><Eye className="w-4 h-4" /></button>
-            <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Export"><Download className="w-4 h-4" /></span>}>
-              {(close) => ["CSV", "PDF", "XLS", "HTML"].map((f) => (
-                <button key={f} onClick={close} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{f}</button>
-              ))}
-            </Dropdown>
-            {toolbarIcons.slice(1).map((b) => (
-              <button key={b.title} onClick={b.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title={b.title}><b.icon className="w-4 h-4" /></button>
-            ))}
+          <div className="flex items-center gap-0.5">
+            <IconBtn
+              title="Preview"
+              disabled={!display || display.source === "unavailable"}
+              onClick={() => setPdf(true)}
+            >
+              <Eye className="w-4 h-4" />
+            </IconBtn>
+            <IconBtn
+              title={`Export ${reportType}`}
+              disabled={!display || display.source === "unavailable"}
+              onClick={() => runExport()}
+            >
+              <Download className="w-4 h-4" />
+            </IconBtn>
+            <IconBtn title="Print" onClick={() => window.print()}>
+              <Printer className="w-4 h-4" />
+            </IconBtn>
+            <IconBtn title="WhatsApp">
+              <MessageCircle className="w-4 h-4" />
+            </IconBtn>
+            <IconBtn title="Mail">
+              <Mail className="w-4 h-4" />
+            </IconBtn>
           </div>
         </div>
 
-        {/* filter pills */}
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-200 overflow-x-auto custom-scrollbar">
-          <Dropdown trigger={
-            <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-500 rounded-full px-3 py-1 whitespace-nowrap">
-              <XCircle className="w-3.5 h-3.5" /> Columns: {report.columnsSelected} Selected <ChevronDown className="w-3.5 h-3.5" />
-            </span>}>
-            {(close) => report.cols.map((c) => (
-              <button key={c.label} onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c.label} <Check className="w-4 h-4 text-blue-600" /></button>
-            ))}
-          </Dropdown>
-          {report.filters.map((f) => (
-            <Dropdown key={f} trigger={
-              <span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />{f}<ChevronDown className="w-3.5 h-3.5" /></span>}>
-              {(close) => ["All", "Option A", "Option B"].map((o) => (
-                <button key={o} onClick={close} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o}</button>
-              ))}
-            </Dropdown>
-          ))}
+        {/* Filter pills — flush left, no extra margin */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-white/10">
+          {boMode && (
+            <>
+              <PillDropdown label="Date" value={period}>
+                {(close) =>
+                  DATE_OPTIONS.map((opt) => (
+                    <MenuItem
+                      key={opt}
+                      active={period === opt}
+                      onClick={() => {
+                        setPeriod(opt);
+                        close();
+                      }}
+                    >
+                      {opt}
+                    </MenuItem>
+                  ))
+                }
+              </PillDropdown>
+
+              {period === "Custom" && (
+                <>
+                  <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-gray-600 rounded-full px-2.5 py-1">
+                    From
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="bg-transparent outline-none text-white"
+                    />
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-gray-600 rounded-full px-2.5 py-1">
+                    To
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="bg-transparent outline-none text-white"
+                    />
+                  </label>
+                </>
+              )}
+
+              {active === "Summary Report" && (
+                <PillDropdown label="Contacts" value={contactLabel}>
+                  {(close) => (
+                    <>
+                      <MenuItem
+                        active={!contactId}
+                        onClick={() => {
+                          setContactId("");
+                          setContactRole("");
+                          setContactLabel("All");
+                          close();
+                        }}
+                      >
+                        All
+                      </MenuItem>
+                      {contactOptions.map((c) => (
+                        <MenuItem
+                          key={`${c.role}-${c.id}`}
+                          active={contactId === c.id}
+                          onClick={() => {
+                            setContactId(c.id);
+                            setContactRole(c.role);
+                            setContactLabel(c.label);
+                            close();
+                          }}
+                        >
+                          {c.label}
+                          <span className="ml-2 text-[10px] text-gray-500 uppercase">{c.role}</span>
+                        </MenuItem>
+                      ))}
+                    </>
+                  )}
+                </PillDropdown>
+              )}
+
+              {active === "Quarters Report" && (
+                <PillDropdown label="Customers" value={customerLabel}>
+                  {(close) => (
+                    <>
+                      <MenuItem
+                        active={!customerId}
+                        onClick={() => {
+                          setCustomerId("");
+                          setCustomerLabel("All");
+                          close();
+                        }}
+                      >
+                        All
+                      </MenuItem>
+                      {customerOptions.map((c) => (
+                        <MenuItem
+                          key={c.id}
+                          active={customerId === c.id}
+                          onClick={() => {
+                            setCustomerId(c.id);
+                            setCustomerLabel(c.label);
+                            close();
+                          }}
+                        >
+                          {c.label}
+                        </MenuItem>
+                      ))}
+                    </>
+                  )}
+                </PillDropdown>
+              )}
+
+              {active === "Profit by Product Report" && (
+                <>
+                  <PillDropdown label="Category" value={categoryLabel}>
+                    {(close) => (
+                      <>
+                        <MenuItem
+                          active={!categoryId}
+                          onClick={() => {
+                            setCategoryId("");
+                            setCategoryLabel("All");
+                            setProductId("");
+                            setProductLabel("All");
+                            close();
+                          }}
+                        >
+                          All
+                        </MenuItem>
+                        {categoryOptions.map((c) => (
+                          <MenuItem
+                            key={c.id}
+                            active={categoryId === c.id}
+                            onClick={() => {
+                              setCategoryId(c.id);
+                              setCategoryLabel(c.label);
+                              setProductId("");
+                              setProductLabel("All");
+                              close();
+                            }}
+                          >
+                            {c.label}
+                          </MenuItem>
+                        ))}
+                      </>
+                    )}
+                  </PillDropdown>
+
+                  <PillDropdown label="Products" value={productLabel}>
+                    {(close) => (
+                      <>
+                        <MenuItem
+                          active={!productId}
+                          onClick={() => {
+                            setProductId("");
+                            setProductLabel("All");
+                            close();
+                          }}
+                        >
+                          All
+                        </MenuItem>
+                        {productOptions.map((p) => (
+                          <MenuItem
+                            key={p.id}
+                            active={productId === p.id}
+                            onClick={() => {
+                              setProductId(p.id);
+                              setProductLabel(p.label);
+                              close();
+                            }}
+                          >
+                            {p.label}
+                          </MenuItem>
+                        ))}
+                      </>
+                    )}
+                  </PillDropdown>
+
+                  <PillDropdown label="Product Type" value={productType}>
+                    {(close) =>
+                      PRODUCT_TYPES.map((t) => (
+                        <MenuItem
+                          key={t}
+                          active={productType === t}
+                          onClick={() => {
+                            setProductType(t);
+                            close();
+                          }}
+                        >
+                          {t}
+                        </MenuItem>
+                      ))
+                    }
+                  </PillDropdown>
+                </>
+              )}
+
+              {(active === "Quarters Report" || active === "Profit by Product Report") && (
+                <>
+                  <div className="w-px h-5 bg-white/20 mx-1" />
+                  <PillDropdown label="Columns" value={colCountLabel} accent>
+                    {(close) =>
+                      (report?.cols ?? []).map((c) => (
+                        <MenuItem
+                          key={c.label}
+                          active={visibleCols.has(c.label)}
+                          onClick={() => {
+                            toggleCol(c.label);
+                            close();
+                          }}
+                        >
+                          {c.label}
+                        </MenuItem>
+                      ))
+                    }
+                  </PillDropdown>
+                </>
+              )}
+
+              <div className="w-px h-5 bg-white/20 mx-1" />
+              <PillDropdown label="Report Type" value={reportType}>
+                {(close) =>
+                  REPORT_TYPES.map((t) => (
+                    <MenuItem
+                      key={t}
+                      active={reportType === t}
+                      onClick={() => {
+                        setReportType(t);
+                        close();
+                      }}
+                    >
+                      {t}
+                    </MenuItem>
+                  ))
+                }
+              </PillDropdown>
+            </>
+          )}
+
+          {/* Non-BO legacy filters */}
+          {!boMode && filterKind === "as_of" && (
+            <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-gray-600 rounded-full px-2.5 py-1">
+              As of
+              <input
+                type="date"
+                value={asOfDate}
+                onChange={(e) => setAsOfDate(e.target.value)}
+                className="bg-transparent outline-none text-white"
+              />
+            </label>
+          )}
+          {!boMode && filterKind === "range" && (
+            <>
+              <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-gray-600 rounded-full px-2.5 py-1">
+                From
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="bg-transparent outline-none text-white"
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-gray-600 rounded-full px-2.5 py-1">
+                To
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="bg-transparent outline-none text-white"
+                />
+              </label>
+            </>
+          )}
+          {!boMode && (
+            <PillDropdown label="Report Type" value={reportType}>
+              {(close) =>
+                REPORT_TYPES.map((t) => (
+                  <MenuItem
+                    key={t}
+                    active={reportType === t}
+                    onClick={() => {
+                      setReportType(t);
+                      close();
+                    }}
+                  >
+                    {t}
+                  </MenuItem>
+                ))
+              }
+            </PillDropdown>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="inline-flex items-center gap-1 text-xs text-gray-200 border border-gray-600 rounded-full px-3 py-1 hover:bg-white/5"
+          >
+            <Plus className="w-3 h-3" /> Refresh
+          </button>
         </div>
 
-        {/* data grid */}
+        {/* Body — no left margin padding beyond px-0 flush */}
         <div className="flex-1 overflow-auto custom-scrollbar">
-          <table className="w-full text-sm whitespace-nowrap">
-            <thead className="sticky top-0 bg-gray-50 z-10">
-              <tr className="border-b border-gray-200">
-                {report.cols.map((c) => (
-                  <th key={c.label} className={`px-5 py-3 text-xs font-bold text-gray-700 ${c.right ? "text-right" : "text-left"}`}>{c.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {report.rows.map((r, i) => (
-                <tr key={i} className="border-b border-gray-200 hover:bg-gray-50">
-                  {r.map((cell, j) => (
-                    <td key={j} className={`px-5 py-3 ${report.cols[j].right ? "text-right text-gray-900" : "text-left"} ${j === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{cell}</td>
-                  ))}
-                </tr>
-              ))}
-              {/* totals */}
-              <tr className="border-y border-gray-300 bg-gray-50 font-semibold">
-                {report.totals.map((cell, j) => (
-                  <td key={j} className={`px-5 py-3 text-gray-900 ${report.cols[j].right ? "text-right" : "text-left"}`}>{cell}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+          {isError && <div className="p-4 text-sm text-red-400">{(error as Error)?.message || "Failed to load report"}</div>}
+          {!isError && display?.source === "unavailable" && (
+            <div className="p-8 text-center text-sm text-amber-400/90">{display.message}</div>
+          )}
+
+          {display && display.source === "backend" && bo?.layout === "summary" && <SummaryDark report={bo} />}
+          {display && display.source === "backend" && bo?.layout === "pnl" && <SummaryDark report={bo} />}
+          {display && display.source === "backend" && bo?.layout === "quarters" && (
+            <QuartersDark report={bo} visibleCols={visibleCols} />
+          )}
+          {display && display.source === "backend" && (!bo || bo.layout === "table") && (
+            <TableDark report={display} visibleCols={visibleCols} />
+          )}
         </div>
 
-        {/* pagination footer */}
-        <div className="px-6 py-2.5 border-t border-gray-200 text-right text-xs text-gray-500 bg-gray-50">
-          1 – {report.rows.length} of {report.rows.length}
+        <div className="px-3 py-2 border-t border-white/10 text-right text-xs text-gray-500">
+          {display?.source === "backend" ? `1 – ${display.rows.length} of ${display.rows.length}` : "—"}
         </div>
       </section>
 
-      {pdf && <PdfPreview report={report} onClose={() => setPdf(false)} />}
+      {pdf && display && display.source === "backend" && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-start justify-center overflow-y-auto p-4" onMouseDown={() => setPdf(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-4xl my-6 rounded-lg overflow-hidden shadow-2xl bg-white text-gray-900">
+            <div className="flex items-center justify-between px-5 py-3 bg-[#2a2f36] text-white">
+              <h3 className="text-base font-medium">{display.name}</h3>
+              <div className="flex items-center gap-1">
+                <button type="button" className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Settings">
+                  <Settings className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runExport(reportType)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={() => setPdf(false)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10" title="Close">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-auto max-h-[80vh]">
+              <h2 className="text-center text-xl font-bold mb-6 uppercase">{display.name}</h2>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr>
+                    {display.cols.map((c) => (
+                      <th key={c.label} className={`border border-gray-400 px-2 py-1.5 ${c.right ? "text-right" : "text-left"}`}>
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {display.rows.map((r, i) => (
+                    <tr key={i}>
+                      {r.map((cell, j) => (
+                        <td key={j} className={`border border-gray-400 px-2 py-1.5 ${display.cols[j]?.right ? "text-right" : "text-left"}`}>
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

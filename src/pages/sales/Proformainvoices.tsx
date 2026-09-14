@@ -357,23 +357,6 @@ export const ProformaInvoices: React.FC = () => {
   const dbProformas = useCollection<any>("proformas");
   const dbCustomers = useCollection<any>("customers", "name");
 
-  const localProformas = useMemo<ProformaRow[]>(
-    () =>
-      dbProformas.slice().sort((a, b) => b.id - a.id).map((item) => ({
-        id: item.id,
-        backendId: item._id || String(item.id),
-        name: customerDisplayName(dbCustomers.find((c) => c.id === item.customerId)) || item.customerName || "—",
-        customerSubtitle: customerDisplaySubtitle(dbCustomers.find((c) => c.id === item.customerId)),
-        number: item.number,
-        note: item.notes || "No Notes",
-        date: item.date,
-        amount: fmtMoney(item.total),
-        currency: item.currency || "USD",
-        status: item.status || "Draft",
-      })),
-    [dbCustomers, dbProformas],
-  );
-
   const { data: backendList } = useQuery({
     queryKey: ["proforma-backend-list", page, search, sortBy, statusFilter, customerFilter],
     queryFn: () =>
@@ -393,20 +376,7 @@ export const ProformaInvoices: React.FC = () => {
 
   const filtered = useMemo<ProformaRow[]>(() => {
     const backendRows = backendList?.rows ?? [];
-    if (backendRows.length === 0 && (search || statusFilter !== "All" || customerFilter)) return [];
-    const source = backendRows.length > 0 ? backendRows : localProformas.map((item) => ({
-      _id: item.backendId,
-      number: item.number.replace(/^#/, ""),
-      customerName: item.name,
-      customerSubtitle: item.customerSubtitle,
-      amount: numberValue(item.amount.replace(/[^0-9.-]/g, "")),
-      dateLabel: item.date,
-      status: item.status,
-      currency: item.currency,
-      customerId: "",
-    }));
-
-    return source.map((row) => {
+    return backendRows.map((row) => {
       const linkedLocal =
         dbProformas.find((item) => item._id === row._id) ||
         dbProformas.find((item) => String(item.number).replace(/^#/, "") === row.number);
@@ -423,7 +393,7 @@ export const ProformaInvoices: React.FC = () => {
         status: row.status || "Draft",
       };
     });
-  }, [backendList?.rows, customerFilter, dbCustomers, dbProformas, localProformas, search, statusFilter]);
+  }, [backendList?.rows, dbCustomers, dbProformas]);
 
   useEffect(() => {
     if (

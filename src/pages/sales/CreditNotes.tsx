@@ -15,11 +15,12 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
@@ -27,9 +28,12 @@ import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
-import { api } from "@/lib/api/client";
-import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
-import { fetchCreditNote, fetchCreditNotes, type BackendCreditNoteDoc } from "@/services/creditNotesApi";
+import {
+  fetchCreditNote,
+  fetchCreditNotes,
+  deleteCreditNote,
+  hardDeleteCreditNotes,
+} from "@/services/creditNotesApi";
 import {
   Search,
   Plus,
@@ -63,25 +67,32 @@ import {
 type Status = "Unused" | "Partially Used" | "Used";
 
 interface CreditNote {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   number: string;
   note: string;
   date: string;
   amount: string;
   status: Status;
+  appliedAmount: number;
+  balanceAmount: number;
 }
 
-const creditNotes: CreditNote[] = [
-  { id: 8, name: "Vitae pariatur Vero", number: "#8", note: "Impedit magna ipsum", date: "Jun 17, 2026", amount: "$8,923.68", status: "Unused" },
-  { id: 7, name: "Dignissimos quae ull", number: "#7", note: "Impedit magna ipsum", date: "Jun 17, 2026", amount: "$9,604.92", status: "Unused" },
-  { id: 6, name: "Dignissimos quae ull", number: "#6", note: "Impedit magna ipsum", date: "Jun 17, 2026", amount: "$0.00", status: "Unused" },
-  { id: 5, name: "Dolore quidem nisi d", number: "#5", note: "Impedit magna ipsum", date: "Jun 17, 2026", amount: "$0.00", status: "Unused" },
-  { id: 4, name: "Harum ut dolore aliq", number: "#4", note: "Impedit magna ipsum", date: "Jun 17, 2026", amount: "$310.50", status: "Unused" },
-  { id: 3, name: "sayed cpy 1", number: "#3", note: "Impedit magna ipsum", date: "Jun 16, 2026", amount: "$4.60", status: "Unused" },
-  { id: 2, name: "sayed cpy 1", number: "#2", note: "Impedit magna ipsum", date: "Jun 16, 2026", amount: "$3,355.00", status: "Unused" },
-  { id: 1, name: "sayed cpy 1", number: "#1", note: "Impedit magna ipsum", date: "Jun 16, 2026", amount: "$3,325.00", status: "Unused" },
-];
+const normalizeCnStatus = (raw?: string): Status => {
+  const s = (raw || "").toLowerCase();
+  if (s.includes("partial")) return "Partially Used";
+  if (s === "used" || s === "applied" || s === "settled") return "Used";
+  return "Unused";
+};
+
+const cnSortField = (label: string) => {
+  if (label === "Total") return "total";
+  if (label === "Credit Note #") return "invoice_number";
+  if (label === "Status") return "status";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "customer_name";
+  return "date";
+};
 
 interface LineItem {
   no: number;
@@ -105,7 +116,6 @@ const statusList: (Status | "All" | "Trash")[] = ["All", "Unused", "Partially Us
 const CN_TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const CN_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
 const nowLabel = () => "Today " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-const customerList = ["bdcalling", "Vitae pariatur Vero", "Dignissimos quae ull", "Dolore quidem nisi d", "Harum ut dolore aliq", "sayed cpy 1"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
 const STATUS_BADGE: Record<Status, string> = {
@@ -342,18 +352,21 @@ const EmailModal: React.FC<{ onClose: () => void; cn: CreditNote }> = ({ onClose
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const CreditNotes: React.FC = () => {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
   const navSelectedId = navState?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 0);
-  useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
+  useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   const [sortBy, setSortBy] = useState("Credit note date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "apply" | "pdfSettings">(null);
   const [dupOpen, setDupOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -363,7 +376,7 @@ export const CreditNotes: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -374,54 +387,100 @@ export const CreditNotes: React.FC = () => {
     }
   }, [navState?.openCreate, location.pathname, navigate]);
 
-  const dbNotes = useCollection<any>("creditNotes");
-  const dbCustomers = useCollection<any>("customers", "name");
-  const creditNotes: CreditNote[] = useMemo(
-    () => dbNotes.slice().sort((a, b) => b.id - a.id).map((d) => ({
-      id: d.id, name: dbCustomers.find((c) => c.id === d.customerId)?.name || "—",
-      number: d.number, note: d.notes || "No Notes", date: d.date, amount: fmtMoney(d.total), status: d.status || "Unused",
-    })),
-    [dbNotes, dbCustomers],
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["credit-notes-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchCreditNotes({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(cnSortField(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+
+  const creditNotes: CreditNote[] = useMemo(() => {
+    const rows = listData?.rows ?? [];
+    return rows
+      .map((row) => ({
+        id: row._id,
+        backendId: row._id,
+        name: row.customerName || "—",
+        number: row.number ? `#${String(row.number).replace(/^#/, "")}` : "—",
+        note: "No Notes",
+        date: row.dateLabel,
+        amount: fmtMoney(row.amount),
+        status: normalizeCnStatus(row.status),
+        appliedAmount: row.appliedAmount,
+        balanceAmount: row.balanceAmount > 0 ? row.balanceAmount : Math.max(0, row.amount - row.appliedAmount),
+      }))
+      .filter((row) => !customerFilter || row.name === customerFilter);
+  }, [listData?.rows, customerFilter]);
+
+  const customerList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.customerName).filter((n) => n && n !== "—"))],
+    [listData?.rows],
   );
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = creditNotes.filter(
-      (i) =>
-        (statusFilter === "All" || i.status === statusFilter) &&
-        (customerFilter === null || i.name === customerFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Total") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Credit Note #") r = a.id - b.id;
-      else if (sortBy === "Status") r = a.status.localeCompare(b.status);
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id; // Credit note date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [creditNotes, sortBy, sortDir, statusFilter, customerFilter, search]);
-
+  const filtered = creditNotes;
   const selected = creditNotes.find((i) => i.id === selectedId) || creditNotes[0];
+
+  useEffect(() => {
+    if (creditNotes.length > 0 && !creditNotes.some((p) => p.id === selectedId)) {
+      setSelectedId(creditNotes[0].id);
+    }
+  }, [creditNotes, selectedId]);
+
+  const { data: selectedBackend } = useQuery({
+    queryKey: ["credit-note", selected?.backendId],
+    queryFn: () => fetchCreditNote(selected!.backendId),
+    enabled: !!selected?.backendId,
+    staleTime: 15_000,
+  });
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const selectedDb: any = dbNotes.find((d) => d.id === (selected?.id ?? selectedId)) || {};
-  const selectedCustomer: any = dbCustomers.find((c) => c.id === selectedDb.customerId) || {};
+  const dbNotes = useCollection<any>("creditNotes");
+  const dbCustomers = useCollection<any>("customers", "name");
+  const selectedDb: any = dbNotes.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {
+    id: selected?.id,
+    _id: selected?.backendId,
+    number: selected?.number,
+    notes: selectedBackend?.notes || selected?.note,
+    date: selected?.date,
+    total: selected ? num(selected.amount) : 0,
+    status: selected?.status,
+    amountUsed: selected?.appliedAmount ?? 0,
+    items: selectedBackend?.product || [],
+    customerId: typeof selectedBackend?.customer_id === "object" ? (selectedBackend?.customer_id as any)?._id : selectedBackend?.customer_id,
+  };
+  const selectedCustomer: any = dbCustomers.find((c) => c.id === selectedDb.customerId || c._id === selectedDb.customerId) || {};
   const dbInvoices = useCollection<any>("invoices");
   const openInvoices = dbInvoices.filter((i) => i.customerId === selectedDb.customerId && (i.amountDue || 0) > 0);
-  const usedFor = (id: number) => dbNotes.find((d) => d.id === id)?.amountUsed || 0;
-  const unusedFor = (cn: CreditNote) => num(cn.amount) - usedFor(cn.id);
-  const isApplied = selected ? usedFor(selected.id) > 0 : false;
+  const usedFor = (cn: CreditNote) => cn.appliedAmount || 0;
+  const unusedFor = (cn: CreditNote) => cn.balanceAmount ?? Math.max(0, num(cn.amount) - usedFor(cn));
+  const isApplied = selected ? usedFor(selected) > 0 : false;
 
   /* Append an event to the credit note's activity log. */
   const logActivity = async (kind: string, text: string) => {
+    if (!selectedDb.id || typeof selectedDb.id !== "number") return;
     const rec = dbNotes.find((d) => d.id === selectedDb.id);
     await repo.update("creditNotes", selectedDb.id, { activity: [...(rec?.activity || []), { kind, text, ts: Date.now(), dateLabel: nowLabel() }] });
   };
   const duplicateAsCreditNote = async () => {
+    if (typeof selectedDb.id !== "number") {
+      showToast("Duplicate requires a local draft record", "info");
+      return;
+    }
     const n = await nextNumber("creditNotes");
     const id = await repo.add("creditNotes", {
       customerId: selectedDb.customerId, date: selectedDb.date, due: selectedDb.due, ts: Date.now(),
@@ -429,24 +488,36 @@ export const CreditNotes: React.FC = () => {
       tax: selectedDb.tax || 0, total: selectedDb.total || 0, amountUsed: 0, inlineDiscount: selectedDb.inlineDiscount || 0,
       notes: selectedDb.notes || "", terms: selectedDb.terms || "",
     });
-    setSelectedId(id);
+    setSelectedId(String(id));
     showToast("Credit note duplicated", "success");
+    void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
   };
   const trashCurrent = async () => {
-    await repo.remove("creditNotes", selectedDb.id);
-    showToast(`Credit Note ${selectedDb.number} moved to trash`, "success");
-    setSelectedId(creditNotes.find((c) => c.id !== selectedDb.id)?.id ?? 0);
+    const id = selected?.backendId;
+    if (!id) return;
+    if (statusFilter === "Trash") await hardDeleteCreditNotes([id]);
+    else await deleteCreditNote(id);
+    showToast(`Credit Note ${selected?.number} ${statusFilter === "Trash" ? "permanently deleted" : "moved to trash"}`, "success");
+    setSelectedId(creditNotes.find((c) => c.id !== id)?.id ?? "");
     setConfirmAction(null);
+    void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
   };
   const trashSelectedCn = async () => {
     const ids = [...checked];
-    await repo.removeMany("creditNotes", ids);
-    showToast(`${ids.length} credit ${ids.length === 1 ? "note" : "notes"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(creditNotes.find((c) => !ids.includes(c.id))?.id ?? 0);
+    if (ids.length === 0) { showToast("Select credit notes to delete", "info"); return; }
+    if (statusFilter === "Trash") await hardDeleteCreditNotes(ids);
+    else await Promise.all(ids.map((id) => deleteCreditNote(id)));
+    showToast(`${ids.length} credit ${ids.length === 1 ? "note" : "notes"} ${statusFilter === "Trash" ? "permanently deleted" : "moved to trash"}`, "success");
+    if (ids.includes(selectedId)) setSelectedId(creditNotes.find((c) => !ids.includes(c.id))?.id ?? "");
     setConfirmAction(null);
     exitSelect();
+    void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
+    if (typeof selectedDb.id !== "number") {
+      showToast("Signature save requires a local draft record", "info");
+      return;
+    }
     await repo.update("creditNotes", selectedDb.id, { signature: data.image, signatureName: data.name, signatureTitle: data.title, signatureDate: data.date });
     await logActivity("status", `Customer signature added to Credit Note ${selectedDb.number}.`);
     showToast("Signature saved", "success");
@@ -456,7 +527,7 @@ export const CreditNotes: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = creditNotes.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -530,7 +601,7 @@ export const CreditNotes: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search credit notes..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search credit notes..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -580,7 +651,7 @@ export const CreditNotes: React.FC = () => {
           {filtered.map((p) => {
             const active = !selectMode && !createOpen && !editOpen && p.id === selectedId;
             const isChecked = checked.has(p.id);
-            const applied = usedFor(p.id) > 0;
+            const applied = usedFor(p) > 0;
             return (
               <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : (setSelectedId(p.id), setCreateOpen(false), setEditOpen(false)))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
@@ -604,16 +675,19 @@ export const CreditNotes: React.FC = () => {
         </div>
 
         <ListSidebarFooter
-          total={<>{money(listUnusedTotal)} <span className="font-normal text-slate-500">Unused</span></>}
-          countLabel={`${filtered.length} Credit Notes`}
+          total={<>{money(listUnusedTotal)} <span className="font-normal text-white/70">Unused</span></>}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Credit Notes`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
         />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen ? (
-        <CreateDocForm collection="creditNotes" title="New Credit Note" party="customers" creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSelectedId(id); }} />
+        <CreateDocForm collection="creditNotes" title="New Credit Note" party="customers" creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] }); }} />
       ) : editOpen ? (
-        <CreateDocForm key={selectedId} collection="creditNotes" title="Edit Credit Note" party="customers" creditTotals record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); }} />
+        <CreateDocForm key={selectedId} collection="creditNotes" title="Edit Credit Note" party="customers" creditTotals record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] }); }} />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
@@ -754,7 +828,7 @@ export const CreditNotes: React.FC = () => {
                   </div>
                 ))}
                 <div className="flex justify-between px-4 py-2.5 text-sm border-t border-gray-200"><span className="text-gray-700">Total</span><span className="font-semibold text-gray-900">{fmtMoney(selectedDb.total)}</span></div>
-                <div className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>Amount Used</span><span>{money(usedFor(selected.id))}</span></div>
+                <div className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>Amount Used</span><span>{money(usedFor(selected))}</span></div>
                 <div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-200"><span className="font-semibold text-gray-900">Amount Unused</span><span className="font-semibold text-gray-900">{money(unusedFor(selected))}</span></div>
               </div>
             </div>

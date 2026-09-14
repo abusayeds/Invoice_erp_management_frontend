@@ -636,20 +636,8 @@ export const Vendors: React.FC = () => {
   });
   const listPagination = backendVendors?.pagination;
 
-  const vendorsLocal: Vendor[] = useMemo(
-    () => dbVendors
-      .filter((v) => {
-        const st = String(v.status || "Active");
-        if (statusFilter === "Archived") return st === "Archived";
-        if (statusFilter === "Trash") return st === "Trash" || st === "Inactive";
-        return st !== "Archived" && st !== "Trash" && st !== "Inactive";
-      })
-      .map((v) => ({ id: v.id, name: v.name, contact: v.contact || v.email || v.subtitle || "—", amount: -(v.payable || 0) })),
-    [dbVendors, statusFilter],
-  );
   const vendors: Vendor[] = useMemo(() => {
     const rows = backendVendors?.rows ?? [];
-    if (rows.length === 0) return vendorsLocal;
     return rows.map((row, index) => {
       const linked = dbVendors.find((v) => String(v._id) === row._id) || dbVendors.find((v) => v.name === row.name);
       return {
@@ -659,7 +647,7 @@ export const Vendors: React.FC = () => {
         amount: -(row.opening_balance || linked?.payable || 0),
       };
     });
-  }, [backendVendors?.rows, vendorsLocal, dbVendors]);
+  }, [backendVendors?.rows, dbVendors]);
   const [activityFilter, setActivityFilter] = useState("All");
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
   // selection-bar bulk actions: merge picker → confirm alert / archive / delete alerts

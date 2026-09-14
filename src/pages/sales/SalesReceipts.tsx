@@ -307,18 +307,6 @@ export const SalesReceipts: React.FC = () => {
 
   const dbReceipts = useCollection<any>("salesReceipts");
   const dbCustomers = useCollection<any>("customers", "name");
-  const localReceipts = useMemo<ReceiptRow[]>(() => dbReceipts.slice().sort((a, b) => b.id - a.id).map((item) => ({
-    id: item.id,
-    backendId: item._id || String(item.id),
-    name: customerDisplayName(dbCustomers.find((c) => c.id === item.customerId)) || item.customerName || "—",
-    customerSubtitle: customerDisplaySubtitle(dbCustomers.find((c) => c.id === item.customerId)),
-    number: item.number,
-    note: item.notes || "No Notes",
-    date: item.date,
-    amount: fmtMoney(item.total),
-    currency: item.currency || "USD",
-    paymentType: item.paymentType || item.method || "",
-  })), [dbCustomers, dbReceipts]);
 
   const dateRange = rangeFor(dateFilter);
   const { data: backendList } = useQuery({
@@ -341,19 +329,7 @@ export const SalesReceipts: React.FC = () => {
 
   const filtered = useMemo<ReceiptRow[]>(() => {
     const backendRows = backendList?.rows ?? [];
-    if (backendRows.length === 0 && (search || customerFilter || dateFilter !== "All" || statusFilter !== "All")) return [];
-    const source = backendRows.length > 0 ? backendRows : localReceipts.map((item) => ({
-      _id: item.backendId,
-      number: item.number.replace(/^#/, ""),
-      customerName: item.name,
-      customerSubtitle: item.customerSubtitle,
-      amount: numberValue(item.amount.replace(/[^0-9.-]/g, "")),
-      dateLabel: item.date,
-      currency: item.currency,
-      customerId: "",
-      paymentType: item.paymentType,
-    }));
-    return source.map((row) => {
+    return backendRows.map((row) => {
       const linkedLocal = dbReceipts.find((item) => item._id === row._id) || dbReceipts.find((item) => String(item.number).replace(/^#/, "") === row.number);
       return {
         id: linkedLocal?.id ?? (Number(row.number) || Math.abs(String(row._id).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))),
@@ -368,7 +344,7 @@ export const SalesReceipts: React.FC = () => {
         paymentType: row.paymentType || linkedLocal?.paymentType || linkedLocal?.method || "",
       };
     });
-  }, [backendList?.rows, customerFilter, dateFilter, dbCustomers, dbReceipts, localReceipts, search, statusFilter]);
+  }, [backendList?.rows, dbCustomers, dbReceipts]);
 
   useEffect(() => {
     if (filtered.length > 0 && !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);

@@ -12,8 +12,11 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchPurchaseReturns, type PurchaseReturnListRow } from "@/services/purchaseReturnsApi";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { useCollection, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
@@ -53,7 +56,8 @@ import {
 type Status = "Draft" | "Open" | "Returned" | "Cancelled";
 
 interface Return {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   number: string;
   invoice: string;
@@ -64,19 +68,47 @@ interface Return {
   status: Status;
 }
 
-const returns: Return[] = [
-  { id: 4, name: "bdcalling", number: "#4", invoice: "#16", note: "Mollit fugiat elit", reason: "Goods damaged in transit", date: "Jun 21, 2026", amount: "$520.00", status: "Returned" },
-  { id: 3, name: "Sed aliquip eaque co", number: "#3", invoice: "#14", note: "hi, Mollit fugiat elit", reason: "Wrong items delivered", date: "Jun 18, 2026", amount: "$1,200.00", status: "Open" },
-  { id: 2, name: "Dignissimos quae ull", number: "#2", invoice: "#9", note: "Harum ut dolore", reason: "Excess quantity received", date: "Jun 12, 2026", amount: "$340.00", status: "Open" },
-  { id: 1, name: "SMT", number: "#1", invoice: "#5", note: "", reason: "", date: "Apr 27, 2026", amount: "$0.00", status: "Draft" },
-];
+const normalizeReturnStatus = (raw?: string): Status => {
+  const s = (raw || "draft").toLowerCase();
+  if (s === "draft") return "Draft";
+  if (s === "open") return "Open";
+  if (s === "returned") return "Returned";
+  if (s === "cancelled" || s === "canceled") return "Cancelled";
+  const t = (raw || "Draft").trim();
+  return (t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()) as Status;
+};
+
+const mapReturnRow = (row: PurchaseReturnListRow): Return => ({
+  id: row._id,
+  backendId: row._id,
+  name: row.vendorName,
+  number: row.number.startsWith("#") ? row.number : `#${String(row.number).replace(/^#/, "")}`,
+  invoice: row.invoice,
+  note: row.note,
+  reason: row.reason,
+  date: row.dateLabel,
+  amount: fmtMoney(row.amount),
+  status: normalizeReturnStatus(row.status),
+});
+
+const prSortField = (label: string) => {
+  if (label === "Total") return "total";
+  if (label === "Return #") return "return_number";
+  if (label === "Status") return "status";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "vendor_name";
+  return "date";
+};
+
+const apiStatusFilter = (filter: string): string | undefined => {
+  if (!filter || filter === "All" || filter === "Trash") return undefined;
+  return filter.toLowerCase();
+};
 
 const sortFields = ["Name", "First Name", "Last Name", "Return date", "Return #", "Status", "Total"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList: (Status | "All" | "Trash")[] = ["All", "Draft", "Open", "Returned", "Cancelled", "Trash"];
 const markAsList: Status[] = ["Draft", "Open", "Returned", "Cancelled"];
 const duplicateAs = ["As Purchase Return"];
-const vendorList = ["bipul company", "Ex aut sequi ad libe", "Explicabo Doloremqu", "Officiis ullam labor", "SSE", "SST", "bdcalling", "SMT"];
 const invoiceRefs = ["#16", "#14", "#9", "#5"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
@@ -315,6 +347,8 @@ const EmailModal: React.FC<{ onClose: () => void; ret: Return }> = ({ onClose, r
 
 /* ── Create Purchase Return (inline form, replaces detail) ─────── */
 const CreateReturn: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const dbVendors = useCollection<any>("vendors", "name");
+  const vendorList = useMemo(() => dbVendors.map((v: { name: string }) => v.name), [dbVendors]);
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorOpen, setVendorOpen] = useState(false);
   const [addVendor, setAddVendor] = useState(false);
@@ -442,54 +476,67 @@ const CreateReturn: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const PurchaseReturns: React.FC = () => {
-  const [selectedId, setSelectedId] = useState(4);
+  const dbReturns = useCollection<any>("purchaseReturns");
+  const dbVendors = useCollection<any>("vendors", "name");
+  const [selectedId, setSelectedId] = useState("");
   const [sortBy, setSortBy] = useState("Return date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "activity">(null);
   const [createMode, setCreateMode] = useState(false);
   const [markAsOpen, setMarkAsOpen] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
 
-  const dbReturns = useCollection<any>("purchaseReturns");
-  const dbVendors = useCollection<any>("vendors", "name");
-  const returns: Return[] = useMemo(
-    () => dbReturns.slice().sort((a, b) => b.id - a.id).map((d) => ({
-      id: d.id, name: dbVendors.find((v) => v.id === d.vendorId)?.name || "—",
-      number: d.number, invoice: d.invoiceId ? "#" + d.invoiceId : "-", note: d.notes || "No Notes",
-      reason: d.reason || "", date: d.date, amount: fmtMoney(d.total), status: d.status,
-    })),
-    [dbReturns, dbVendors],
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["purchase-returns-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchPurchaseReturns({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(prSortField(sortBy), sortDir),
+      status: apiStatusFilter(statusFilter),
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+  const returns: Return[] = useMemo(() => {
+    const rows = (listData?.rows ?? []).map(mapReturnRow);
+    return rows.filter(
+      (row) =>
+        (statusFilter === "All" || statusFilter === "Trash" || row.status === statusFilter) &&
+        (!vendorFilter || row.name === vendorFilter),
+    );
+  }, [listData?.rows, statusFilter, vendorFilter]);
+  const vendorList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.vendorName).filter((n) => n && n !== "—"))],
+    [listData?.rows],
   );
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = returns.filter(
-      (i) =>
-        (statusFilter === "All" || i.status === statusFilter) &&
-        (vendorFilter === null || i.name === vendorFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Total") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Return #") r = a.id - b.id;
-      else if (sortBy === "Status") r = a.status.localeCompare(b.status);
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id;
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [returns, sortBy, sortDir, statusFilter, vendorFilter, search]);
-
+  const filtered = returns;
   const selected = returns.find((i) => i.id === selectedId) || returns[0];
+
+  useEffect(() => {
+    if (returns.length > 0 && !returns.some((p) => p.id === selectedId)) {
+      setSelectedId(returns[0].id);
+    }
+  }, [returns, selectedId]);
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -497,7 +544,7 @@ export const PurchaseReturns: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = returns.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -546,7 +593,7 @@ export const PurchaseReturns: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-200">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search purchase returns..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search purchase returns..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -559,7 +606,7 @@ export const PurchaseReturns: React.FC = () => {
                 ))}
                 <div className="border-t border-gray-200 my-1" />
                 {sortDirections.map((d) => (
-                  <button key={d} onClick={() => { setSortDir(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
+                  <button key={d} onClick={() => { setSortDir(d as "Ascending" | "Descending"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
                 ))}
               </>
             )}
@@ -614,7 +661,13 @@ export const PurchaseReturns: React.FC = () => {
           })}
         </div>
 
-        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Purchase Returns`} />
+        <ListSidebarFooter
+          total={money(listTotal)}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Purchase Returns`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
+        />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
@@ -729,9 +782,34 @@ export const PurchaseReturns: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Debit Note" onClose={() => setModal(null)} />}
-      {modal === "preview" && (() => { const d: any = dbReturns.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <DocPreview onClose={() => setModal(null)} headerTitle={`Purchase Return ${d.number || ""}`} docTitle="PURCHASE RETURN" partyLabel="Vendor:" partyName={pn} party={pp} number={d.number || ""} date={d.date || ""} due={d.due} items={d.items} subTotal={d.subTotal} tax={d.tax} total={d.total} amountDue={d.amountDue} reason={d.reason} terms={d.terms} notes={d.notes} />; })()}
+      {modal === "preview" && selected && (() => {
+        const d: any = dbReturns.find((x) => String(x._id) === selectedId || String(x.id) === selectedId) || {};
+        const pp: any = dbVendors.find((x) => x.id === d.vendorId) || { name: selected.name };
+        const pn = pp.name || selected.name || "—";
+        return (
+          <DocPreview
+            onClose={() => setModal(null)}
+            headerTitle={`Purchase Return ${d.number || selected.number}`}
+            docTitle="PURCHASE RETURN"
+            partyLabel="Vendor:"
+            partyName={pn}
+            party={pp}
+            number={d.number || selected.number}
+            date={d.date || selected.date}
+            due={d.due}
+            items={d.items}
+            subTotal={d.subTotal}
+            tax={d.tax}
+            total={d.total}
+            amountDue={d.amountDue}
+            reason={d.reason || selected.reason}
+            terms={d.terms}
+            notes={d.notes || selected.note}
+          />
+        );
+      })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} ret={selected} />}
-      {createOpen && <CreateDocModal collection="purchaseReturns" title="Create Purchase Return" party="vendors" buy onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />}
+      {createOpen && <CreateDocModal collection="purchaseReturns" title="Create Purchase Return" party="vendors" buy onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(String(id))} />}
       {modal === "activity" && <ActivityModal onClose={() => setModal(null)} ret={selected} />}
     </div>
   );

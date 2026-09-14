@@ -12,8 +12,11 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
-import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { buildListSortParam } from "@/lib/listSort";
+import { fetchDebitNotes, type DebitNoteListRow } from "@/services/debitNotesApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -54,7 +57,8 @@ import {
 type Status = "Unused" | "Partially Used" | "Used";
 
 interface DebitNote {
-  id: number;
+  id: string;
+  backendId: string;
   name: string;
   number: string;
   note: string;
@@ -63,16 +67,35 @@ interface DebitNote {
   status: Status;
 }
 
-const debitNotes: DebitNote[] = [
-  { id: 3, name: "Ex aut sequi ad libe", number: "#3", note: "Consequatur Quo sae", date: "Jun 16, 2026", amount: "$0.00", status: "Unused" },
-  { id: 2, name: "Explicabo Doloremqu", number: "#2", note: "Consequatur Quo sae", date: "Jun 16, 2026", amount: "$0.00", status: "Unused" },
-  { id: 1, name: "Est lorem ut maxime", number: "#1", note: "Consequatur Quo sae", date: "Jun 16, 2026", amount: "$0.00", status: "Unused" },
-];
+const normalizeDnStatus = (raw?: string): Status => {
+  const s = (raw || "").toLowerCase();
+  if (s.includes("partial")) return "Partially Used";
+  if (s === "used" || s === "applied" || s === "settled") return "Used";
+  return "Unused";
+};
+
+const mapDebitNoteRow = (row: DebitNoteListRow): DebitNote => ({
+  id: row._id,
+  backendId: row._id,
+  name: row.vendorName,
+  number: row.number.startsWith("#") ? row.number : `#${String(row.number).replace(/^#/, "")}`,
+  note: row.note,
+  date: row.dateLabel,
+  amount: fmtMoney(row.amount),
+  status: normalizeDnStatus(row.status),
+});
+
+const dnSortField = (label: string) => {
+  if (label === "Total") return "total";
+  if (label === "Debit Note #") return "invoice_number";
+  if (label === "Status") return "status";
+  if (label === "Name" || label === "First Name" || label === "Last Name") return "vendor_name";
+  return "date";
+};
 
 const sortFields = ["Name", "First Name", "Last Name", "Debit Note date", "Debit Note #", "Status", "Total"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList: (Status | "All" | "Trash")[] = ["All", "Unused", "Partially Used", "Used", "Trash"];
-const vendorList = ["Ex aut sequi ad libe", "Explicabo Doloremqu", "Est lorem ut maxime", "bipul company", "SSE", "SST"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
 const STATUS_BADGE: Record<Status, string> = {
@@ -392,6 +415,8 @@ const AddVendorModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 /* ── Edit Debit Note (inline form, replaces detail) ────────────── */
 const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, onClose }) => {
+  const dbVendors = useCollection<any>("vendors", "name");
+  const vendorList = useMemo(() => dbVendors.map((v: { name: string }) => v.name), [dbVendors]);
   const [vendorQuery, setVendorQuery] = useState(dn.name);
   const [vendorOpen, setVendorOpen] = useState(false);
   const [addVendor, setAddVendor] = useState(false);
@@ -502,26 +527,31 @@ const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, o
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const DebitNotes: React.FC = () => {
+  const queryClient = useQueryClient();
+  const dbNotes = useCollection<any>("debitNotes");
+  const dbVendors = useCollection<any>("vendors", "name");
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
   const navSelectedId = navState?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 3);
-  useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
+  useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   const [sortBy, setSortBy] = useState("Debit Note date");
-  const [sortDir, setSortDir] = useState("Descending");
+  const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "apply" | "activity">(null);
   const [editMode, setEditMode] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
 
-  const [appliedIds, setAppliedIds] = useState<Set<number>>(new Set());
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   useEffect(() => {
     if (navState?.openCreate) {
@@ -530,37 +560,47 @@ export const DebitNotes: React.FC = () => {
     }
   }, [navState?.openCreate, location.pathname, navigate]);
 
-  const dbNotes = useCollection<any>("debitNotes");
-  const dbVendors = useCollection<any>("vendors", "name");
-  const debitNotes: DebitNote[] = useMemo(
-    () => dbNotes.slice().sort((a, b) => b.id - a.id).map((d) => ({
-      id: d.id, name: dbVendors.find((v) => v.id === d.vendorId)?.name || "—",
-      number: d.number, note: d.notes || "No Notes", date: d.date, amount: fmtMoney(d.total), status: d.status || "Unused",
-    })),
-    [dbNotes, dbVendors],
+  useEffect(() => {
+    const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["debit-notes-list", page, search, sortBy, sortDir, statusFilter],
+    queryFn: () => fetchDebitNotes({
+      page,
+      limit: LIST_PAGE_SIZE,
+      searchTerm: search || undefined,
+      sort: buildListSortParam(dnSortField(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
+      isDeleted: statusFilter === "Trash" || undefined,
+    }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+  const listPagination = listData?.pagination;
+  const debitNotes: DebitNote[] = useMemo(() => {
+    const rows = (listData?.rows ?? []).map(mapDebitNoteRow);
+    return rows.filter(
+      (row) =>
+        (statusFilter === "All" || statusFilter === "Trash" || row.status === statusFilter) &&
+        (!vendorFilter || row.name === vendorFilter),
+    );
+  }, [listData?.rows, statusFilter, vendorFilter]);
+  const vendorList = useMemo(
+    () => [...new Set((listData?.rows ?? []).map((r) => r.vendorName).filter((n) => n && n !== "—"))],
+    [listData?.rows],
   );
 
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = debitNotes.filter(
-      (i) =>
-        (statusFilter === "All" || i.status === statusFilter) &&
-        (vendorFilter === null || i.name === vendorFilter) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Total") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Debit Note #") r = a.id - b.id;
-      else if (sortBy === "Status") r = a.status.localeCompare(b.status);
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id; // Debit Note date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [debitNotes, sortBy, sortDir, statusFilter, vendorFilter, search]);
-
+  const filtered = debitNotes;
   const selected = debitNotes.find((i) => i.id === selectedId) || debitNotes[0];
+
+  useEffect(() => {
+    if (debitNotes.length > 0 && !debitNotes.some((p) => p.id === selectedId)) {
+      setSelectedId(debitNotes[0].id);
+    }
+  }, [debitNotes, selectedId]);
   const isApplied = selected ? appliedIds.has(selected.id) : false;
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -569,7 +609,7 @@ export const DebitNotes: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = debitNotes.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
@@ -624,7 +664,7 @@ export const DebitNotes: React.FC = () => {
         <div className="px-3 py-2 border-b border-gray-200">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search debit notes..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search debit notes..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
           </div>
         </div>
 
@@ -638,7 +678,7 @@ export const DebitNotes: React.FC = () => {
                 ))}
                 <div className="border-t border-gray-200 my-1" />
                 {sortDirections.map((d) => (
-                  <button key={d} onClick={() => { setSortDir(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
+                  <button key={d} onClick={() => { setSortDir(d as "Ascending" | "Descending"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === sortDir && <Check className="w-4 h-4 text-blue-600" />}</button>
                 ))}
               </>
             )}
@@ -698,14 +738,17 @@ export const DebitNotes: React.FC = () => {
 
         <ListSidebarFooter
           total={<>{money(listUnusedTotal)} <span className="font-normal text-slate-500">Unused</span></>}
-          countLabel={`${filtered.length} Debit Notes`}
+          countLabel={`${listPagination?.totalData ?? filtered.length} Debit Notes`}
+          pagination={listPagination}
+          page={page}
+          onPageChange={setPage}
         />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen ? (
         /* Create Debit Note — same full inline form as Create Credit Note */
-        <CreateDocForm collection="debitNotes" title="New Debit Note" party="vendors" buy creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+        <CreateDocForm collection="debitNotes" title="New Debit Note" party="vendors" buy creditTotals onClose={() => setCreateOpen(false)} onSaved={(id) => { setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["debit-notes-list"] }); }} />
       ) : selectMode ? (
         <section className="module-empty-panel">
           <div className="text-center">
@@ -821,7 +864,10 @@ export const DebitNotes: React.FC = () => {
 
       {/* ════════ MODALS ════════ */}
       {modal === "settings" && <AppSettingsModal initialTab="Debit Note" onClose={() => setModal(null)} />}
-      {modal === "preview" && (() => { const d: any = dbNotes.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="debitNote" recordId={d.id} title={`Debit Note `} onClose={() => setModal(null)} />; })()}
+      {modal === "preview" && (() => {
+        const d: any = dbNotes.find((x) => String(x._id) === selectedId || String(x.id) === selectedId) || {};
+        return <PdfPreviewModal docType="debitNote" recordId={d.id} title="Debit Note " onClose={() => setModal(null)} />;
+      })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} dn={selected} />}
       {modal === "apply" && <ApplyModal onClose={() => setModal(null)} dn={selected} onApply={applyToBill} />}
       {modal === "activity" && <ActivityModal onClose={() => setModal(null)} dn={selected} applied={isApplied} />}
