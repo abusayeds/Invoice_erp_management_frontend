@@ -455,13 +455,13 @@ const SummaryLayout: React.FC<{ report: BusinessOverviewView }> = ({ report }) =
             {block.title}
           </div>
           <table className="w-full text-sm">
-            <tbody>
+              <tbody>
               {block.lines.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-gray-400 border-b border-[#2e333a]" colSpan={2}>
                     No data
                   </td>
-                </tr>
+                  </tr>
               ) : (
                 block.lines.map((line) => (
                   <tr key={`${block.title}-${line.label}`} className="border-b border-[#2e333a]">
@@ -476,9 +476,9 @@ const SummaryLayout: React.FC<{ report: BusinessOverviewView }> = ({ report }) =
                   </tr>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
       ))}
     </div>
   );
@@ -550,8 +550,8 @@ const TableLayout: React.FC<{ report: ReportView; visibleCols: Set<string> }> = 
             </th>
           ))}
         </tr>
-      </thead>
-      <tbody>
+            </thead>
+            <tbody>
         {rows.length === 0 ? (
           <tr>
             <td colSpan={cols.length} className="px-4 py-10 text-center text-gray-400 border-b border-[#2e333a]">
@@ -583,8 +583,8 @@ const TableLayout: React.FC<{ report: ReportView; visibleCols: Set<string> }> = 
             ))}
           </tr>
         )}
-      </tbody>
-    </table>
+            </tbody>
+          </table>
   );
 };
 
@@ -1001,7 +1001,7 @@ export const Reports: React.FC = () => {
                     >
                       {it}
                     </button>
-                  ))}
+                ))}
               </div>
             );
           })}

@@ -1,11 +1,13 @@
 /**
- * Header gear icon → dropdown menu of settings sections.
- * Section UIs come from shared `features/settings` (same as /settings page).
- * App Settings still opens the real AppSettingsModal (unchanged).
+ * Header gear icon → dropdown. Opens the SAME real modals as before:
+ * - App Settings → AppSettingsModal (full General / Modules / … tabs)
+ * - PDF & Print → PdfPrintSettingsModal
+ * - Other items → shared section modal (SettingsModalShell)
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Settings, ChevronRight } from "lucide-react";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import {
   SETTINGS_NAV_ITEMS,
   type SettingsSectionId,
@@ -57,38 +59,46 @@ export const SettingsDropdown: React.FC = () => {
             {SETTINGS_NAV_ITEMS.map(({ id, label }) => {
               const withChevron = id === "import" || id === "export" || id === "language";
               return (
-            <button
+                <button
                   key={id}
                   type="button"
                   onClick={() => openSection(id)}
-              className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
-            >
+                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
+                >
                   <span>{label}</span>
                   {withChevron && <ChevronRight className="w-4 h-4 text-gray-400" />}
-            </button>
+                </button>
               );
             })}
           </div>
         )}
       </div>
 
+      {/* Real App Settings — unchanged modal with all tabs */}
       {activePage === "app-settings" && (
         <AppSettingsModal onClose={() => setActivePage(null)} />
       )}
 
-      {activePage && activePage !== "app-settings" && (
-        <SettingsModalShell
-          section={activePage}
-          onClose={() => setActivePage(null)}
-          maxWidthClass={
-            activePage === "product-library" || activePage === "barcode"
-              ? "max-w-5xl"
-              : activePage === "categories"
-                ? "max-w-2xl"
-                : "max-w-4xl"
-          }
-        />
+      {/* Real PDF & Print — same modal used across documents */}
+      {activePage === "pdf-print" && (
+        <PdfPrintSettingsModal onClose={() => setActivePage(null)} />
       )}
+
+      {activePage &&
+        activePage !== "app-settings" &&
+        activePage !== "pdf-print" && (
+          <SettingsModalShell
+            section={activePage}
+            onClose={() => setActivePage(null)}
+            maxWidthClass={
+              activePage === "product-library" || activePage === "barcode"
+                ? "max-w-5xl"
+                : activePage === "categories"
+                  ? "max-w-2xl"
+                  : "max-w-4xl"
+            }
+          />
+        )}
     </>
   );
 };

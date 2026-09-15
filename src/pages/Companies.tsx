@@ -170,18 +170,18 @@ const emptyForm = (): CompanyFormState => ({
   id: "",
   businessName: "",
   email: "",
-  phone: "",
-  mobile: "",
-  fax: "",
-  website: "",
+      phone: "",
+      mobile: "",
+      fax: "",
+      website: "",
   billingAddress: "",
   shippingAddress: "",
   sameAsBilling: false,
-  regNo: "",
-  vat: "",
+      regNo: "",
+      vat: "",
   paymentTermsSales: "Net on receipt",
   paymentTermsPurchase: "Net on receipt",
-  startFiscalYear: "January",
+      startFiscalYear: "January",
   isOwner: false,
   reverseChargeSales: false,
   billing: emptyAddress(),
@@ -603,11 +603,11 @@ export const Companies: React.FC = () => {
   const handleSave = async (company: Company) => {
     if (company.id) {
       await api.raw.patch(`/company-register/${company.id}`, companyBody(company));
-    } else {
+      } else {
       await api.raw.post("/company-register/create", companyBody(company));
-    }
+      }
     setFormOpen(null);
-    await loadCompanies();
+      await loadCompanies();
   };
 
   const handleDelete = async () => {
@@ -617,7 +617,7 @@ export const Companies: React.FC = () => {
     } catch {
       /* ignore */
     }
-    await loadCompanies();
+      await loadCompanies();
   };
 
   const handleCardClick = (card: SettingCard) => {
@@ -708,7 +708,7 @@ export const Companies: React.FC = () => {
                     }}
                   >
                     Name
-                  </button>
+              </button>
                 </div>
               )}
             </div>
@@ -723,7 +723,7 @@ export const Companies: React.FC = () => {
               const active = selectedCompany?.id === company.id;
               return (
                 <button
-                  key={company.id}
+                key={company.id}
                   type="button"
                   onClick={() => {
                     setSelectedCompany(company);
@@ -731,19 +731,19 @@ export const Companies: React.FC = () => {
                   }}
                   className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-center gap-3 transition-colors ${
                     active ? "bg-gray-100" : "hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+                }`}
+              >
+                <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
                     {(company.businessName || "?").charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">
                       {company.businessName || "—"}
-                    </div>
                   </div>
-                  {company.isOwner && (
+                </div>
+                {company.isOwner && (
                     <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded">Owner</span>
-                  )}
+                )}
                 </button>
               );
             })}
@@ -751,7 +751,7 @@ export const Companies: React.FC = () => {
 
           <ListSidebarFooter total={`${sorted.length}`} countLabel="Companies" />
         </ResizableListPanel>
-      </div>
+        </div>
 
       {/* RIGHT — detail panel with m-2 like other modules */}
       <section
@@ -762,32 +762,32 @@ export const Companies: React.FC = () => {
             <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
               <h2 className="text-base font-semibold text-gray-900">{selectedCompany.businessName}</h2>
               <div className="flex items-center gap-1">
-                <button
+                  <button
                   type="button"
                   onClick={() => void handleDelete()}
-                  title="Delete company"
+                    title="Delete company"
                   className="p-2 hover:bg-gray-200 rounded-md text-gray-500"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <button
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
                   type="button"
                   onClick={openEdit}
-                  title="Edit company"
+                    title="Edit company"
                   className="p-2 hover:bg-gray-200 rounded-md text-gray-500"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            </div>
 
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-[1fr_auto] gap-6">
                 <InfoField label="Business Name">{selectedCompany.businessName}</InfoField>
                 <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-lg">
                   {(selectedCompany.businessName || "?").charAt(0).toUpperCase()}
+                  </div>
                 </div>
-              </div>
 
               <InfoField label="Email">
                 {selectedCompany.email ? (
@@ -804,12 +804,12 @@ export const Companies: React.FC = () => {
                 <InfoField label="Fax">{selectedCompany.fax || <span className="text-gray-400">—</span>}</InfoField>
                 <InfoField label="Mobile">{selectedCompany.mobile || <span className="text-gray-400">—</span>}</InfoField>
                 <InfoField label="Website">{selectedCompany.website || <span className="text-gray-400">—</span>}</InfoField>
-              </div>
+                </div>
 
               <SectionBar title="Address" />
               <InfoField label="Billing Address">
                 <span className="whitespace-pre-line">
-                  {selectedCompany.billingAddress || <span className="text-gray-400">—</span>}
+                      {selectedCompany.billingAddress || <span className="text-gray-400">—</span>}
                 </span>
               </InfoField>
 
@@ -824,36 +824,36 @@ export const Companies: React.FC = () => {
                   {selectedCompany.paymentTermsPurchase || <span className="text-gray-400">—</span>}
                 </InfoField>
                 <InfoField label="Start Financial Year">{selectedCompany.startFiscalYear || "January"}</InfoField>
-              </div>
+                    </div>
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" disabled checked={!!selectedCompany.reverseChargeSales} className="w-4 h-4" />
                 Reverse Charge for Sales
               </label>
 
               <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {SETTING_CARDS.map((card) => (
-                  <button
-                    key={card.title}
+                  {SETTING_CARDS.map((card) => (
+                    <button
+                      key={card.title}
                     type="button"
                     onClick={() => handleCardClick(card)}
                     className="flex flex-col items-start p-3 bg-gray-100 border border-gray-300 rounded-xl hover:border-blue-400 hover:shadow-sm transition-all text-left"
-                  >
-                    <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center mb-2">
-                      {card.icon}
-                    </div>
+                    >
+                      <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center mb-2">
+                        {card.icon}
+                      </div>
                     <p className="text-xs font-medium text-gray-800 leading-tight">{card.title}</p>
-                    {card.subtitle && (
+                      {card.subtitle && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate w-full">{card.subtitle}</p>
-                    )}
-                  </button>
-                ))}
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </>
-        ) : (
+            </>
+          ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
             {loading ? "Loading…" : "Select a company or create one"}
-          </div>
+                </div>
         )}
       </section>
     </div>

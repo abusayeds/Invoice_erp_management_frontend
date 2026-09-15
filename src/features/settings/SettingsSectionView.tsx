@@ -2,26 +2,16 @@
  * Shared settings section bodies — used by /settings page and header dropdown modals.
  * Change content here once; both surfaces pick it up.
  */
-import React, { useState } from "react";
+import React from "react";
 import { showToast } from "@/utils/toast";
 import {
   Search,
   RefreshCw,
-  Plus,
-  Edit2,
-  ChevronRight,
   Download,
   Upload,
-  X,
 } from "lucide-react";
-import {
-  DEFAULT_SETTINGS_CATEGORIES,
-  SETTINGS_APP_SECTIONS,
-  SETTINGS_PROMO_TITLES,
-  type SettingsSectionId,
-} from "./settingsConfig";
-
-type Category = { id: string; name: string };
+import { SETTINGS_PROMO_TITLES, type SettingsSectionId } from "./settingsConfig";
+import { CategoriesSettingsPanel } from "./CategoriesSettingsPanel";
 
 const Toggle: React.FC<{ defaultChecked?: boolean }> = ({ defaultChecked }) => (
   <label className="relative inline-flex items-center cursor-pointer">
@@ -46,128 +36,18 @@ const PanelHeader: React.FC<{
 
 export type SettingsSectionViewProps = {
   section: SettingsSectionId;
-  /** When true, App Settings opens via AppSettingsModal at the host (page/dropdown). */
-  onOpenAppSettingsModal?: () => void;
 };
 
 export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
   section,
-  onOpenAppSettingsModal,
 }) => {
-  const [categories] = useState<Category[]>(DEFAULT_SETTINGS_CATEGORIES);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [selectedAppSection, setSelectedAppSection] = useState("General");
+  if (section === "app-settings" || section === "pdf-print") {
+    // Hosts open AppSettingsModal / PdfPrintSettingsModal — no stub UI here.
+    return null;
+  }
 
   if (section === "categories") {
-    return (
-      <div>
-        <PanelHeader title="Categories" description="Organise products and expenses">
-          <button
-            type="button"
-            onClick={() => showToast("Categories saved!", "success")}
-            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-          >
-            Save
-          </button>
-        </PanelHeader>
-
-        {editingCategory ? (
-          <div className="max-w-md border border-gray-200 rounded-lg p-5 bg-gray-50">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">Edit Category</h3>
-              <button type="button" onClick={() => setEditingCategory(null)} className="p-1.5 hover:bg-gray-200 rounded">
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
-                <input
-                  type="text"
-                  defaultValue={editingCategory.name}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Active</span>
-                <Toggle defaultChecked />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Parent Category</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
-                  <option>No Parent Category</option>
-                  <option>Stock Level</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => setEditingCategory(null)}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  showToast("Category updated!", "success");
-                  setEditingCategory(null);
-                }}
-                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-4 mb-4 border-b border-gray-200">
-              <button type="button" className="pb-2 text-sm font-medium text-gray-900 border-b-2 border-blue-600">
-                All Category
-              </button>
-              <button type="button" className="pb-2 text-sm font-medium text-gray-500 hover:text-gray-700">
-                Products
-              </button>
-              <button type="button" className="pb-2 text-sm font-medium text-gray-500 hover:text-gray-700">
-                Expenses
-              </button>
-            </div>
-            <div className="space-y-2 max-w-2xl">
-              {categories.map((category) => (
-                <div
-                  key={category.id}
-                  className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
-                >
-                  <span className="text-sm text-gray-900">{category.name}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingCategory(category)}
-                      className="p-1.5 hover:bg-gray-100 rounded"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4 text-gray-600" />
-                    </button>
-                    <button type="button" className="p-1.5 hover:bg-gray-100 rounded">
-                      <ChevronRight className="w-4 h-4 text-gray-600" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => showToast("Add new category", "info")}
-              className="w-12 h-12 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-800 mt-6"
-              title="Add category"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
-          </>
-        )}
-      </div>
-    );
+    return <CategoriesSettingsPanel />;
   }
 
   if (section === "edit-titles") {
@@ -194,188 +74,6 @@ export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
               {title}
             </div>
           ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (section === "app-settings") {
-    // Prefer the real App Settings modal when host provides it (dropdown already did).
-    if (onOpenAppSettingsModal) {
-      return (
-        <div className="py-8 text-center">
-          <p className="text-sm text-gray-600 mb-4">Configure modules, currency, printer and document options.</p>
-          <button
-            type="button"
-            onClick={onOpenAppSettingsModal}
-            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-          >
-            Open App Settings
-          </button>
-        </div>
-      );
-    }
-    return (
-      <div>
-        <PanelHeader title="App Settings" description="Configure module and display preferences">
-          <button type="button" onClick={() => showToast("Searching...", "info")} className="p-2 hover:bg-gray-100 rounded">
-            <Search className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            type="button"
-            onClick={() => showToast("Settings saved!", "success")}
-            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-md hover:bg-gray-800"
-          >
-            Save
-          </button>
-        </PanelHeader>
-        <div className="flex flex-col lg:flex-row border border-gray-200 rounded-lg overflow-hidden">
-          <div className="w-full lg:w-56 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-50 overflow-y-auto max-h-72 lg:max-h-[28rem]">
-            {SETTINGS_APP_SECTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSelectedAppSection(s)}
-                className={`w-full px-4 py-3 text-left text-sm ${
-                  selectedAppSection === s
-                    ? "bg-white text-blue-600 font-medium border-l-2 border-blue-600"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="flex-1 p-4 sm:p-6">
-            {selectedAppSection === "General" && (
-              <div className="space-y-6 max-w-xl">
-                <h3 className="text-base font-semibold text-gray-900">Chat</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Create Public URL in Email</span>
-                  <Toggle defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Appearance</span>
-                  <select className="px-3 py-2 border border-gray-300 rounded-md text-sm">
-                    <option>Light</option>
-                    <option>Dark</option>
-                  </select>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Default Mail</span>
-                  <select className="px-3 py-2 border border-gray-300 rounded-md text-sm">
-                    <option>Moon Main server</option>
-                  </select>
-                </div>
-              </div>
-            )}
-            {selectedAppSection === "Modules" && (
-              <div className="space-y-4 max-w-xl">
-                {["Invoice", "Estimate", "Sales Receipt", "Purchase Order", "Bill", "Credit Note", "Debit Note", "Expense"].map(
-                  (item) => (
-                    <div key={item} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">{item}</span>
-                      <Toggle defaultChecked />
-                    </div>
-                  ),
-                )}
-              </div>
-            )}
-            {selectedAppSection === "Currency & Format" && (
-              <div className="space-y-4 max-w-xl">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Currency</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                    <option>USD</option>
-                    <option>EUR</option>
-                  </select>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Currency Symbol</span>
-                  <Toggle defaultChecked />
-                </div>
-              </div>
-            )}
-            {!["General", "Modules", "Currency & Format"].includes(selectedAppSection) && (
-              <div className="text-sm text-gray-500 py-12 text-center">
-                No settings available for &quot;{selectedAppSection}&quot; yet.
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (section === "pdf-print") {
-    return (
-      <div>
-        <PanelHeader title="PDF & Print Settings" description="Style how documents are printed and exported">
-          <button
-            type="button"
-            onClick={() => showToast("Settings saved!", "success")}
-            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-md hover:bg-gray-800"
-          >
-            Save
-          </button>
-        </PanelHeader>
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="w-full lg:w-1/3">
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-              <div className="aspect-[8.5/11] bg-white border border-gray-300 rounded shadow-sm">
-                <div className="p-4 text-xs text-gray-600">Invoice Preview</div>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 space-y-6">
-            <h3 className="text-sm font-semibold text-gray-900">Style</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {["Text Color", "Border Color", "Fill Color", "Fill Text Color"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => showToast(`${label} selected`, "info")}
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 text-left text-sm"
-                >
-                  <span className="w-4 h-4 rounded bg-gray-800 inline-block" />
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-700 mb-1.5">Font</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                  <option>Arial</option>
-                  <option>Helvetica</option>
-                  <option>Times New Roman</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1.5">Font Size</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                  <option>Medium</option>
-                  <option>Small</option>
-                  <option>Large</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1.5">Paper</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                  <option>US Paper</option>
-                  <option>A4</option>
-                  <option>Legal</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1.5">Full Page</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                  <option>Yes</option>
-                  <option>No</option>
-                </select>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );

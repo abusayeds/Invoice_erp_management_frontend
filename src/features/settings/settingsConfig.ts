@@ -69,18 +69,6 @@ export const SETTINGS_APP_SECTIONS = [
   "Product",
 ] as const;
 
-export const DEFAULT_SETTINGS_CATEGORIES = [
-  { id: "1", name: "Maintenance" },
-  { id: "2", name: "Advertising and Promotion" },
-  { id: "3", name: "Utilities" },
-  { id: "4", name: "Meals and Entertainment" },
-  { id: "5", name: "Marketing" },
-  { id: "6", name: "Depreciation" },
-  { id: "7", name: "Insurance" },
-  { id: "8", name: "Fees" },
-  { id: "9", name: "Travel" },
-];
-
 export const SETTINGS_PROMO_TITLES = [
   "50% OFF First Month Plan",
   "20% OFF Annual Subscription",
