@@ -5,14 +5,13 @@
  * in the Qayd blue theme. Shifts persist in meta row `hrm:shifts`.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { useShifts, saveShifts, type Shift } from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb } from "../hrmShared";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "../hrmShared";
 import {
   Search,
-  Plus,
   Filter,
   ChevronDown,
   ArrowUpDown,
@@ -42,8 +41,6 @@ const emptyDraft = () => ({
 export const Shifts: React.FC = () => {
   const navigate = useNavigate();
   const shifts = useShifts();
-  useEffect(() => {
-  }, [shifts]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -84,7 +81,7 @@ export const Shifts: React.FC = () => {
     } else {
       const rec: Shift = {
         ...draft,
-        id: "s" + Math.random().toString(36).slice(2, 8),
+        id: `local_${Date.now()}`,
         createdBy: "Company",
         createdAt: new Date().toISOString().slice(0, 10),
       };
@@ -132,19 +129,16 @@ export const Shifts: React.FC = () => {
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Shifts" onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Shifts</h2>
-          <button
+          <CreatePlusButton
+            title="Create shift"
             onClick={() => {
               setDraft(emptyDraft());
               setModal("create");
             }}
-            title="Create shift"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 

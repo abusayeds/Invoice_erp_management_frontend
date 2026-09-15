@@ -8,9 +8,9 @@ import React, { useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
+import { AsyncSearchSelect, CreatePlusButton, searchDocumentCategories } from "./hrmShared";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -29,17 +29,14 @@ import {
   FileArchive,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  documentHooks,
-  documentCategoryHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { documentHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Document {
   id: string;
   title: string;
+  documentCategoryId?: string;
   documentCategory: string;
   description: string;
   effectiveDate: string;
@@ -52,86 +49,6 @@ interface Document {
   createdAt: string;
 }
 
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleDocumentsSeed = [
-  {
-    id: "1",
-    title: "Business Continuity Plan",
-    document_category_id: "Legal Documents",
-    description: "Comprehensive business continuity and disaster recovery plan.",
-    effective_date: "2026-01-13",
-    status: "Approved",
-  },
-  {
-    id: "2",
-    title: "Customer Service Standards",
-    document_category_id: "Professional Licenses",
-    description: "Standards and guidelines for customer service excellence.",
-    effective_date: "2026-01-07",
-    status: "Approved",
-  },
-  {
-    id: "3",
-    title: "Environmental Sustainability Plan",
-    document_category_id: "Legal Documents",
-    description:
-      "Corporate environmental responsibility initiatives including waste reduction, energy conservation, and sustainable business practices.",
-    effective_date: "",
-    status: "Pending",
-  },
-  {
-    id: "4",
-    title: "Innovation Initiative Guidelines",
-    document_category_id: "Training Certificates",
-    description: "Guidelines for innovation projects and initiatives.",
-    effective_date: "2025-12-29",
-    status: "Approved",
-  },
-  {
-    id: "5",
-    title: "Vendor Management Policy",
-    document_category_id: "Contract Documents",
-    description: "Policies and procedures for vendor management.",
-    effective_date: "",
-    status: "Rejected",
-  },
-  {
-    id: "6",
-    title: "Retirement Plan Guide",
-    document_category_id: "Financial Documents",
-    description: "Guide to employee retirement plans and benefits.",
-    effective_date: "2025-12-18",
-    status: "Approved",
-  },
-  {
-    id: "7",
-    title: "Flexible Work Schedule",
-    document_category_id: "Employment Records",
-    description: "Policy for flexible work arrangements.",
-    effective_date: "",
-    status: "Pending",
-  },
-  {
-    id: "8",
-    title: "Data Protection Guidelines",
-    document_category_id: "Professional Licenses",
-    description: "Guidelines for data protection and privacy.",
-    effective_date: "2025-12-09",
-    status: "Approved",
-  },
-  {
-    id: "9",
-    title: "Professional Development Fund",
-    document_category_id: "Financial Documents",
-    description: "Policy for professional development funding.",
-    effective_date: "",
-    status: "Rejected",
-  },
-];
-
-const statuses = ["Pending", "Approved", "Rejected"];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mapFromApi(p: any): Document {
@@ -139,10 +56,12 @@ function mapFromApi(p: any): Document {
   return {
     id: String(p.id ?? p._id ?? ""),
     title: p.title ?? "",
+    documentCategoryId:
+      typeof dcRef === "object" ? String(dcRef?._id ?? dcRef?.id ?? "") : String(dcRef ?? ""),
     documentCategory:
       typeof dcRef === "object"
-        ? dcRef?.name ?? String(dcRef?._id ?? "")
-        : String(dcRef ?? p.documentCategory ?? p.document_category ?? ""),
+        ? dcRef?.name ?? dcRef?.document_category ?? ""
+        : String(p.documentCategory ?? p.document_category ?? dcRef ?? ""),
     description: p.description ?? "",
     effectiveDate: (p.effective_date ?? p.effectiveDate ?? "").slice(0, 10),
     uploadedBy: p.uploaded_by ?? p.uploadedBy ?? "",
@@ -174,6 +93,8 @@ type SortField =
   | "status";
 type SortDir = "asc" | "desc";
 
+const docFilterStatuses = ["All", "Approved", "Pending", "Rejected"];
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Documents: React.FC = () => {
@@ -181,17 +102,9 @@ export const Documents: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     documentHooks,
-    { seed: sampleDocumentsSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const documents = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const dcListResult = documentCategoryHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const dcOptions: string[] = useMemo(() => {
-    const data = dcListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.name ?? String(e._id ?? e.id ?? ""));
-  }, [dcListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -215,6 +128,7 @@ export const Documents: React.FC = () => {
   const [documentFormData, setDocumentFormData] = useState({
     title: "",
     documentCategory: "",
+    documentCategoryLabel: "",
     description: "",
     effectiveDate: "",
     document: null as File | null,
@@ -288,6 +202,7 @@ export const Documents: React.FC = () => {
     setDocumentFormData({
       title: "",
       documentCategory: "",
+      documentCategoryLabel: "",
       description: "",
       effectiveDate: "",
       document: null,
@@ -305,7 +220,8 @@ export const Documents: React.FC = () => {
     setSelectedDocument(doc);
     setDocumentFormData({
       title: doc.title,
-      documentCategory: doc.documentCategory,
+      documentCategory: doc.documentCategoryId || "",
+      documentCategoryLabel: doc.documentCategory,
       description: doc.description,
       effectiveDate: doc.effectiveDate,
       document: null,
@@ -450,14 +366,6 @@ export const Documents: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayDcOptions = dcOptions.length > 0 ? dcOptions : [
-    "Legal Documents", "Professional Licenses", "Training Certificates",
-    "Contract Documents", "Financial Documents", "Employment Records",
-    "Policy Documents", "Compliance Documents", "HR Documents",
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -510,23 +418,19 @@ export const Documents: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document Category *
             </label>
-            <select
+            <AsyncSearchSelect
               value={documentFormData.documentCategory}
-              onChange={(e) =>
+              displayName={documentFormData.documentCategoryLabel}
+              onChange={(id, opt) =>
                 setDocumentFormData({
                   ...documentFormData,
-                  documentCategory: e.target.value,
+                  documentCategory: id,
+                  documentCategoryLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Document Category</option>
-              {displayDcOptions.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+              onSearch={searchDocumentCategories}
+              placeholder="Search category..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -809,17 +713,12 @@ export const Documents: React.FC = () => {
           <span className="text-gray-900 font-medium">Documents</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Documents
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
@@ -875,7 +774,7 @@ export const Documents: React.FC = () => {
                       Status
                     </span>
                   </div>
-                  {statuses.map((st) => (
+                  {docFilterStatuses.map((st) => (
                     <button
                       key={st}
                       onClick={() => {

@@ -9,8 +9,17 @@ import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  employeeUserId,
+  apiLabel as empApiLabel,
+  searchEmployees,
+  searchBranches,
+  searchDepartments,
+  searchDesignations,
+} from "./hrmShared";
+import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -30,14 +39,7 @@ import {
   Building2,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  employeeTransferHooks,
-  employeeHooks,
-  branchHooks,
-  departmentHooks,
-  designationHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { employeeTransferHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,8 +50,11 @@ interface EmployeeTransfer {
   fromBranch: string;
   fromDepartment: string;
   fromDesignation: string;
+  toBranchId: string;
   toBranch: string;
+  toDepartmentId: string;
   toDepartment: string;
+  toDesignationId: string;
   toDesignation: string;
   effectiveDate: string;
   reason: string;
@@ -60,144 +65,18 @@ interface EmployeeTransfer {
   createdAt: string;
 }
 
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleTransfersSeed = [
-  {
-    id: "1",
-    employee_id: "Mark Allen",
-    to_branch_id: "North Branch",
-    to_department_id: "Procurement",
-    to_designation_id: "Senior Analyst",
-    effective_date: "2026-01-24",
-    reason: "Emergency response planning requiring experienced personnel to establish crisis management protocols.",
-    status: "In progress",
-  },
-  {
-    id: "2",
-    employee_id: "Anthony Walker",
-    to_branch_id: "Sales Office",
-    to_department_id: "Sales",
-    to_designation_id: "Sales Executive",
-    effective_date: "2026-01-19",
-    reason: "Cross-functional skill development and career growth opportunity.",
-    status: "Pending",
-  },
-  {
-    id: "3",
-    employee_id: "Matthew Clark",
-    to_branch_id: "Regional Office",
-    to_department_id: "IT",
-    to_designation_id: "System Administrator",
-    effective_date: "2026-01-10",
-    reason: "Technical expertise needed for infrastructure upgrade project.",
-    status: "Approved",
-  },
-  {
-    id: "4",
-    employee_id: "Daniel Thompson",
-    to_branch_id: "Main Office",
-    to_department_id: "Sales & Marketing",
-    to_designation_id: "Manager",
-    effective_date: "2026-01-09",
-    reason: "Leadership expansion and team restructuring.",
-    status: "In progress",
-  },
-  {
-    id: "5",
-    employee_id: "Christopher Lee",
-    to_branch_id: "Corporate Headquarters",
-    to_department_id: "Brand Management",
-    to_designation_id: "Brand Manager",
-    effective_date: "2025-12-31",
-    reason: "Corporate branding initiative requiring experienced personnel.",
-    status: "In progress",
-  },
-  {
-    id: "6",
-    employee_id: "James Garcia",
-    to_branch_id: "Customer Service Center",
-    to_department_id: "Technical Support",
-    to_designation_id: "Team Lead",
-    effective_date: "2025-12-25",
-    reason: "Technical support team expansion and skill enhancement.",
-    status: "Approved",
-  },
-  {
-    id: "7",
-    employee_id: "Robert Taylor",
-    to_branch_id: "Customer Service Center",
-    to_department_id: "Operations",
-    to_designation_id: "Operations Analyst",
-    effective_date: "2025-12-30",
-    reason: "Process improvement initiative and operational excellence.",
-    status: "In progress",
-  },
-  {
-    id: "8",
-    employee_id: "David Wilson",
-    to_branch_id: "East Branch",
-    to_department_id: "Administration",
-    to_designation_id: "Admin Manager",
-    effective_date: "2025-12-23",
-    reason: "Branch administration strengthening requirement.",
-    status: "Cancelled",
-  },
-  {
-    id: "9",
-    employee_id: "Michael Brown",
-    to_branch_id: "North Branch",
-    to_department_id: "Procurement",
-    to_designation_id: "Manager",
-    effective_date: "2025-12-13",
-    reason: "Procurement department restructuring and leadership gap.",
-    status: "In progress",
-  },
-];
-
-const statuses = [
-  "Pending",
-  "Approved",
-  "In progress",
-  "Cancelled",
-  "Completed",
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type SelectOption = { value: string; label: string };
+const refId = (ref: any) =>
+  ref && typeof ref === "object" ? String(ref._id ?? ref.id ?? "") : String(ref ?? "");
 
-const employeeOption = (employee: any): SelectOption => ({
-  value: String(employee?._id ?? employee?.id ?? employee?.employee_id ?? ""),
-  label: String(
-    employee?.employee_user_id?.name ??
-      employee?.user_id?.name ??
-      employee?.name ??
-      employee?.employee_name ??
-      employee?.first_name ??
-      employee?.employee_id ??
-      employee?._id ??
-      employee?.id ??
-      "",
-  ),
-});
-
-const employeeRefValue = (ref: any) => String(typeof ref === "object" ? ref?._id ?? ref?.id ?? "" : ref ?? "");
+const employeeRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? employeeUserId(ref) : String(ref ?? "");
 
 const employeeRefLabel = (ref: any, fallback: any = "") =>
-  String(
-    typeof ref === "object"
-      ? ref?.employee_user_id?.name ??
-          ref?.user_id?.name ??
-          ref?.name ??
-          ref?.employee_name ??
-          ref?.first_name ??
-          ref?.employee_id ??
-          ref?._id ??
-          ref?.id ??
-          ""
-      : fallback || ref || "",
-  );
+  typeof ref === "object"
+    ? empApiLabel(ref, ["employee_user_id", "user_id", "name", "employee_name"]) || String(fallback || "")
+    : String(fallback || ref || "");
 
 function mapFromApi(p: any): EmployeeTransfer {
   const empRef = p.employee_id;
@@ -223,18 +102,21 @@ function mapFromApi(p: any): EmployeeTransfer {
       typeof fromDesigRef === "object"
         ? fromDesigRef?.designation_name ?? String(fromDesigRef?._id ?? "")
         : String(fromDesigRef ?? ""),
+    toBranchId: refId(toBranchRef),
     toBranch:
       typeof toBranchRef === "object"
-        ? toBranchRef?.branch_name ?? String(toBranchRef?._id ?? "")
-        : String(toBranchRef ?? p.toBranch ?? ""),
+        ? toBranchRef?.branch_name ?? empApiLabel(toBranchRef, ["branch_name", "name"])
+        : String(p.toBranch ?? toBranchRef ?? ""),
+    toDepartmentId: refId(toDeptRef),
     toDepartment:
       typeof toDeptRef === "object"
-        ? toDeptRef?.department_name ?? String(toDeptRef?._id ?? "")
-        : String(toDeptRef ?? p.toDepartment ?? ""),
+        ? toDeptRef?.department_name ?? empApiLabel(toDeptRef, ["department_name", "name"])
+        : String(p.toDepartment ?? toDeptRef ?? ""),
+    toDesignationId: refId(toDesigRef),
     toDesignation:
       typeof toDesigRef === "object"
-        ? toDesigRef?.designation_name ?? String(toDesigRef?._id ?? "")
-        : String(toDesigRef ?? p.toDesignation ?? ""),
+        ? toDesigRef?.designation_name ?? empApiLabel(toDesigRef, ["designation_name", "name"])
+        : String(p.toDesignation ?? toDesigRef ?? ""),
     effectiveDate: (p.effective_date ?? p.effectiveDate ?? "").slice(0, 10),
     reason: p.reason ?? "",
     document: p.document ?? "",
@@ -263,6 +145,8 @@ type SortField =
   | "approvedBy";
 type SortDir = "asc" | "desc";
 
+const transferStatuses = ["Pending", "Approved", "In progress", "Cancelled", "Completed"];
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const EmployeeTransfers: React.FC = () => {
@@ -270,38 +154,9 @@ export const EmployeeTransfers: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     employeeTransferHooks,
-    { seed: sampleTransfersSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const transfers = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const empListResult = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions: SelectOption[] = useMemo(() => {
-    const data = empListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map(employeeOption).filter((option) => option.value && option.label);
-  }, [empListResult.data]);
-
-  const branchListResult = branchHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const branchOptions: string[] = useMemo(() => {
-    const data = branchListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.branch_name ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [branchListResult.data]);
-
-  const deptListResult = departmentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const deptOptions: string[] = useMemo(() => {
-    const data = deptListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.department_name ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [deptListResult.data]);
-
-  const desigListResult = designationHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const desigOptions: string[] = useMemo(() => {
-    const data = desigListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.designation_name ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [desigListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -325,9 +180,13 @@ export const EmployeeTransfers: React.FC = () => {
   // Form state
   const [transferFormData, setTransferFormData] = useState({
     employee: "",
+    employeeLabel: "",
     toBranch: "",
+    toBranchLabel: "",
     toDepartment: "",
+    toDepartmentLabel: "",
     toDesignation: "",
+    toDesignationLabel: "",
     effectiveDate: "",
     reason: "",
     document: null as File | null,
@@ -403,9 +262,13 @@ export const EmployeeTransfers: React.FC = () => {
   const resetTransferForm = () => {
     setTransferFormData({
       employee: "",
+      employeeLabel: "",
       toBranch: "",
+      toBranchLabel: "",
       toDepartment: "",
+      toDepartmentLabel: "",
       toDesignation: "",
+      toDesignationLabel: "",
       effectiveDate: "",
       reason: "",
       document: null,
@@ -422,10 +285,14 @@ export const EmployeeTransfers: React.FC = () => {
   const openEditModal = (transfer: EmployeeTransfer) => {
     setSelectedTransfer(transfer);
     setTransferFormData({
-      employee: transfer.employeeId || transfer.employee,
-      toBranch: transfer.toBranch,
-      toDepartment: transfer.toDepartment,
-      toDesignation: transfer.toDesignation,
+      employee: transfer.employeeId || "",
+      employeeLabel: transfer.employee,
+      toBranch: transfer.toBranchId || "",
+      toBranchLabel: transfer.toBranch,
+      toDepartment: transfer.toDepartmentId || "",
+      toDepartmentLabel: transfer.toDepartment,
+      toDesignation: transfer.toDesignationId || "",
+      toDesignationLabel: transfer.toDesignation,
       effectiveDate: transfer.effectiveDate,
       reason: transfer.reason,
       document: null,
@@ -580,37 +447,6 @@ export const EmployeeTransfers: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayEmpOptions =
-    empOptions.length > 0
-      ? empOptions
-      : [
-          "Mark Allen",
-          "Anthony Walker",
-          "Matthew Clark",
-          "Daniel Thompson",
-          "Christopher Lee",
-          "James Garcia",
-          "Robert Taylor",
-          "David Wilson",
-          "Michael Brown",
-          "John Smith",
-        ].map((name) => ({ value: name, label: name }));
-  const displayBranchOptions = branchOptions.length > 0 ? branchOptions : [
-    "Customer Service Center", "Sales Office", "Regional Office", "Main Office",
-    "North Branch", "South Branch", "East Branch", "West Branch", "Corporate Headquarters",
-  ];
-  const displayDeptOptions = deptOptions.length > 0 ? deptOptions : [
-    "Customer Support", "Technical Support", "Legal & Compliance", "Operations",
-    "Sales", "Marketing", "Customer Service", "Finance & Accounting",
-    "Human Resources", "IT", "Administration", "Procurement",
-  ];
-  const displayDesigOptions = desigOptions.length > 0 ? desigOptions : [
-    "Associate", "Senior Associate", "Team Lead", "Manager", "Analyst",
-    "Senior Analyst", "Director", "Coordinator", "Specialist",
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -651,102 +487,81 @@ export const EmployeeTransfers: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Employee *
               </label>
-              <select
+              <AsyncSearchSelect
                 value={transferFormData.employee}
-                onChange={(e) =>
+                displayName={transferFormData.employeeLabel}
+                onChange={(id, opt) =>
                   setTransferFormData({
                     ...transferFormData,
-                    employee: e.target.value,
+                    employee: id,
+                    employeeLabel: opt?.name ?? "",
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-              >
-                <option value="">Select Employee</option>
-                {displayEmpOptions.map((emp) => (
-                  <option key={emp.value} value={emp.value}>
-                    {emp.label}
-                  </option>
-                ))}
-              </select>
+                onSearch={searchEmployees}
+                placeholder="Search employee..."
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 To Branch *
               </label>
-              <select
+              <AsyncSearchSelect
                 value={transferFormData.toBranch}
-                onChange={(e) =>
+                displayName={transferFormData.toBranchLabel}
+                onChange={(id, opt) =>
                   setTransferFormData({
                     ...transferFormData,
-                    toBranch: e.target.value,
+                    toBranch: id,
+                    toBranchLabel: opt?.name ?? "",
                     toDepartment: "",
+                    toDepartmentLabel: "",
                     toDesignation: "",
+                    toDesignationLabel: "",
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-              >
-                <option value="">Select To Branch</option>
-                {displayBranchOptions.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                onSearch={searchBranches}
+                placeholder="Search branch..."
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 To Department *
               </label>
-              <select
+              <AsyncSearchSelect
                 value={transferFormData.toDepartment}
-                onChange={(e) =>
+                displayName={transferFormData.toDepartmentLabel}
+                onChange={(id, opt) =>
                   setTransferFormData({
                     ...transferFormData,
-                    toDepartment: e.target.value,
+                    toDepartment: id,
+                    toDepartmentLabel: opt?.name ?? "",
                     toDesignation: "",
+                    toDesignationLabel: "",
                   })
                 }
+                onSearch={(q) => searchDepartments(q, transferFormData.toBranch || undefined)}
+                placeholder={transferFormData.toBranch ? "Search department..." : "Select branch first"}
                 disabled={!transferFormData.toBranch}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white disabled:bg-gray-100"
-              >
-                <option value="">
-                  {transferFormData.toBranch
-                    ? "Select To Department"
-                    : "Select Branch first"}
-                </option>
-                {displayDeptOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 To Designation *
               </label>
-              <select
+              <AsyncSearchSelect
                 value={transferFormData.toDesignation}
-                onChange={(e) =>
+                displayName={transferFormData.toDesignationLabel}
+                onChange={(id, opt) =>
                   setTransferFormData({
                     ...transferFormData,
-                    toDesignation: e.target.value,
+                    toDesignation: id,
+                    toDesignationLabel: opt?.name ?? "",
                   })
                 }
+                onSearch={(q) => searchDesignations(q, transferFormData.toDepartment || undefined)}
+                placeholder={transferFormData.toDepartment ? "Search designation..." : "Select department first"}
                 disabled={!transferFormData.toDepartment}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white disabled:bg-gray-100"
-              >
-                <option value="">
-                  {transferFormData.toDepartment
-                    ? "Select To Designation"
-                    : "Select Department first"}
-                </option>
-                {displayDesigOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -865,7 +680,7 @@ export const EmployeeTransfers: React.FC = () => {
               onChange={(e) => setNewStatus(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
-              {statuses.map((s) => (
+              {transferStatuses.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -1063,17 +878,12 @@ export const EmployeeTransfers: React.FC = () => {
       </div>
 
       {/* Page Header */}
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Employee Transfers
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
 

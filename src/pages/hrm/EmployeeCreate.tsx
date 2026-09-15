@@ -19,7 +19,8 @@ import {
   type HrmEmployee,
   type HrmDocument,
 } from "@/lib/db/hrm";
-import { Field, inputCls, SearchSelect, HrmBreadcrumb } from "./hrmShared";
+import { employeeApi } from "@/services/hrm";
+import { Field, inputCls, selectCls, SearchSelect, HrmBreadcrumb } from "./hrmShared";
 import { ArrowLeft, Plus, Trash2, Upload } from "lucide-react";
 
 const STEPS = ["Personal", "Employment", "Contact", "Banking", "Hours & Rates", "Documents"] as const;
@@ -77,9 +78,23 @@ const EmployeeCreate: React.FC = () => {
   // hydrate once the store arrives
   useEffect(() => {
     if (loaded || employees === undefined) return;
-    if (editing) setForm(JSON.parse(JSON.stringify(editing)));
-    else setForm(emptyForm(nextEmployeeId(list)));
+    if (editing) {
+      setForm(JSON.parse(JSON.stringify(editing)));
+      setLoaded(true);
+      return;
+    }
+    const base = emptyForm(nextEmployeeId(list));
+    setForm(base);
     setLoaded(true);
+    void employeeApi
+      .generateId()
+      .then((res) => {
+        const idStr = res?.employee_id ? String(res.employee_id) : "";
+        if (idStr) setForm((f) => (f.employeeId === base.employeeId ? { ...f, employeeId: idStr } : f));
+      })
+      .catch(() => {
+        /* keep local EMP… suggestion */
+      });
   }, [employees, editing, list, loaded]);
 
   const set = (patch: Partial<HrmEmployee>) => setForm((f) => ({ ...f, ...patch }));
@@ -87,7 +102,7 @@ const EmployeeCreate: React.FC = () => {
   const stepValid = useMemo(() => {
     switch (step) {
       case 0:
-        return form.dob !== "";
+        return form.employeeId.trim() !== "" && form.dob !== "";
       case 1:
         return form.name !== "" && form.shift !== "" && form.branch !== "" && form.department !== "" && form.designation !== "";
       case 2:
@@ -162,8 +177,13 @@ const EmployeeCreate: React.FC = () => {
           {/* ── Personal ── */}
           {step === 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-              <Field label="Employee Id">
-                <input value={form.employeeId} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
+              <Field label="Employee Id" required>
+                <input
+                  value={form.employeeId}
+                  onChange={(e) => set({ employeeId: e.target.value })}
+                  placeholder="e.g. EMP20260001"
+                  className={inputCls}
+                />
               </Field>
               <Field label="Date Of Birth" required>
                 <input type="date" value={form.dob} onChange={(e) => set({ dob: e.target.value })} className={inputCls} />
@@ -209,10 +229,10 @@ const EmployeeCreate: React.FC = () => {
                 <select
                   value={form.employmentType}
                   onChange={(e) => set({ employmentType: e.target.value as HrmEmployee["employmentType"] })}
-                  className={`${inputCls} bg-white`}
+                  className={selectCls}
                 >
                   {["Full Time", "Part Time", "Contract", "Temporary"].map((t) => (
-                    <option key={t}>{t}</option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </Field>

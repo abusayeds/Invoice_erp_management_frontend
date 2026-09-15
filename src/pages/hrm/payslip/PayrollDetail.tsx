@@ -2,23 +2,16 @@
  * File: src/pages/hrm/payslip/PayrollDetail.tsx
  * Payroll Details — matches the ERPGO reference
  * (references/hrm/payroll/payroll details.png + view payslip.png) in the
- * Qayd blue theme: header card, 4 stat tiles, employee salary breakdown table,
- * payslip modal (attendance summary / earnings / deductions / leave details)
- * and a jsPDF payslip download.
+ * Qayd blue theme: header card, stat tiles, employee salary breakdown table,
+ * payslip modal and jsPDF download. Pay rows load from GET /hrm/payroll/:id.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { money } from "@/lib/db";
-import {
-  usePayrolls,
-  savePayrolls,
-  usePayrollPay,
-  workingDays,
-  type EmployeePay,
-  type PayrollRecord,
-} from "@/lib/db/hrm";
+import { usePayrolls, type PayrollRecord } from "@/lib/db/hrm";
+import { payrollApi } from "@/services/hrm";
 import { Chip, HrmBreadcrumb } from "../hrmShared";
 import {
   ArrowLeft,
@@ -35,14 +28,89 @@ import {
   CalendarDays,
 } from "lucide-react";
 
-const email = (name: string) => name.toLowerCase().split(" ").join(".") + "@company.com";
+interface BreakdownLine {
+  name: string;
+  amount: number;
+}
 
-/* ── payslip PDF (jsPDF, text layout) ──────────────────────────── */
+export interface PayrollEntryRow {
+  entryId: string;
+  employeeUserId: string;
+  name: string;
+  email: string;
+  department: string;
+  designation: string;
+  basic: number;
+  allowances: number;
+  manualOT: number;
+  attendanceOT: number;
+  deductions: number;
+  loans: number;
+  gross: number;
+  net: number;
+  isPaid: boolean;
+  workingDays: number;
+  presentDays: number;
+  halfDays: number;
+  absentDays: number;
+  paidLeaveDays: number;
+  allowancesBreakdown: BreakdownLine[];
+  deductionsBreakdown: BreakdownLine[];
+}
 
-async function downloadPayslip(payroll: PayrollRecord, row: EmployeePay) {
+function mapEntry(raw: Record<string, unknown>): PayrollEntryRow {
+  const emp = raw.employee_id as Record<string, unknown> | string | undefined;
+  const name =
+    typeof emp === "object" && emp ? String(emp.name ?? "") : "";
+  const email =
+    typeof emp === "object" && emp ? String(emp.email ?? "") : "";
+  const employeeUserId =
+    typeof emp === "object" && emp
+      ? String(emp._id ?? emp.id ?? "")
+      : emp
+        ? String(emp)
+        : "";
+
+  const mapBreakdown = (rows: unknown): BreakdownLine[] => {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => {
+      const o = r as Record<string, unknown>;
+      return {
+        name: String(o.name ?? o.title ?? o.type ?? "Item"),
+        amount: Number(o.amount ?? o.value ?? 0),
+      };
+    });
+  };
+
+  return {
+    entryId: String(raw._id ?? raw.id ?? ""),
+    employeeUserId,
+    name,
+    email,
+    department: "",
+    designation: "",
+    basic: Number(raw.basic_salary ?? 0),
+    allowances: Number(raw.total_allowances ?? 0),
+    manualOT: Number(raw.total_manual_overtimes ?? 0),
+    attendanceOT: Number(raw.attendance_overtime_amount ?? 0),
+    deductions: Number(raw.total_deductions ?? 0),
+    loans: Number(raw.total_loans ?? 0),
+    gross: Number(raw.gross_pay ?? 0),
+    net: Number(raw.net_pay ?? 0),
+    isPaid: String(raw.status ?? "").toLowerCase() === "paid",
+    workingDays: Number(raw.working_days ?? 0),
+    presentDays: Number(raw.present_days ?? 0),
+    halfDays: Number(raw.half_days ?? 0),
+    absentDays: Number(raw.absent_days ?? 0),
+    paidLeaveDays: Number(raw.paid_leave_days ?? 0),
+    allowancesBreakdown: mapBreakdown(raw.allowances_breakdown),
+    deductionsBreakdown: mapBreakdown(raw.deductions_breakdown),
+  };
+}
+
+async function downloadPayslip(payroll: PayrollRecord, row: PayrollEntryRow) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF();
-  const emp = row.employee;
   let y = 18;
   const line = (label: string, value: string, bold = false) => {
     doc.setFont("helvetica", bold ? "bold" : "normal");
@@ -59,52 +127,60 @@ async function downloadPayslip(payroll: PayrollRecord, row: EmployeePay) {
   doc.setFontSize(10);
   doc.text(`${payroll.title} · ${payroll.periodStart} - ${payroll.periodEnd}`, 105, y, { align: "center" });
   y += 12;
-  line("Employee", `${emp.name} (${emp.employeeId})`);
-  line("Email", email(emp.name));
-  line("Department", emp.department);
-  line("Designation", emp.designation);
+  line("Employee", `${row.name}`);
+  if (row.email) line("Email", row.email);
   line("Pay Date", payroll.payDate);
   y += 4;
   doc.setDrawColor(200);
   doc.line(20, y, 190, y);
   y += 8;
   line("Basic Salary", money(row.basic));
-  for (const a of row.salary.allowances) {
-    line(
-      `  ${a.name}`,
-      a.type === "Percentage" ? money((row.basic * a.amount) / 100) : money(a.amount),
-    );
+  for (const a of row.allowancesBreakdown) {
+    line(`  ${a.name}`, money(a.amount));
+  }
+  if (row.allowancesBreakdown.length === 0 && row.allowances > 0) {
+    line("  Allowances", money(row.allowances));
   }
   line("Gross Pay", money(row.gross), true);
   y += 4;
-  for (const d of row.salary.deductions) {
-    line(
-      `  ${d.name}`,
-      "-" + (d.type === "Percentage" ? money((row.basic * d.amount) / 100) : money(d.amount)),
-    );
+  for (const d of row.deductionsBreakdown) {
+    line(`  ${d.name}`, "-" + money(d.amount));
   }
   if (row.loans > 0) line("  Loan Repayments", "-" + money(row.loans));
   y += 4;
   doc.line(20, y, 190, y);
   y += 8;
   line("Net Pay", money(row.net), true);
-  doc.save(`payslip-${emp.employeeId}.pdf`);
+  doc.save(`payslip-${row.employeeUserId || row.entryId}.pdf`);
 }
-
-/* ── page ──────────────────────────────────────────────────────── */
 
 const PayrollDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
   const payrolls = usePayrolls();
-  useEffect(() => {
-  }, [payrolls]);
   const payroll = (payrolls || []).find((p) => p.id === id);
 
-  const rows = usePayrollPay(payroll?.excluded || []);
-  const [payslip, setPayslip] = useState<EmployeePay | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<EmployeePay | null>(null);
+  const [rows, setRows] = useState<PayrollEntryRow[] | undefined>(undefined);
+  const [payslip, setPayslip] = useState<PayrollEntryRow | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<PayrollEntryRow | null>(null);
+
+  const loadEntries = useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await payrollApi.get(id);
+      const entries = Array.isArray(data?.entries) ? data.entries : [];
+      setRows(entries.map((e) => mapEntry(e as Record<string, unknown>)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't load payroll entries";
+      showToast(msg, "error");
+      setRows([]);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [loadEntries]);
 
   if (payrolls !== undefined && !payroll) {
     return (
@@ -121,31 +197,34 @@ const PayrollDetail: React.FC = () => {
   const gross = (rows || []).reduce((s, r) => s + r.gross, 0);
   const dedu = (rows || []).reduce((s, r) => s + r.deductions + r.loans, 0);
   const net = (rows || []).reduce((s, r) => s + r.net, 0);
-  const paid = payroll.paid || [];
 
-  const markPaid = async (row: EmployeePay) => {
-    if (paid.includes(row.employee.id)) {
+  const markPaid = async (row: PayrollEntryRow) => {
+    if (row.isPaid) {
       showToast("Already marked as paid", "info");
       return;
     }
-    await savePayrolls(
-      (payrolls || []).map((p) => (p.id === payroll.id ? { ...p, paid: [...paid, row.employee.id] } : p)),
-    );
-    showToast(`Marked ${row.employee.name} as paid`, "success");
+    try {
+      await payrollApi.payPayslip(row.entryId);
+      await loadEntries();
+      showToast(`Marked ${row.name} as paid`, "success");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't mark as paid";
+      showToast(msg, "error");
+    }
   };
 
   const confirmRemove = async () => {
     if (!removeTarget) return;
-    await savePayrolls(
-      (payrolls || []).map((p) =>
-        p.id === payroll.id ? { ...p, excluded: [...(p.excluded || []), removeTarget.employee.id] } : p,
-      ),
-    );
-    showToast(`${removeTarget.employee.name} removed from this payroll`, "success");
-    setRemoveTarget(null);
+    try {
+      await payrollApi.deletePayslip(removeTarget.entryId);
+      await loadEntries();
+      showToast(`${removeTarget.name} removed from this payroll`, "success");
+      setRemoveTarget(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't remove entry";
+      showToast(msg, "error");
+    }
   };
-
-  const wd = workingDays(payroll.periodStart, payroll.periodEnd);
 
   const statCards = [
     { label: "Employees", value: String((rows || []).length), icon: Users, cls: "bg-blue-50 border-blue-100", iconCls: "text-blue-600 bg-blue-100", valueCls: "text-blue-700" },
@@ -175,7 +254,6 @@ const PayrollDetail: React.FC = () => {
       </div>
 
       <div className="px-4 sm:px-6 pb-8 space-y-5">
-        {/* header card */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
@@ -212,7 +290,6 @@ const PayrollDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* employee salary details */}
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -241,46 +318,50 @@ const PayrollDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {(rows || []).map((r) => {
-                  const isPaid = paid.includes(r.employee.id);
-                  return (
-                    <tr key={r.employee.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{r.employee.name}</div>
-                        <div className="text-xs text-gray-400">{email(r.employee.name)}</div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">{money(r.basic)}</td>
-                      <td className="px-4 py-3 text-gray-700">{money(r.allowances)}</td>
-                      <td className="px-4 py-3 text-gray-500">{money(r.manualOT)}</td>
-                      <td className="px-4 py-3 text-gray-500">{money(r.attendanceOT)}</td>
-                      <td className="px-4 py-3 text-gray-700">{money(r.deductions)}</td>
-                      <td className="px-4 py-3 text-gray-700">{money(r.loans)}</td>
-                      <td className="px-4 py-3 font-medium text-green-600">{money(r.gross)}</td>
-                      <td className="px-4 py-3 font-semibold text-blue-600">{money(r.net)}</td>
-                      <td className="px-4 py-3"><Chip label={isPaid ? "Paid" : "Unpaid"} /></td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => markPaid(r)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Mark as paid">
-                            <CreditCard className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => downloadPayslip(payroll, r)} className="p-1.5 text-gray-400 hover:text-orange-500 rounded hover:bg-orange-50" title="Download payslip">
-                            <Download className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setPayslip(r)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="View payslip">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setRemoveTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Remove from payroll">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {(rows || []).length === 0 && (
+                {(rows || []).map((r) => (
+                  <tr key={r.entryId} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{r.name}</div>
+                      <div className="text-xs text-gray-400">{r.email || "—"}</div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{money(r.basic)}</td>
+                    <td className="px-4 py-3 text-gray-700">{money(r.allowances)}</td>
+                    <td className="px-4 py-3 text-gray-500">{money(r.manualOT)}</td>
+                    <td className="px-4 py-3 text-gray-500">{money(r.attendanceOT)}</td>
+                    <td className="px-4 py-3 text-gray-700">{money(r.deductions)}</td>
+                    <td className="px-4 py-3 text-gray-700">{money(r.loans)}</td>
+                    <td className="px-4 py-3 font-medium text-green-600">{money(r.gross)}</td>
+                    <td className="px-4 py-3 font-semibold text-blue-600">{money(r.net)}</td>
+                    <td className="px-4 py-3"><Chip label={r.isPaid ? "Paid" : "Unpaid"} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => markPaid(r)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Mark as paid">
+                          <CreditCard className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => downloadPayslip(payroll, r)} className="p-1.5 text-gray-400 hover:text-orange-500 rounded hover:bg-orange-50" title="Download payslip">
+                          <Download className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setPayslip(r)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="View payslip">
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setRemoveTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Remove from payroll">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {rows !== undefined && rows.length === 0 && (
                   <tr>
                     <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
                       No employees in this payroll.
+                    </td>
+                  </tr>
+                )}
+                {rows === undefined && (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
+                      Loading payroll entries…
                     </td>
                   </tr>
                 )}
@@ -290,25 +371,23 @@ const PayrollDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* ── payslip modal ── */}
       {payslip && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-gray-500" />
-                <h3 className="text-lg font-semibold text-gray-900">Payslip - {payslip.employee.name}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Payslip - {payslip.name}</h3>
               </div>
               <button onClick={() => setPayslip(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
             <div className="px-6 py-5 space-y-5 overflow-y-auto">
-              {/* who / which run */}
               <div className="border border-gray-200 rounded-lg px-5 py-4 flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-semibold text-gray-900">{payslip.employee.name}</p>
-                  <p className="text-sm text-gray-500">{email(payslip.employee.name)}</p>
+                  <p className="font-semibold text-gray-900">{payslip.name}</p>
+                  <p className="text-sm text-gray-500">{payslip.email || "—"}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-gray-900">{payroll.title}</p>
@@ -316,7 +395,6 @@ const PayrollDetail: React.FC = () => {
                 </div>
               </div>
 
-              {/* attendance summary */}
               <div className="border border-gray-200 rounded-lg px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
                   <CalendarDays className="w-5 h-5 text-gray-600" />
@@ -325,12 +403,12 @@ const PayrollDetail: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {(
                     [
-                      ["Working Days", String(wd), "bg-blue-50 text-blue-700"],
-                      ["Present Days", "0.00", "bg-green-50 text-green-700"],
-                      ["Half Days", "0.00", "bg-yellow-50 text-yellow-700"],
-                      ["Absent Days", "0.00", "bg-red-50 text-red-600"],
-                      ["Manual OT Hours", "0.00", "bg-purple-50 text-purple-700"],
-                      ["Attendance OT Hours", "0.00", "bg-blue-50 text-blue-700"],
+                      ["Working Days", String(payslip.workingDays), "bg-blue-50 text-blue-700"],
+                      ["Present Days", payslip.presentDays.toFixed(2), "bg-green-50 text-green-700"],
+                      ["Half Days", payslip.halfDays.toFixed(2), "bg-yellow-50 text-yellow-700"],
+                      ["Absent Days", payslip.absentDays.toFixed(2), "bg-red-50 text-red-600"],
+                      ["Manual OT Hours", "—", "bg-purple-50 text-purple-700"],
+                      ["Paid Leave Days", payslip.paidLeaveDays.toFixed(2), "bg-blue-50 text-blue-700"],
                     ] as const
                   ).map(([label, value, cls]) => (
                     <div key={label} className={`rounded-lg px-3 py-3 text-center ${cls.split(" ")[0]}`}>
@@ -341,7 +419,6 @@ const PayrollDetail: React.FC = () => {
                 </div>
               </div>
 
-              {/* earnings */}
               <div className="border border-gray-200 rounded-lg px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
                   <DollarSign className="w-5 h-5 text-green-600" />
@@ -356,10 +433,10 @@ const PayrollDetail: React.FC = () => {
                   <span className="font-semibold text-gray-900">{money(payslip.allowances)}</span>
                 </div>
                 <div className="pl-4 space-y-1 pb-2">
-                  {payslip.salary.allowances.map((a) => (
-                    <div key={a.id} className="flex justify-between text-sm text-gray-500">
+                  {payslip.allowancesBreakdown.map((a) => (
+                    <div key={a.name} className="flex justify-between text-sm text-gray-500">
                       <span>• {a.name}</span>
-                      <span>{a.type === "Percentage" ? money((payslip.basic * a.amount) / 100) : money(a.amount)}</span>
+                      <span>{money(a.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -369,17 +446,16 @@ const PayrollDetail: React.FC = () => {
                 </div>
               </div>
 
-              {/* deductions */}
               <div className="border border-gray-200 rounded-lg px-5 py-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Calculator className="w-5 h-5 text-red-500" />
                   <h4 className="text-base font-semibold text-red-500">Deductions</h4>
                 </div>
                 <div className="pl-1 space-y-1 pb-2">
-                  {payslip.salary.deductions.map((d) => (
-                    <div key={d.id} className="flex justify-between text-sm text-gray-500">
+                  {payslip.deductionsBreakdown.map((d) => (
+                    <div key={d.name} className="flex justify-between text-sm text-gray-500">
                       <span>• {d.name}</span>
-                      <span>-{d.type === "Percentage" ? money((payslip.basic * d.amount) / 100) : money(d.amount)}</span>
+                      <span>-{money(d.amount)}</span>
                     </div>
                   ))}
                   {payslip.loans > 0 && (
@@ -395,22 +471,6 @@ const PayrollDetail: React.FC = () => {
                 </div>
               </div>
 
-              {/* leave details */}
-              <div className="border border-gray-200 rounded-lg px-5 py-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <CalendarDays className="w-5 h-5 text-orange-500" />
-                  <h4 className="text-base font-semibold text-orange-500">Leave Details</h4>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-700">Paid Leave Days</span>
-                  <span>
-                    <span className="font-semibold text-blue-600">0.00 days</span>
-                    <span className="text-gray-400 ml-3">No deduction</span>
-                  </span>
-                </div>
-              </div>
-
-              {/* net pay */}
               <div className="bg-blue-50 border border-blue-100 rounded-lg px-5 py-4 flex items-center justify-between">
                 <span className="font-semibold text-gray-900">Net Pay</span>
                 <span className="text-xl font-bold text-blue-700">{money(payslip.net)}</span>
@@ -431,7 +491,6 @@ const PayrollDetail: React.FC = () => {
         </div>
       )}
 
-      {/* remove confirm */}
       {removeTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
@@ -441,7 +500,7 @@ const PayrollDetail: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">Remove from payroll?</h3>
               <p className="text-sm text-gray-500 mb-5">
-                <span className="font-medium text-gray-700">{removeTarget.employee.name}</span> will be excluded from this payroll run only.
+                <span className="font-medium text-gray-700">{removeTarget.name}</span> will be excluded from this payroll run only.
               </p>
               <div className="flex gap-3">
                 <button onClick={confirmRemove} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">

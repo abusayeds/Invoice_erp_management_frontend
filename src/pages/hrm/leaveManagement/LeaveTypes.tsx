@@ -5,7 +5,7 @@
  * Leave types persist in meta row `hrm:leaveTypes`.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import {
@@ -13,10 +13,9 @@ import {
   saveLeaveTypes,
   type LeaveType,
 } from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb } from "../hrmShared";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "../hrmShared";
 import {
   Search,
-  Plus,
   Filter,
   ChevronDown,
   ArrowUpDown,
@@ -49,8 +48,6 @@ const paidChip = (paid: boolean) => (
 export const LeaveTypes: React.FC = () => {
   const navigate = useNavigate();
   const leaveTypes = useLeaveTypes();
-  useEffect(() => {
-  }, [leaveTypes]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -88,7 +85,7 @@ export const LeaveTypes: React.FC = () => {
       await saveLeaveTypes(list.map((t) => (t.id === draft.id ? { ...t, ...draft, maxDays: Number(draft.maxDays) } : t)));
       showToast("Leave type updated successfully", "success");
     } else {
-      await saveLeaveTypes([...list, { ...draft, maxDays: Number(draft.maxDays), id: "lt" + Math.random().toString(36).slice(2, 8) }]);
+      await saveLeaveTypes([...list, { ...draft, maxDays: Number(draft.maxDays), id: `local_${Date.now()}` }]);
       showToast("Leave type created successfully", "success");
     }
     setModal(null);
@@ -105,19 +102,16 @@ export const LeaveTypes: React.FC = () => {
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Leave Types" onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Leave Types</h2>
-          <button
+          <CreatePlusButton
+            title="Create leave type"
             onClick={() => {
               setDraft(emptyDraft());
               setModal("create");
             }}
-            title="Create leave type"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 

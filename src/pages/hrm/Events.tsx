@@ -10,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -25,21 +24,29 @@ import {
   Flag,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import { apiLabel, looksLikeId } from "./hrmShared";
 import {
-  eventHooks,
-  eventTypeHooks,
-  departmentHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+  AsyncSearchSelect,
+  CreatePlusButton,
+  apiLabel,
+  looksLikeId,
+  searchEventTypes,
+  searchDepartments,
+} from "./hrmShared";
+import { eventHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface DeptRef {
+  id: string;
+  name: string;
+}
 
 interface Event {
   id: string;
   title: string;
+  eventTypeId?: string;
   eventType: string;
-  departments: string[];
+  departments: DeptRef[];
   startDate: string;
   endDate: string;
   startTime: string;
@@ -52,173 +59,36 @@ interface Event {
   createdAt: string;
 }
 
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleEventsSeed = [
-  {
-    id: "1",
-    title: "Innovation Brainstorming Session",
-    event_type_id: "Holiday Party",
-    departments: ["Quality Assurance"],
-    start_date: "2026-03-13",
-    end_date: "2026-03-13",
-    start_time: "10:00",
-    end_time: "15:00",
-    location: "Workshop Room",
-    color: "#7c3aed",
-    status: "Pending",
-    approved_by: "",
-    description:
-      "Creative brainstorming session to generate innovative ideas, discuss process improvements, and explore new business opportunities.",
-    created_at: "2026-03-10",
-  },
-  {
-    id: "2",
-    title: "Client Appreciation Event",
-    event_type_id: "Team Building",
-    departments: ["Sales", "Marketing"],
-    start_date: "2026-03-08",
-    end_date: "2026-03-08",
-    start_time: "18:00",
-    end_time: "20:00",
-    location: "Grand Ballroom",
-    color: "#10b981",
-    status: "Approved",
-    approved_by: "Mark Allen",
-    description: "Evening gala to appreciate long-standing clients.",
-    created_at: "2026-03-05",
-  },
-  {
-    id: "3",
-    title: "Skills Development Workshop",
-    event_type_id: "Onboarding",
-    departments: ["Human Resources", "IT"],
-    start_date: "2026-03-03",
-    end_date: "2026-03-03",
-    start_time: "09:00",
-    end_time: "17:00",
-    location: "Training Center",
-    color: "#3b82f6",
-    status: "Pending",
-    approved_by: "",
-    description: "Workshop focused on upskilling employees in new technologies.",
-    created_at: "2026-02-28",
-  },
-  {
-    id: "4",
-    title: "Quarterly All-Hands Meeting",
-    event_type_id: "Interview",
-    departments: ["All Departments"],
-    start_date: "2026-02-26",
-    end_date: "2026-02-26",
-    start_time: "16:00",
-    end_time: "17:30",
-    location: "Auditorium",
-    color: "#f59e0b",
-    status: "Approved",
-    approved_by: "Matthew Clark",
-    description: "Quarterly company-wide meeting with leadership updates.",
-    created_at: "2026-02-20",
-  },
-  {
-    id: "5",
-    title: "New Product Launch Presentation",
-    event_type_id: "Sales Presentation",
-    departments: ["Marketing", "Sales"],
-    start_date: "2026-02-21",
-    end_date: "2026-02-21",
-    start_time: "14:00",
-    end_time: "16:00",
-    location: "Conference Room A",
-    color: "#ef4444",
-    status: "Pending",
-    approved_by: "",
-    description: "Presentation of new product line to stakeholders.",
-    created_at: "2026-02-15",
-  },
-  {
-    id: "6",
-    title: "Monthly Team Sync Meeting",
-    event_type_id: "Product Demo",
-    departments: ["Engineering", "Product"],
-    start_date: "2026-02-16",
-    end_date: "2026-02-16",
-    start_time: "09:00",
-    end_time: "11:00",
-    location: "Virtual (Zoom)",
-    color: "#8b5cf6",
-    status: "Approved",
-    approved_by: "Christopher Lee",
-    description: "Monthly sync to align on product roadmap.",
-    created_at: "2026-02-10",
-  },
-  {
-    id: "7",
-    title: "Future Planning Strategy Conference",
-    event_type_id: "Client Meeting",
-    departments: ["Executive", "Strategy"],
-    start_date: "2026-01-13",
-    end_date: "2026-01-13",
-    start_time: "09:00",
-    end_time: "17:00",
-    location: "Offsite Venue",
-    color: "#ec4899",
-    status: "Pending",
-    approved_by: "",
-    description: "Strategic planning for future growth.",
-    created_at: "2026-01-05",
-  },
-  {
-    id: "8",
-    title: "Year-End Performance Bonus Meeting",
-    event_type_id: "Board Meeting",
-    departments: ["Finance", "HR"],
-    start_date: "2026-01-07",
-    end_date: "2026-01-07",
-    start_time: "15:00",
-    end_time: "17:00",
-    location: "Board Room",
-    color: "#14b8a6",
-    status: "Approved",
-    approved_by: "James Garcia",
-    description: "Review of performance bonuses and compensation.",
-    created_at: "2026-01-02",
-  },
-  {
-    id: "9",
-    title: "Customer Service Excellence Training",
-    event_type_id: "Town Hall",
-    departments: ["Customer Service", "Support"],
-    start_date: "2026-01-02",
-    end_date: "2026-01-02",
-    start_time: "09:00",
-    end_time: "17:00",
-    location: "Training Room 2",
-    color: "#06b6d4",
-    status: "Approved",
-    approved_by: "Robert Taylor",
-    description: "Training on customer service best practices.",
-    created_at: "2025-12-28",
-  },
-];
-
-const statuses = ["Pending", "Approved", "Cancelled", "Completed"];
-const timeOptions = Array.from({ length: 24 }, (_, i) => {
-  const hour = i % 12 || 12;
-  const ampm = i < 12 ? "AM" : "PM";
-  return `${hour}:00 ${ampm}`;
-});
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseDepartments(raw: unknown): DeptRef[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((d: unknown) => {
+      if (typeof d === "object" && d) {
+        const o = d as Record<string, unknown>;
+        return {
+          id: String(o._id ?? o.id ?? ""),
+          name: String(o.department_name ?? o.name ?? ""),
+        };
+      }
+      return { id: String(d), name: "" };
+    })
+    .filter((d) => d.id);
+}
 
 function mapFromApi(p: any): Event {
   const etRef = p.event_type_id;
-  const depts = p.departments ?? p.department ?? [];
+  const depts = p.department_ids ?? p.departments ?? p.department ?? [];
   return {
     id: String(p.id ?? p._id ?? ""),
     title: p.title ?? "",
     // populated refs carry the title under `event_type` (not `name`);
     // never surface a raw id as the type
+    eventTypeId:
+      typeof etRef === "object" && etRef !== null
+        ? String(etRef._id ?? etRef.id ?? "")
+        : String(etRef ?? ""),
     eventType:
       typeof etRef === "object" && etRef !== null
         ? apiLabel(etRef, ["event_type", "name", "title", "type_name", "type"])
@@ -226,11 +96,7 @@ function mapFromApi(p: any): Event {
             const s = String(etRef ?? p.eventType ?? "");
             return looksLikeId(s) ? "" : s;
           })(),
-    departments: Array.isArray(depts)
-      ? depts.map((d: any) =>
-          typeof d === "object" ? d?.department_name ?? d?.name ?? String(d?._id ?? "") : String(d),
-        )
-      : [],
+    departments: parseDepartments(depts),
     startDate: (p.start_date ?? p.startDate ?? "").slice(0, 10),
     endDate: (p.end_date ?? p.endDate ?? "").slice(0, 10),
     startTime: p.start_time ?? p.startTime ?? "",
@@ -274,6 +140,14 @@ type SortField =
   | "approvedBy";
 type SortDir = "asc" | "desc";
 
+const eventFilterStatuses = ["All", "Pending", "Approved", "Cancelled", "Completed"];
+const eventStatusOptions = ["Pending", "Approved", "Cancelled", "Completed"];
+const timeOptions = Array.from({ length: 48 }, (_, i) => {
+  const h = String(Math.floor(i / 2)).padStart(2, "0");
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${h}:${m}`;
+});
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Events: React.FC = () => {
@@ -281,26 +155,9 @@ export const Events: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     eventHooks,
-    { seed: sampleEventsSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const events = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const etListResult = eventTypeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const etOptions: string[] = useMemo(() => {
-    const data = etListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data
-      .map((e: any) => apiLabel(e, ["event_type", "name", "title", "type_name", "type"]))
-      .filter(Boolean);
-  }, [etListResult.data]);
-
-  const deptListResult = departmentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const deptOptions: string[] = useMemo(() => {
-    const data = deptListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.department_name ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [deptListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -324,7 +181,8 @@ export const Events: React.FC = () => {
   const [eventFormData, setEventFormData] = useState({
     title: "",
     eventType: "",
-    departments: [] as string[],
+    eventTypeLabel: "",
+    departments: [] as DeptRef[],
     startDate: "",
     endDate: "",
     startTime: "",
@@ -386,19 +244,11 @@ export const Events: React.FC = () => {
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
 
-  const toggleDepartment = (dept: string) => {
-    setEventFormData((prev) => ({
-      ...prev,
-      departments: prev.departments.includes(dept)
-        ? prev.departments.filter((d) => d !== dept)
-        : [...prev.departments, dept],
-    }));
-  };
-
   const resetEventForm = () => {
     setEventFormData({
       title: "",
       eventType: "",
+      eventTypeLabel: "",
       departments: [],
       startDate: "",
       endDate: "",
@@ -420,7 +270,8 @@ export const Events: React.FC = () => {
     setSelectedEvent(event);
     setEventFormData({
       title: event.title,
-      eventType: event.eventType,
+      eventType: event.eventTypeId || "",
+      eventTypeLabel: event.eventType,
       departments: [...event.departments],
       startDate: event.startDate,
       endDate: event.endDate,
@@ -500,7 +351,7 @@ export const Events: React.FC = () => {
     const toApi = {
       title: eventFormData.title,
       event_type_id: eventFormData.eventType,
-      departments: eventFormData.departments,
+      department_ids: eventFormData.departments.map((d) => d.id),
       start_date: eventFormData.startDate,
       end_date: eventFormData.endDate,
       start_time: eventFormData.startTime,
@@ -588,19 +439,6 @@ export const Events: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayEtOptions = etOptions.length > 0 ? etOptions : [
-    "Holiday Party", "Team Building", "Onboarding", "Interview",
-    "Sales Presentation", "Product Demo", "Client Meeting",
-    "Board Meeting", "Town Hall", "Workshop", "Conference", "Networking",
-  ];
-  const displayDeptOptions = deptOptions.length > 0 ? deptOptions : [
-    "Quality Assurance", "Customer Service", "Sales", "Marketing",
-    "Human Resources", "IT", "All Departments", "Engineering", "Product",
-    "Executive", "Strategy", "Finance", "Support", "Operations",
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -649,43 +487,59 @@ export const Events: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Event Type *
             </label>
-            <select
+            <AsyncSearchSelect
               value={eventFormData.eventType}
-              onChange={(e) =>
+              displayName={eventFormData.eventTypeLabel}
+              onChange={(id, opt) =>
                 setEventFormData({
                   ...eventFormData,
-                  eventType: e.target.value,
+                  eventType: id,
+                  eventTypeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Event Type</option>
-              {displayEtOptions.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEventTypes}
+              placeholder="Search event type..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Departments *
             </label>
-            <div className="border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2">
-                {displayDeptOptions.map((dept) => (
-                  <label key={dept} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={eventFormData.departments.includes(dept)}
-                      onChange={() => toggleDepartment(dept)}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                    />
-                    <span className="text-gray-700">{dept}</span>
-                  </label>
+            <AsyncSearchSelect
+              value=""
+              onChange={(id, opt) => {
+                if (!id || eventFormData.departments.some((d) => d.id === id)) return;
+                setEventFormData({
+                  ...eventFormData,
+                  departments: [...eventFormData.departments, { id, name: opt?.name ?? id }],
+                });
+              }}
+              onSearch={searchDepartments}
+              placeholder="Search to add departments"
+            />
+            {eventFormData.departments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {eventFormData.departments.map((d) => (
+                  <span
+                    key={d.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs"
+                  >
+                    {d.name || d.id}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEventFormData({
+                          ...eventFormData,
+                          departments: eventFormData.departments.filter((x) => x.id !== d.id),
+                        })
+                      }
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
                 ))}
               </div>
-            </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -874,7 +728,7 @@ export const Events: React.FC = () => {
               onChange={(e) => setNewStatus(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
-              {statuses.map((s) => (
+              {eventStatusOptions.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -978,7 +832,7 @@ export const Events: React.FC = () => {
               <div>
                 <p className="text-xs text-gray-500">Departments</p>
                 <p className="text-sm text-gray-600">
-                  {selectedEvent.departments.join(", ")}
+                  {selectedEvent.departments.map((d) => d.name || d.id).join(", ")}
                 </p>
               </div>
               <div>
@@ -1079,15 +933,10 @@ export const Events: React.FC = () => {
           <span className="text-gray-900 font-medium">Events</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Events</h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
@@ -1143,7 +992,7 @@ export const Events: React.FC = () => {
                       Status
                     </span>
                   </div>
-                  {statuses.map((st) => (
+                  {eventFilterStatuses.map((st) => (
                     <button
                       key={st}
                       onClick={() => {

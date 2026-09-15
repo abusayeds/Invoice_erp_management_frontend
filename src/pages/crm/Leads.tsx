@@ -15,8 +15,10 @@ import {
   deleteCrmLead,
   fetchCrmLeadStages,
   fetchCrmUsers,
+  searchCrmNamed,
   type CrmNamed,
 } from "@/services/crmApi";
+import { AsyncSearchSelect } from "@/components/ui/AsyncSearchSelect";
 import {
   Search,
   Plus,
@@ -117,21 +119,18 @@ export const Leads: React.FC = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stageOptions, setStageOptions] = useState<CrmNamed[]>([]);
-  const [userOptions, setUserOptions] = useState<{ _id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, stages, crmUsers] = await Promise.all([
+      const [rows, stages] = await Promise.all([
         fetchCrmLeads(),
         fetchCrmLeadStages(),
-        fetchCrmUsers(),
       ]);
       setLeads(rows.map(mapLeadRow));
       setStageOptions(stages);
-      setUserOptions(crmUsers);
     } catch (err: any) {
       showToast(err?.message || "Couldn't load leads", "error");
       setLeads([]);
@@ -143,6 +142,17 @@ export const Leads: React.FC = () => {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const searchCrmUsersOptions = useCallback(async (q: string) => {
+    const rows = await fetchCrmUsers(q);
+    return rows.map((u) => ({ id: u._id, name: u.name }));
+  }, []);
+
+  const searchLeadStageOptions = useCallback(async (q: string) => {
+    const rows = await searchCrmNamed("/crm/lead-stages/all", q);
+    return rows.map((s) => ({ id: s._id, name: s.name }));
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -166,8 +176,10 @@ export const Leads: React.FC = () => {
     phone: "",
     subjects: "",
     assignedUserId: "",
+    assignedUserDisplayName: "",
     followUpDate: "",
     stageId: "",
+    stageDisplayName: "",
   });
 
   // ─── Sorting & Filtering ───────────────────────────────────────────────────
@@ -228,8 +240,10 @@ export const Leads: React.FC = () => {
       phone: "",
       subjects: "",
       assignedUserId: "",
+      assignedUserDisplayName: "",
       followUpDate: "",
       stageId: stageOptions[0]?._id || "",
+      stageDisplayName: stageOptions[0]?.name || "",
     });
   };
 
@@ -247,8 +261,10 @@ export const Leads: React.FC = () => {
       phone: lead.phone,
       subjects: lead.subjects,
       assignedUserId: lead.assignedUserIds?.[0] || "",
+      assignedUserDisplayName: lead.assignedTo[0] || "",
       followUpDate: lead.followUpDate,
       stageId: lead.stageId || "",
+      stageDisplayName: lead.stage || "",
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -517,23 +533,19 @@ export const Leads: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               User <span className="text-red-500">*</span>
             </label>
-            <select
+            <AsyncSearchSelect
               value={formData.assignedUserId}
-              onChange={(e) =>
+              displayName={formData.assignedUserDisplayName}
+              onChange={(id, opt) =>
                 setFormData({
                   ...formData,
-                  assignedUserId: e.target.value,
+                  assignedUserId: id,
+                  assignedUserDisplayName: opt?.name ?? "",
                 })
               }
-              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-            >
-              <option value="">Select User</option>
-              {userOptions.map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
+              onSearch={searchCrmUsersOptions}
+              placeholder="Select User"
+            />
           </div>
           {/* Phone */}
           <div>
@@ -563,20 +575,19 @@ export const Leads: React.FC = () => {
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
-            <select
+            <AsyncSearchSelect
               value={formData.stageId}
-              onChange={(e) =>
-                setFormData({ ...formData, stageId: e.target.value })
+              displayName={formData.stageDisplayName}
+              onChange={(id, opt) =>
+                setFormData({
+                  ...formData,
+                  stageId: id,
+                  stageDisplayName: opt?.name ?? "",
+                })
               }
-              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-            >
-              <option value="">Select stage</option>
-              {stageOptions.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              onSearch={searchLeadStageOptions}
+              placeholder="Select stage"
+            />
           </div>
         </div>
         <div className="border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -675,7 +686,7 @@ export const Leads: React.FC = () => {
             onClick={openCreateModal}
             title="Create lead"
             aria-label="Create lead"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm mr-1"
+            className="w-9 h-9 flex-shrink-0 ml-4 mr-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" strokeWidth={2.2} />
           </button>

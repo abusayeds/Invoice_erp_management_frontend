@@ -7,10 +7,14 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
-import { apiLabel, CreatePlusButton, employeeOption } from "./hrmShared";
+import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  searchAwardTypes,
+  searchEmployees,
+} from "./hrmShared";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -26,17 +30,15 @@ import {
   Upload,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  awardHooks,
-  awardTypeHooks,
-  employeeHooks,
-} from "@/services/hrm";
+import { awardHooks } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Award {
   id: string;
+  employeeId: string;
   employee: string;
+  awardTypeId: string;
   awardType: string;
   awardDate: string;
   description: string;
@@ -45,145 +47,6 @@ interface Award {
   createdAt: string;
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const sampleAwards: Award[] = [
-  {
-    id: "1",
-    employee: "Mark Allen",
-    awardType: "Culture Champion",
-    awardDate: "2025-12-20",
-    description:
-      "Innovation in automation for implementing cutting-edge technologies that revolutionized traditional business processes effectively.",
-    certificate: "culture_champion.pdf",
-    certificateUrl: "",
-    createdAt: "2025-12-20",
-  },
-  {
-    id: "2",
-    employee: "Anthony Walker",
-    awardType: "Long Service Award",
-    awardDate: "2025-12-15",
-    description:
-      "10 years of dedicated service and commitment to the company's mission and values.",
-    certificate: "long_service.pdf",
-    certificateUrl: "",
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "3",
-    employee: "Matthew Clark",
-    awardType: "Best Problem Solver",
-    awardDate: "2025-12-10",
-    description:
-      "Mentorship and coaching recognition for developing talent pipeline and fostering professional growth of team members.",
-    certificate: "best_problem_solver.pdf",
-    certificateUrl: "",
-    createdAt: "2025-12-10",
-  },
-  {
-    id: "4",
-    employee: "Daniel Thompson",
-    awardType: "Mentor of the Year",
-    awardDate: "2025-12-05",
-    description: "Exceptional mentorship and guidance to junior team members.",
-    certificate: "mentor_of_year.pdf",
-    certificateUrl: "",
-    createdAt: "2025-12-05",
-  },
-  {
-    id: "5",
-    employee: "Christopher Lee",
-    awardType: "Tech Innovator",
-    awardDate: "2025-11-30",
-    description:
-      "Groundbreaking technical innovations that improved system efficiency.",
-    certificate: "tech_innovator.pdf",
-    certificateUrl: "",
-    createdAt: "2025-11-30",
-  },
-  {
-    id: "6",
-    employee: "James Garcia",
-    awardType: "Community Contributor",
-    awardDate: "2025-11-25",
-    description: "Outstanding contributions to community outreach programs.",
-    certificate: "community_contributor.pdf",
-    certificateUrl: "",
-    createdAt: "2025-11-25",
-  },
-  {
-    id: "7",
-    employee: "Robert Taylor",
-    awardType: "Excellence in Quality",
-    awardDate: "2025-11-20",
-    description:
-      "Consistent delivery of high-quality work and attention to detail.",
-    certificate: "excellence_quality.pdf",
-    certificateUrl: "",
-    createdAt: "2025-11-20",
-  },
-  {
-    id: "8",
-    employee: "David Wilson",
-    awardType: "Sales Star",
-    awardDate: "2025-11-15",
-    description:
-      "Exceptional sales performance and client relationship management.",
-    certificate: "sales_star.pdf",
-    certificateUrl: "",
-    createdAt: "2025-11-15",
-  },
-  {
-    id: "9",
-    employee: "Michael Brown",
-    awardType: "Outstanding Attendance",
-    awardDate: "2025-11-10",
-    description: "Perfect attendance record for the entire fiscal year.",
-    certificate: "outstanding_attendance.pdf",
-    certificateUrl: "",
-    createdAt: "2025-11-10",
-  },
-];
-
-const employees = [
-  "Mark Allen",
-  "Anthony Walker",
-  "Matthew Clark",
-  "Daniel Thompson",
-  "Christopher Lee",
-  "James Garcia",
-  "Robert Taylor",
-  "David Wilson",
-  "Michael Brown",
-  "John Smith",
-];
-
-const awardTypes = [
-  "Culture Champion",
-  "Long Service Award",
-  "Best Problem Solver",
-  "Mentor of the Year",
-  "Tech Innovator",
-  "Community Contributor",
-  "Excellence in Quality",
-  "Sales Star",
-  "Outstanding Attendance",
-  "Employee of the Month",
-  "Leadership Excellence",
-  "Team Player Award",
-];
-
-// ─── Seed (snake_case for API) ────────────────────────────────────────────────
-
-const sampleAwardsSeed = sampleAwards.map((a) => ({
-  id: a.id,
-  employee_id: a.employee,
-  award_type_id: a.awardType,
-  award_date: a.awardDate,
-  description: a.description,
-}));
-
 // ─── mapFromApi ───────────────────────────────────────────────────────────────
 
 function mapFromApi(p: any): Award {
@@ -191,14 +54,22 @@ function mapFromApi(p: any): Award {
   const atField = p.award_type_id ?? p.awardTypeId;
   return {
     id: String(p.id ?? p._id ?? ""),
+    employeeId:
+      typeof empField === "object"
+        ? String(empField?._id ?? empField?.id ?? "")
+        : String(empField ?? ""),
     employee:
       typeof empField === "object"
-        ? empField?.name ?? ""
-        : String(empField ?? p.employee ?? ""),
+        ? empField?.name ?? empField?.employee_name ?? ""
+        : String(p.employee ?? empField ?? ""),
+    awardTypeId:
+      typeof atField === "object"
+        ? String(atField?._id ?? atField?.id ?? "")
+        : String(atField ?? ""),
     awardType:
       typeof atField === "object"
-        ? atField?.name ?? ""
-        : String(atField ?? p.awardType ?? ""),
+        ? atField?.name ?? atField?.award_type ?? ""
+        : String(p.awardType ?? atField ?? ""),
     awardDate: (p.award_date ?? p.awardDate ?? "").slice(0, 10),
     description: p.description ?? "",
     certificate: p.certificate ?? "",
@@ -227,32 +98,11 @@ type SortDir = "asc" | "desc";
 export const Awards: React.FC = () => {
   const navigate = useNavigate();
 
-  const { items: raw, create, update, remove } = useResourceData(
-    awardHooks,
-    { seed: sampleAwardsSeed as any, params: { page: 1, limit: 100 } },
-  );
+  const { items: raw, create, update, remove } = useResourceData(awardHooks, {
+    seed: [],
+    params: { page: 1, limit: 100 },
+  });
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Employee options from API — empty labels are dropped so the static
-  // fallback list renders instead of invisible options.
-  const empQuery = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions = useMemo(
-    () => (empQuery.data ?? []).map(employeeOption).filter((o) => o.id && o.name),
-    [empQuery.data],
-  );
-
-  // Award type options from API — same empty-label guard.
-  const atQuery = awardTypeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const atOptions = useMemo(
-    () =>
-      (atQuery.data ?? [])
-        .map((t: any) => ({
-          id: String(t.id ?? t._id ?? ""),
-          name: apiLabel(t, ["name", "award_type", "type_name", "type", "title"]),
-        }))
-        .filter((o) => o.id && o.name),
-    [atQuery.data],
-  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -273,7 +123,9 @@ export const Awards: React.FC = () => {
   // Form state
   const [awardFormData, setAwardFormData] = useState({
     employee: "",
+    employeeLabel: "",
     awardType: "",
+    awardTypeLabel: "",
     awardDate: "",
     description: "",
     certificate: null as File | null,
@@ -334,7 +186,9 @@ export const Awards: React.FC = () => {
   const resetAwardForm = () => {
     setAwardFormData({
       employee: "",
+      employeeLabel: "",
       awardType: "",
+      awardTypeLabel: "",
       awardDate: "",
       description: "",
       certificate: null,
@@ -351,8 +205,10 @@ export const Awards: React.FC = () => {
   const openEditModal = (award: Award) => {
     setSelectedAward(award);
     setAwardFormData({
-      employee: award.employee,
-      awardType: award.awardType,
+      employee: award.employeeId,
+      employeeLabel: award.employee,
+      awardType: award.awardTypeId,
+      awardTypeLabel: award.awardType,
       awardDate: award.awardDate,
       description: award.description,
       certificate: null,
@@ -504,42 +360,37 @@ export const Awards: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={awardFormData.employee}
-              onChange={(e) =>
-                setAwardFormData({ ...awardFormData, employee: e.target.value })
+              displayName={awardFormData.employeeLabel}
+              onChange={(id, opt) =>
+                setAwardFormData({
+                  ...awardFormData,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
+                })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {empOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Award Type *
             </label>
-            <select
+            <AsyncSearchSelect
               value={awardFormData.awardType}
-              onChange={(e) =>
+              displayName={awardFormData.awardTypeLabel}
+              onChange={(id, opt) =>
                 setAwardFormData({
                   ...awardFormData,
-                  awardType: e.target.value,
+                  awardType: id,
+                  awardTypeLabel: opt?.name ?? "",
                 })
               }
-              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Award Type</option>
-              {atOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
+              onSearch={searchAwardTypes}
+              placeholder="Search award type..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

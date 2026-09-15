@@ -15,7 +15,7 @@ import {
   saveEmployees,
   type HrmEmployee,
 } from "@/lib/db/hrm";
-import { Avatar, Chip, HrmBreadcrumb } from "./hrmShared";
+import { Avatar, Chip, HrmBreadcrumb, CreatePlusButton } from "./hrmShared";
 import {
   Search,
   Plus,
@@ -104,16 +104,13 @@ export const Employees: React.FC = () => {
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Employees" onNavigate={navigate} />
 
       {/* title row */}
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Employees</h2>
-          <button
+          <CreatePlusButton
             onClick={() => navigate("/hrm/employees/create")}
             title="Create employee"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 

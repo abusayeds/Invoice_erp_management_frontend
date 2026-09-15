@@ -9,8 +9,13 @@ import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  searchAnnouncementCategories,
+  searchDepartments,
+} from "./hrmShared";
+import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -26,20 +31,21 @@ import {
   Flag,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  announcementHooks,
-  announcementCategoryHooks,
-  departmentHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { announcementHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface DeptRef {
+  id: string;
+  name: string;
+}
 
 interface Announcement {
   id: string;
   title: string;
+  categoryId?: string;
   category: string;
-  department: string[];
+  departments: DeptRef[];
   startDate: string;
   endDate: string;
   priority: "High" | "Medium" | "Low";
@@ -49,131 +55,37 @@ interface Announcement {
   createdAt: string;
 }
 
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleAnnouncementsSeed = [
-  {
-    id: "1",
-    title: "Year-End Performance Bonus Distribution",
-    announcement_category_id: "General Company Information",
-    departments: ["Quality Assurance", "Customer Service"],
-    start_date: "2026-01-13",
-    end_date: "2026-03-28",
-    priority: "High",
-    status: "Active",
-    description:
-      "Annual performance bonus calculation and distribution based on individual achievements, department goals, and company performance metrics for eligible employees.",
-  },
-  {
-    id: "2",
-    title: "Digital Communication Platform Launch",
-    announcement_category_id: "Vendor & Supplier Communications",
-    departments: ["IT", "Marketing"],
-    start_date: "2026-01-07",
-    end_date: "2026-04-12",
-    priority: "Medium",
-    status: "Draft",
-    description:
-      "Launch of new digital communication platform for improved collaboration.",
-  },
-  {
-    id: "3",
-    title: "Company Social Responsibility Initiative",
-    announcement_category_id: "Social & Community Engagement",
-    departments: ["HR", "Administration"],
-    start_date: "2026-01-02",
-    end_date: "2026-08-30",
-    priority: "Low",
-    status: "Active",
-    description: "CSR initiative focusing on community development.",
-  },
-  {
-    id: "4",
-    title: "Leadership Development Program",
-    announcement_category_id: "Career Development Opportunities",
-    departments: ["Human Resources", "Executive"],
-    start_date: "2025-12-29",
-    end_date: "2026-01-27",
-    priority: "Medium",
-    status: "Inactive",
-    description: "Leadership training program for emerging leaders.",
-  },
-  {
-    id: "5",
-    title: "Workplace Safety Inspection Schedule",
-    announcement_category_id: "Performance Review & Feedback",
-    departments: ["Operations", "Facilities"],
-    start_date: "2025-12-24",
-    end_date: "2027-02-11",
-    priority: "High",
-    status: "Active",
-    description: "Regular workplace safety inspections.",
-  },
-  {
-    id: "6",
-    title: "Cross-Department Collaboration Project",
-    announcement_category_id: "Remote Work & Flexibility Updates",
-    departments: ["Sales", "Marketing"],
-    start_date: "2025-12-18",
-    end_date: "2026-05-07",
-    priority: "Medium",
-    status: "Active",
-    description: "Cross-departmental collaboration initiative.",
-  },
-  {
-    id: "7",
-    title: "Technology Upgrade Implementation",
-    announcement_category_id: "Diversity & Inclusion Initiatives",
-    departments: ["IT", "Finance"],
-    start_date: "2025-12-14",
-    end_date: "2026-07-11",
-    priority: "High",
-    status: "Draft",
-    description: "Major technology infrastructure upgrade.",
-  },
-  {
-    id: "8",
-    title: "Employee Feedback Survey Campaign",
-    announcement_category_id: "Emergency & Crisis Communications",
-    departments: ["HR", "Administration"],
-    start_date: "2025-12-09",
-    end_date: "2026-03-13",
-    priority: "Medium",
-    status: "Active",
-    description: "Annual employee feedback survey.",
-  },
-  {
-    id: "9",
-    title: "Quality Management System Certification",
-    announcement_category_id: "Market & Industry Insights",
-    departments: ["Quality Assurance", "Operations"],
-    start_date: "2025-12-03",
-    end_date: "2026-06-11",
-    priority: "High",
-    status: "Active",
-    description: "ISO certification process and training.",
-  },
-];
-
-const priorities = ["High", "Medium", "Low"];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseDepartments(raw: unknown): DeptRef[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((d: unknown) => {
+      if (typeof d === "object" && d) {
+        const o = d as Record<string, unknown>;
+        return {
+          id: String(o._id ?? o.id ?? ""),
+          name: String(o.department_name ?? o.name ?? ""),
+        };
+      }
+      return { id: String(d), name: "" };
+    })
+    .filter((d) => d.id);
+}
 
 function mapFromApi(p: any): Announcement {
   const acRef = p.announcement_category_id;
-  const depts = p.departments ?? p.department ?? [];
+  const depts = p.department_ids ?? p.departments ?? p.department ?? [];
   return {
     id: String(p.id ?? p._id ?? ""),
     title: p.title ?? "",
+    categoryId:
+      typeof acRef === "object" ? String(acRef?._id ?? acRef?.id ?? "") : String(acRef ?? ""),
     category:
       typeof acRef === "object"
-        ? acRef?.name ?? String(acRef?._id ?? "")
-        : String(acRef ?? p.category ?? ""),
-    department: Array.isArray(depts)
-      ? depts.map((d: any) =>
-          typeof d === "object" ? d?.department_name ?? d?.name ?? String(d?._id ?? "") : String(d),
-        )
-      : [],
+        ? acRef?.name ?? acRef?.announcement_category ?? ""
+        : String(p.category ?? acRef ?? ""),
+    departments: parseDepartments(depts),
     startDate: (p.start_date ?? p.startDate ?? "").slice(0, 10),
     endDate: (p.end_date ?? p.endDate ?? "").slice(0, 10),
     priority: p.priority ?? "Medium",
@@ -204,6 +116,8 @@ type SortField =
   | "approvedBy";
 type SortDir = "asc" | "desc";
 
+const priorities = ["High", "Medium", "Low"] as const;
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Announcements: React.FC = () => {
@@ -211,24 +125,9 @@ export const Announcements: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     announcementHooks,
-    { seed: sampleAnnouncementsSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const announcements = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const acListResult = announcementCategoryHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const acOptions: string[] = useMemo(() => {
-    const data = acListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.name ?? String(e._id ?? e.id ?? ""));
-  }, [acListResult.data]);
-
-  const deptListResult = departmentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const deptOptions: string[] = useMemo(() => {
-    const data = deptListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.department_name ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [deptListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -252,7 +151,8 @@ export const Announcements: React.FC = () => {
   const [announcementFormData, setAnnouncementFormData] = useState({
     title: "",
     category: "",
-    department: [] as string[],
+    categoryLabel: "",
+    departments: [] as DeptRef[],
     priority: "Medium" as "High" | "Medium" | "Low",
     startDate: "",
     endDate: "",
@@ -322,20 +222,12 @@ export const Announcements: React.FC = () => {
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
 
-  const toggleDepartment = (dept: string) => {
-    setAnnouncementFormData((prev) => ({
-      ...prev,
-      department: prev.department.includes(dept)
-        ? prev.department.filter((d) => d !== dept)
-        : [...prev.department, dept],
-    }));
-  };
-
   const resetAnnouncementForm = () => {
     setAnnouncementFormData({
       title: "",
       category: "",
-      department: [],
+      categoryLabel: "",
+      departments: [],
       priority: "Medium",
       startDate: "",
       endDate: "",
@@ -353,8 +245,9 @@ export const Announcements: React.FC = () => {
     setSelectedAnnouncement(announcement);
     setAnnouncementFormData({
       title: announcement.title,
-      category: announcement.category,
-      department: [...announcement.department],
+      category: announcement.categoryId || "",
+      categoryLabel: announcement.category,
+      departments: [...announcement.departments],
       priority: announcement.priority,
       startDate: announcement.startDate,
       endDate: announcement.endDate,
@@ -396,7 +289,7 @@ export const Announcements: React.FC = () => {
       showToast("Please select category", "info");
       return;
     }
-    if (announcementFormData.department.length === 0) {
+    if (announcementFormData.departments.length === 0) {
       showToast("Please select at least one department", "info");
       return;
     }
@@ -416,7 +309,7 @@ export const Announcements: React.FC = () => {
     const toApi = {
       title: announcementFormData.title,
       announcement_category_id: announcementFormData.category,
-      departments: announcementFormData.department,
+      department_ids: announcementFormData.departments.map((d) => d.id),
       description: announcementFormData.description,
       priority: announcementFormData.priority,
       start_date: announcementFormData.startDate,
@@ -523,21 +416,6 @@ export const Announcements: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayAcOptions = acOptions.length > 0 ? acOptions : [
-    "General Company Information", "Vendor & Supplier Communications",
-    "Social & Community Engagement", "Career Development Opportunities",
-    "Performance Review & Feedback", "Remote Work & Flexibility Updates",
-    "Diversity & Inclusion Initiatives", "Emergency & Crisis Communications",
-    "Market & Industry Insights",
-  ];
-  const displayDeptOptions = deptOptions.length > 0 ? deptOptions : [
-    "Quality Assurance", "Customer Service", "IT", "Marketing", "HR",
-    "Administration", "Human Resources", "Executive", "Operations",
-    "Facilities", "Sales", "Finance", "Legal",
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -591,43 +469,62 @@ export const Announcements: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Announcement Category *
             </label>
-            <select
+            <AsyncSearchSelect
               value={announcementFormData.category}
-              onChange={(e) =>
+              displayName={announcementFormData.categoryLabel}
+              onChange={(id, opt) =>
                 setAnnouncementFormData({
                   ...announcementFormData,
-                  category: e.target.value,
+                  category: id,
+                  categoryLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Category</option>
-              {displayAcOptions.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+              onSearch={searchAnnouncementCategories}
+              placeholder="Search category..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Department *
             </label>
-            <div className="border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2">
-                {displayDeptOptions.map((dept) => (
-                  <label key={dept} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={announcementFormData.department.includes(dept)}
-                      onChange={() => toggleDepartment(dept)}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                    />
-                    <span className="text-gray-700">{dept}</span>
-                  </label>
+            <AsyncSearchSelect
+              value=""
+              onChange={(id, opt) => {
+                if (!id || announcementFormData.departments.some((d) => d.id === id)) return;
+                setAnnouncementFormData({
+                  ...announcementFormData,
+                  departments: [
+                    ...announcementFormData.departments,
+                    { id, name: opt?.name ?? id },
+                  ],
+                });
+              }}
+              onSearch={searchDepartments}
+              placeholder="Search to add departments"
+            />
+            {announcementFormData.departments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {announcementFormData.departments.map((d) => (
+                  <span
+                    key={d.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs"
+                  >
+                    {d.name || d.id}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAnnouncementFormData({
+                          ...announcementFormData,
+                          departments: announcementFormData.departments.filter((x) => x.id !== d.id),
+                        })
+                      }
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
                 ))}
               </div>
-            </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -796,7 +693,7 @@ export const Announcements: React.FC = () => {
               <div>
                 <p className="text-xs text-gray-500">Departments</p>
                 <p className="text-sm text-gray-600">
-                  {selectedAnnouncement.department.join(", ")}
+                  {selectedAnnouncement.departments.map((d) => d.name || d.id).join(", ")}
                 </p>
               </div>
               <div>
@@ -925,17 +822,12 @@ export const Announcements: React.FC = () => {
           <span className="text-gray-900 font-medium">Announcements</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Announcements
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">

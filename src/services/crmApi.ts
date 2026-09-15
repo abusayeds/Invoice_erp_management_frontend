@@ -45,9 +45,11 @@ export const fetchCrmDealStages = (pipelineId?: string) =>
 export const fetchCrmLabels = () => list("/crm/labels/all");
 export const fetchCrmSources = () => list("/crm/sources/all");
 
-export async function fetchCrmUsers(): Promise<{ _id: string; name: string }[]> {
+export async function fetchCrmUsers(searchTerm?: string): Promise<{ _id: string; name: string }[]> {
   try {
-    const res = await api.raw.get("/user/all-user-for-company");
+    const res = await api.raw.get("/user/all-user-for-company", {
+      params: searchTerm ? { searchTerm } : undefined,
+    });
     return toArray<any>(res.data).map((u: any) => ({
       _id: String(u._id ?? u.id),
       name: String(u.name ?? u.email ?? "User"),
@@ -55,6 +57,16 @@ export async function fetchCrmUsers(): Promise<{ _id: string; name: string }[]> 
   } catch {
     return [];
   }
+}
+
+export async function searchCrmNamed(
+  path: string,
+  searchTerm = "",
+): Promise<CrmNamed[]> {
+  const res = await api.raw.get(path, {
+    params: { page: 1, limit: 50, ...(searchTerm ? { searchTerm } : {}) },
+  });
+  return toArray<any>(res.data).map(mapNamed);
 }
 
 export type CrmLeadRow = {

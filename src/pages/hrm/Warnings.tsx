@@ -6,12 +6,18 @@
 
 import React, { useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
-import { apiLabel } from "./hrmShared";
+import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  employeeUserId,
+  apiLabel as empApiLabel,
+  searchEmployees,
+  searchWarningTypes,
+} from "./hrmShared";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -30,12 +36,7 @@ import {
   Flag,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  warningHooks,
-  warningTypeHooks,
-  employeeHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { warningHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,9 @@ interface Warning {
   id: string;
   employeeId?: string;
   employee: string;
+  warningById?: string;
   warningBy: string;
+  warningTypeId?: string;
   warningType: string;
   subject: string;
   severity: "High" | "Medium" | "Low";
@@ -54,233 +57,18 @@ interface Warning {
   createdAt: string;
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const sampleWarnings: Warning[] = [
-  {
-    id: "1",
-    employee: "Mark Allen",
-    warningBy: "Matthew Clark",
-    warningType: "Misuse of Company Property",
-    subject: "Performance Improvement - Action Plan Needed",
-    severity: "High",
-    warningDate: "2026-01-12",
-    description:
-      "Employee was found using company equipment for personal business during working hours.",
-    document: "",
-    status: "Pending",
-    createdAt: "2026-01-12",
-  },
-  {
-    id: "2",
-    employee: "Anthony Walker",
-    warningBy: "Smart Systems Corp",
-    warningType: "Use of Offensive Language",
-    subject: "Conflict Resolution - Escalation Required",
-    severity: "Medium",
-    warningDate: "2026-01-07",
-    description:
-      "Conflict resolution issues requiring escalation due to inability to resolve workplace disputes professionally.",
-    document: "warning.png",
-    status: "Pending",
-    createdAt: "2026-01-07",
-  },
-  {
-    id: "3",
-    employee: "Matthew Clark",
-    warningBy: "XYZ Industries",
-    warningType: "Disrespect to Supervisor",
-    subject: "Reporting Standards - Late Submission",
-    severity: "Low",
-    warningDate: "2026-01-02",
-    description:
-      "Repeated failure to submit reports on time and disrespectful behavior towards supervisor.",
-    document: "",
-    status: "Pending",
-    createdAt: "2026-01-02",
-  },
-  {
-    id: "4",
-    employee: "Daniel Thompson",
-    warningBy: "Mega Distributors",
-    warningType: "Negligence at Work",
-    subject: "Equipment Care - Damage Due to Negligence",
-    severity: "High",
-    warningDate: "2025-12-28",
-    description:
-      "Damaged company equipment due to careless handling and ignoring safety protocols.",
-    document: "",
-    status: "Approved",
-    createdAt: "2025-12-28",
-  },
-  {
-    id: "5",
-    employee: "Christopher Lee",
-    warningBy: "Elite Enterprises",
-    warningType: "Improper Dress Code",
-    subject: "Training Compliance - Certification Expired",
-    severity: "Medium",
-    warningDate: "2025-12-23",
-    description:
-      "Failed to maintain required professional appearance standards.",
-    document: "",
-    status: "Pending",
-    createdAt: "2025-12-23",
-  },
-  {
-    id: "6",
-    employee: "James Garcia",
-    warningBy: "Express Suppliers",
-    warningType: "Unauthorized Absence",
-    subject: "Environmental Compliance - Waste Disposal",
-    severity: "Low",
-    warningDate: "2025-12-18",
-    description: "Left work without prior approval on multiple occasions.",
-    document: "",
-    status: "Pending",
-    createdAt: "2025-12-18",
-  },
-  {
-    id: "7",
-    employee: "Robert Taylor",
-    warningBy: "Lisa Anderson",
-    warningType: "Violation of Company Policy",
-    subject: "Quality Control - Standards Not Maintained",
-    severity: "High",
-    warningDate: "2025-12-13",
-    description:
-      "Deliberate violation of established company policies and procedures.",
-    document: "",
-    status: "Pending",
-    createdAt: "2025-12-13",
-  },
-  {
-    id: "8",
-    employee: "David Wilson",
-    warningBy: "Robert Taylor",
-    warningType: "Missed Deadline",
-    subject: "Inventory Management - Discrepancy Found",
-    severity: "Medium",
-    warningDate: "2025-12-08",
-    description:
-      "Failed to meet critical project deadlines affecting team performance.",
-    document: "",
-    status: "Rejected",
-    createdAt: "2025-12-08",
-  },
-  {
-    id: "9",
-    employee: "Michael Brown",
-    warningBy: "Emily Davis",
-    warningType: "Unprofessional Behavior",
-    subject: "Data Security - Password Policy Violation",
-    severity: "Low",
-    warningDate: "2025-12-03",
-    description: "Displayed unprofessional conduct during team meetings.",
-    document: "",
-    status: "Pending",
-    createdAt: "2025-12-03",
-  },
-];
-
-const employees = [
-  "Mark Allen",
-  "Anthony Walker",
-  "Matthew Clark",
-  "Daniel Thompson",
-  "Christopher Lee",
-  "James Garcia",
-  "Robert Taylor",
-  "David Wilson",
-  "Michael Brown",
-  "John Smith",
-];
-
-const warningByList = [
-  "Matthew Clark",
-  "Smart Systems Corp",
-  "XYZ Industries",
-  "Mega Distributors",
-  "Elite Enterprises",
-  "Express Suppliers",
-  "Lisa Anderson",
-  "Robert Taylor",
-  "Emily Davis",
-  "HR Department",
-  "Quality Parts Corp",
-];
-
-const warningTypes = [
-  "Misuse of Company Property",
-  "Use of Offensive Language",
-  "Disrespect to Supervisor",
-  "Negligence at Work",
-  "Improper Dress Code",
-  "Unauthorized Absence",
-  "Violation of Company Policy",
-  "Missed Deadline",
-  "Unprofessional Behavior",
-  "Late Attendance",
-  "Data Security Violation",
-];
-
-const subjects = [
-  "Performance Improvement - Action Plan Needed",
-  "Conflict Resolution - Escalation Required",
-  "Reporting Standards - Late Submission",
-  "Equipment Care - Damage Due to Negligence",
-  "Training Compliance - Certification Expired",
-  "Environmental Compliance - Waste Disposal",
-  "Quality Control - Standards Not Maintained",
-  "Inventory Management - Discrepancy Found",
-  "Data Security - Password Policy Violation",
-  "Attendance Policy Violation",
-  "Code of Conduct Breach",
-];
-
-const severities = ["High", "Medium", "Low"];
-
-// ─── Seed (snake_case for API) ────────────────────────────────────────────────
-
-const sampleWarningsSeed = sampleWarnings.map((w) => ({
-  id: w.id,
-  employee_id: w.employee,
-  warning_by: w.warningBy,
-  warning_type_id: w.warningType,
-  subject: w.subject,
-  severity: w.severity.toLowerCase(),
-  warning_date: w.warningDate,
-  description: w.description,
-  status: w.status.toLowerCase(),
-}));
-
 // ─── mapFromApi ───────────────────────────────────────────────────────────────
 
-type SelectOption = { id: string; name: string };
-
-const employeeOption = (employee: any): SelectOption => ({
-  id: String(employee?._id ?? employee?.id ?? employee?.employee_id ?? ""),
-  // apiLabel never returns a raw id — empty names are filtered out by the
-  // caller so the local fallback list shows instead of blank/id options.
-  name: apiLabel(employee, ["employee_user_id", "user_id", "name", "employee_name", "full_name", "first_name"]),
-});
-
-const employeeRefValue = (ref: any) => String(typeof ref === "object" ? ref?._id ?? ref?.id ?? "" : ref ?? "");
+const employeeRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? employeeUserId(ref) : String(ref ?? "");
 
 const employeeRefLabel = (ref: any, fallback: any = "") =>
-  String(
-    typeof ref === "object"
-      ? ref?.employee_user_id?.name ??
-          ref?.user_id?.name ??
-          ref?.name ??
-          ref?.employee_name ??
-          ref?.first_name ??
-          ref?.employee_id ??
-          ref?._id ??
-          ref?.id ??
-          ""
-      : fallback || ref || "",
-  );
+  typeof ref === "object"
+    ? empApiLabel(ref, ["employee_user_id", "user_id", "name", "employee_name"]) || String(fallback || "")
+    : String(fallback || ref || "");
+
+const userRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? String(ref._id ?? ref.id ?? "") : String(ref ?? "");
 
 function mapFromApi(p: any): Warning {
   const empField = p.employee_id ?? p.employeeId;
@@ -291,11 +79,16 @@ function mapFromApi(p: any): Warning {
     id: String(p.id ?? p._id ?? ""),
     employeeId: employeeRefValue(empField),
     employee: employeeRefLabel(empField, p.employee),
+    warningById: userRefValue(p.warning_by ?? p.warningBy),
     warningBy: refLabel(p.warning_by ?? p.warningBy),
+    warningTypeId:
+      typeof wtField === "object"
+        ? String(wtField?._id ?? wtField?.id ?? "")
+        : String(wtField ?? ""),
     warningType:
       typeof wtField === "object"
-        ? wtField?.name ?? ""
-        : String(wtField ?? p.warningType ?? ""),
+        ? wtField?.name ?? wtField?.warning_type ?? ""
+        : String(p.warningType ?? wtField ?? ""),
     subject: p.subject ?? "",
     severity: capFirst(sev) as Warning["severity"],
     warningDate: (p.warning_date ?? p.warningDate ?? "").slice(0, 10),
@@ -333,6 +126,8 @@ type SortField =
   | "status";
 type SortDir = "asc" | "desc";
 
+const severities = ["High", "Medium", "Low"] as const;
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Warnings: React.FC = () => {
@@ -340,33 +135,9 @@ export const Warnings: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     warningHooks,
-    { seed: sampleWarningsSeed as any, params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const warnings = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Employee options from API
-  const empQuery = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions = useMemo(
-    () =>
-      (empQuery.data ?? [])
-        .map(employeeOption)
-        .filter((option) => option.id && option.name),
-    [empQuery.data],
-  );
-
-  // Warning type options from API — empty labels are dropped so the static
-  // fallback list renders instead of invisible options.
-  const wtQuery = warningTypeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const wtOptions = useMemo(
-    () =>
-      (wtQuery.data ?? [])
-        .map((t: any) => ({
-          id: String(t.id ?? t._id ?? ""),
-          name: apiLabel(t, ["name", "type_name", "warning_type", "warningType", "type", "title"]),
-        }))
-        .filter((o: SelectOption) => o.id && o.name),
-    [wtQuery.data],
-  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -388,8 +159,11 @@ export const Warnings: React.FC = () => {
   // Form state
   const [warningFormData, setWarningFormData] = useState({
     employee: "",
+    employeeLabel: "",
     warningBy: "",
+    warningByLabel: "",
     warningType: "",
+    warningTypeLabel: "",
     subject: "",
     severity: "Medium" as "High" | "Medium" | "Low",
     warningDate: "",
@@ -473,8 +247,11 @@ export const Warnings: React.FC = () => {
   const resetWarningForm = () => {
     setWarningFormData({
       employee: "",
+      employeeLabel: "",
       warningBy: "",
+      warningByLabel: "",
       warningType: "",
+      warningTypeLabel: "",
       subject: "",
       severity: "Medium",
       warningDate: "",
@@ -493,9 +270,12 @@ export const Warnings: React.FC = () => {
   const openEditModal = (warning: Warning) => {
     setSelectedWarning(warning);
     setWarningFormData({
-      employee: warning.employeeId || warning.employee,
-      warningBy: warning.warningBy,
-      warningType: warning.warningType,
+      employee: warning.employeeId || "",
+      employeeLabel: warning.employee,
+      warningBy: warning.warningById || "",
+      warningByLabel: warning.warningBy,
+      warningType: warning.warningTypeId || "",
+      warningTypeLabel: warning.warningType,
       subject: warning.subject,
       severity: warning.severity,
       warningDate: warning.warningDate,
@@ -697,85 +477,62 @@ export const Warnings: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={warningFormData.employee}
-              onChange={(e) =>
+              displayName={warningFormData.employeeLabel}
+              onChange={(id, opt) =>
                 setWarningFormData({
                   ...warningFormData,
-                  employee: e.target.value,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {empOptions.length > 0
-                ? empOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : employees.map((emp) => (
-                    <option key={emp} value={emp}>
-                      {emp}
-                    </option>
-                  ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Warning By *
             </label>
-            <select
+            <AsyncSearchSelect
               value={warningFormData.warningBy}
-              onChange={(e) =>
+              displayName={warningFormData.warningByLabel}
+              onChange={(id, opt) =>
                 setWarningFormData({
                   ...warningFormData,
-                  warningBy: e.target.value,
+                  warningBy: id,
+                  warningByLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Warning By</option>
-              {warningByList.map((wb) => (
-                <option key={wb} value={wb}>
-                  {wb}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search issuer..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Warning Type *
             </label>
-            <select
+            <AsyncSearchSelect
               value={warningFormData.warningType}
-              onChange={(e) =>
+              displayName={warningFormData.warningTypeLabel}
+              onChange={(id, opt) =>
                 setWarningFormData({
                   ...warningFormData,
-                  warningType: e.target.value,
+                  warningType: id,
+                  warningTypeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Warning Type</option>
-              {wtOptions.length > 0
-                ? wtOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : warningTypes.map((wt) => (
-                    <option key={wt} value={wt}>
-                      {wt}
-                    </option>
-                  ))}
-            </select>
+              onSearch={searchWarningTypes}
+              placeholder="Search warning type..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Subject *
             </label>
-            <select
+            <input
+              type="text"
               value={warningFormData.subject}
               onChange={(e) =>
                 setWarningFormData({
@@ -783,15 +540,9 @@ export const Warnings: React.FC = () => {
                   subject: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Subject</option>
-              {subjects.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              placeholder="Enter subject"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1107,17 +858,12 @@ export const Warnings: React.FC = () => {
           <span className="text-gray-900 font-medium">Warnings</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Warnings
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create warning" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">

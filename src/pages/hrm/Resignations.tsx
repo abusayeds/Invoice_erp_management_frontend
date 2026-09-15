@@ -10,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -28,7 +27,14 @@ import {
   UserMinus,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import { resignationHooks, employeeHooks, hrmStatusActions } from "@/services/hrm";
+import { resignationHooks, hrmStatusActions } from "@/services/hrm";
+import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  apiLabel as empApiLabel,
+  employeeUserId,
+  searchEmployees,
+} from "./hrmShared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,195 +53,15 @@ interface Resignation {
   createdAt: string;
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const sampleResignations: Resignation[] = [
-  {
-    id: "1",
-    employee: "Mark Allen",
-    resignationDate: "2026-01-19",
-    lastWorkingDate: "2026-02-19",
-    reason:
-      "Career pivot opportunity leveraging transferable skills in new industry sector with growth potential and innovation.",
-    description:
-      "Additional details regarding resignation process and transition planning for smooth handover.",
-    document: "resignation_letter_mark.pdf",
-    status: "Pending",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2026-01-19",
-  },
-  {
-    id: "2",
-    employee: "Anthony Walker",
-    resignationDate: "2026-01-14",
-    lastWorkingDate: "2026-02-14",
-    reason:
-      "Company culture mismatch resolution through transition to organization with better alignment of values and practices.",
-    description: "Seeking a more collaborative work environment.",
-    document: "resignation_letter_anthony.pdf",
-    status: "Accepted",
-    approvedBy: "HR Manager",
-    approvedAt: "2026-01-16",
-    createdAt: "2026-01-14",
-  },
-  {
-    id: "3",
-    employee: "Matthew Clark",
-    resignationDate: "2026-01-09",
-    lastWorkingDate: "2026-02-09",
-    reason:
-      "Skill diversification pursuit requiring exposure to different business functions and cross-functional collaboration experience.",
-    description: "Looking for opportunities in different industries.",
-    document: "resignation_letter_matthew.pdf",
-    status: "Accepted",
-    approvedBy: "HR Director",
-    approvedAt: "2026-01-11",
-    createdAt: "2026-01-09",
-  },
-  {
-    id: "4",
-    employee: "Daniel Thompson",
-    resignationDate: "2026-01-04",
-    lastWorkingDate: "2026-02-04",
-    reason:
-      "Professional network expansion and career advancement in emerging market with promising growth trajectory.",
-    description: "Moving to a startup with better growth potential.",
-    document: "resignation_letter_daniel.pdf",
-    status: "Accepted",
-    approvedBy: "HR Manager",
-    approvedAt: "2026-01-06",
-    createdAt: "2026-01-04",
-  },
-  {
-    id: "5",
-    employee: "Christopher Lee",
-    resignationDate: "2025-12-30",
-    lastWorkingDate: "2026-01-30",
-    reason:
-      "Work schedule constraints impacting work-life balance and personal well-being.",
-    description: "Need more flexible working hours.",
-    document: "resignation_letter_christopher.pdf",
-    status: "Rejected",
-    approvedBy: "HR Manager",
-    approvedAt: "2026-01-02",
-    createdAt: "2025-12-30",
-  },
-  {
-    id: "6",
-    employee: "James Garcia",
-    resignationDate: "2025-12-25",
-    lastWorkingDate: "2026-01-25",
-    reason:
-      "Leadership role opportunity offering strategic decision-making authority and executive-level responsibilities.",
-    description: "Offered a leadership position at another company.",
-    document: "resignation_letter_james.pdf",
-    status: "Accepted",
-    approvedBy: "CEO",
-    approvedAt: "2025-12-27",
-    createdAt: "2025-12-25",
-  },
-  {
-    id: "7",
-    employee: "Robert Taylor",
-    resignationDate: "2025-12-20",
-    lastWorkingDate: "2026-01-20",
-    reason:
-      "Technology industry shift following specialized skill development in cutting-edge domains.",
-    description: "Moving to a tech-focused company.",
-    document: "resignation_letter_robert.pdf",
-    status: "Accepted",
-    approvedBy: "HR Manager",
-    approvedAt: "2025-12-22",
-    createdAt: "2025-12-20",
-  },
-  {
-    id: "8",
-    employee: "David Wilson",
-    resignationDate: "2025-12-15",
-    lastWorkingDate: "2026-01-15",
-    reason:
-      "Non-profit sector transition aligning with personal values and social impact goals for meaningful contribution.",
-    description: "Joining a non-profit organization.",
-    document: "resignation_letter_david.pdf",
-    status: "Accepted",
-    approvedBy: "HR Director",
-    approvedAt: "2025-12-17",
-    createdAt: "2025-12-15",
-  },
-];
-
-const employees = [
-  "Mark Allen",
-  "Anthony Walker",
-  "Matthew Clark",
-  "Daniel Thompson",
-  "Christopher Lee",
-  "James Garcia",
-  "Robert Taylor",
-  "David Wilson",
-  "Michael Brown",
-  "John Smith",
-];
-
-const reasonOptions = [
-  "Career pivot opportunity leveraging transferable skills in new industry sector with growth potential and innovation.",
-  "Company culture mismatch resolution through transition to organization with better alignment of values and practices.",
-  "Skill diversification pursuit requiring exposure to different business functions and cross-functional collaboration experience.",
-  "Professional network expansion and career advancement in emerging market with promising growth trajectory.",
-  "Work schedule constraints impacting work-life balance and personal well-being.",
-  "Leadership role opportunity offering strategic decision-making authority and executive-level responsibilities.",
-  "Technology industry shift following specialized skill development in cutting-edge domains.",
-  "Non-profit sector transition aligning with personal values and social impact goals for meaningful contribution.",
-  "Consulting career launch leveraging accumulated expertise and industry knowledge for independent professional practice.",
-];
-
-// ─── Seed (snake_case for API) ────────────────────────────────────────────────
-
-const sampleResignationsSeed = sampleResignations.map((r) => ({
-  id: r.id,
-  employee_id: r.employee,
-  last_working_date: r.lastWorkingDate,
-  reason: r.reason,
-  description: r.description,
-  status: r.status.toLowerCase(),
-}));
-
 // ─── mapFromApi ───────────────────────────────────────────────────────────────
 
-type SelectOption = { id: string; name: string };
-
-const employeeOption = (employee: any): SelectOption => ({
-  id: String(employee?._id ?? employee?.id ?? employee?.employee_id ?? ""),
-  name: String(
-    employee?.employee_user_id?.name ??
-      employee?.user_id?.name ??
-      employee?.name ??
-      employee?.employee_name ??
-      employee?.first_name ??
-      employee?.employee_id ??
-      employee?._id ??
-      employee?.id ??
-      "",
-  ),
-});
-
-const employeeRefValue = (ref: any) => String(typeof ref === "object" ? ref?._id ?? ref?.id ?? "" : ref ?? "");
+const employeeRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? employeeUserId(ref) : String(ref ?? "");
 
 const employeeRefLabel = (ref: any, fallback: any = "") =>
-  String(
-    typeof ref === "object"
-      ? ref?.employee_user_id?.name ??
-          ref?.user_id?.name ??
-          ref?.name ??
-          ref?.employee_name ??
-          ref?.first_name ??
-          ref?.employee_id ??
-          ref?._id ??
-          ref?.id ??
-          ""
-      : fallback || ref || "",
-  );
+  typeof ref === "object"
+    ? empApiLabel(ref, ["employee_user_id", "user_id", "name", "employee_name"]) || String(fallback || "")
+    : String(fallback || ref || "");
 
 function mapFromApi(p: any): Resignation {
   const empField = p.employee_id ?? p.employeeId;
@@ -283,19 +109,9 @@ export const Resignations: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     resignationHooks,
-    { seed: sampleResignationsSeed as any, params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const resignations = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Employee options from API
-  const empQuery = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions = useMemo(
-    () =>
-      (empQuery.data ?? [])
-        .map(employeeOption)
-        .filter((option) => option.id && option.name),
-    [empQuery.data],
-  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -317,6 +133,7 @@ export const Resignations: React.FC = () => {
   // Form state
   const [resignationFormData, setResignationFormData] = useState({
     employee: "",
+    employeeLabel: "",
     lastWorkingDate: "",
     reason: "",
     description: "",
@@ -388,6 +205,7 @@ export const Resignations: React.FC = () => {
   const resetResignationForm = () => {
     setResignationFormData({
       employee: "",
+      employeeLabel: "",
       lastWorkingDate: "",
       reason: "",
       description: "",
@@ -405,7 +223,8 @@ export const Resignations: React.FC = () => {
   const openEditModal = (resignation: Resignation) => {
     setSelectedResignation(resignation);
     setResignationFormData({
-      employee: resignation.employeeId || resignation.employee,
+      employee: resignation.employeeId || "",
+      employeeLabel: resignation.employee,
       lastWorkingDate: resignation.lastWorkingDate,
       reason: resignation.reason,
       description: resignation.description,
@@ -575,29 +394,19 @@ export const Resignations: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={resignationFormData.employee}
-              onChange={(e) =>
+              displayName={resignationFormData.employeeLabel}
+              onChange={(id, opt) =>
                 setResignationFormData({
                   ...resignationFormData,
-                  employee: e.target.value,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {empOptions.length > 0
-                ? empOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : employees.map((emp) => (
-                    <option key={emp} value={emp}>
-                      {emp}
-                    </option>
-                  ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -619,7 +428,7 @@ export const Resignations: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Reason *
             </label>
-            <select
+            <textarea
               value={resignationFormData.reason}
               onChange={(e) =>
                 setResignationFormData({
@@ -627,17 +436,10 @@ export const Resignations: React.FC = () => {
                   reason: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Reason</option>
-              {reasonOptions.map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason.length > 60
-                    ? reason.substring(0, 60) + "..."
-                    : reason}
-                </option>
-              ))}
-            </select>
+              rows={3}
+              placeholder="Enter reason"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -905,17 +707,12 @@ export const Resignations: React.FC = () => {
           <span className="text-gray-900 font-medium">Resignations</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Resignations
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create resignation" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">

@@ -10,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -28,12 +27,15 @@ import {
   UserX,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
+import { terminationHooks, hrmStatusActions } from "@/services/hrm";
 import {
-  terminationHooks,
-  terminationTypeHooks,
-  employeeHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+  AsyncSearchSelect,
+  CreatePlusButton,
+  employeeUserId,
+  apiLabel as empApiLabel,
+  searchEmployees,
+  searchTerminationTypes,
+} from "./hrmShared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ interface Termination {
   id: string;
   employeeId?: string;
   employee: string;
+  terminationTypeId?: string;
   terminationType: string;
   noticeDate: string;
   terminationDate: string;
@@ -53,214 +56,15 @@ interface Termination {
   createdAt: string;
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const sampleTerminations: Termination[] = [
-  {
-    id: "1",
-    employee: "Mark Allen",
-    terminationType: "Medical Reasons",
-    noticeDate: "2025-12-06",
-    terminationDate: "2025-12-20",
-    reason:
-      "Automation implementation replacing manual processes and reducing need for human resources.",
-    description:
-      "Additional details regarding termination process and final settlement procedures for employee separation.",
-    document: "",
-    status: "Approved",
-    approvedBy: "Quality Parts Corp",
-    approvedAt: "2025-12-10",
-    createdAt: "2025-12-06",
-  },
-  {
-    id: "2",
-    employee: "Anthony Walker",
-    terminationType: "Redundancy",
-    noticeDate: "2025-12-01",
-    terminationDate: "2025-12-15",
-    reason: "Company restructuring leading to position elimination.",
-    description: "Severance package provided as per company policy.",
-    document: "termination_letter_anthony.pdf",
-    status: "Approved",
-    approvedBy: "Amanda White",
-    approvedAt: "2025-12-05",
-    createdAt: "2025-12-01",
-  },
-  {
-    id: "3",
-    employee: "Matthew Clark",
-    terminationType: "Mutual Agreement",
-    noticeDate: "2025-11-26",
-    terminationDate: "2025-12-10",
-    reason: "Mutual separation agreement reached between both parties.",
-    description: "Exit interview scheduled for final week.",
-    document: "",
-    status: "Pending",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2025-11-26",
-  },
-  {
-    id: "4",
-    employee: "Daniel Thompson",
-    terminationType: "Performance Issues",
-    noticeDate: "2025-11-21",
-    terminationDate: "2025-12-05",
-    reason: "Consistent underperformance despite multiple improvement plans.",
-    description: "Performance improvement plan not met.",
-    document: "termination_letter_daniel.pdf",
-    status: "Approved",
-    approvedBy: "James Garcia",
-    approvedAt: "2025-11-25",
-    createdAt: "2025-11-21",
-  },
-  {
-    id: "5",
-    employee: "Christopher Lee",
-    terminationType: "Job Abandonment",
-    noticeDate: "2025-11-16",
-    terminationDate: "2025-11-30",
-    reason: "Unexplained absence from work for extended period.",
-    description: "Multiple attempts to contact employee failed.",
-    document: "",
-    status: "Pending",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2025-11-16",
-  },
-  {
-    id: "6",
-    employee: "James Garcia",
-    terminationType: "Misconduct",
-    noticeDate: "2025-11-11",
-    terminationDate: "2025-11-25",
-    reason: "Violation of company code of conduct and policies.",
-    description: "Internal investigation completed.",
-    document: "termination_letter_james.pdf",
-    status: "Approved",
-    approvedBy: "Maria Rodriguez",
-    approvedAt: "2025-11-15",
-    createdAt: "2025-11-11",
-  },
-  {
-    id: "7",
-    employee: "Robert Taylor",
-    terminationType: "Layoff",
-    noticeDate: "2025-11-06",
-    terminationDate: "2025-11-20",
-    reason: "Economic downturn leading to workforce reduction.",
-    description: "Layoff due to budget constraints.",
-    document: "",
-    status: "Pending",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2025-11-06",
-  },
-  {
-    id: "8",
-    employee: "David Wilson",
-    terminationType: "End of Contract",
-    noticeDate: "2025-11-01",
-    terminationDate: "2025-11-15",
-    reason: "Fixed-term contract completion.",
-    description: "Contract ended as per agreed terms.",
-    document: "termination_letter_david.pdf",
-    status: "Pending",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2025-11-01",
-  },
-  {
-    id: "9",
-    employee: "Michael Brown",
-    terminationType: "Retirement",
-    noticeDate: "2025-10-27",
-    terminationDate: "2025-11-10",
-    reason: "Voluntary retirement after reaching eligible age.",
-    description: "Retirement benefits processed.",
-    document: "",
-    status: "Rejected",
-    approvedBy: "",
-    approvedAt: "",
-    createdAt: "2025-10-27",
-  },
-];
-
-const employees = [
-  "Mark Allen",
-  "Anthony Walker",
-  "Matthew Clark",
-  "Daniel Thompson",
-  "Christopher Lee",
-  "James Garcia",
-  "Robert Taylor",
-  "David Wilson",
-  "Michael Brown",
-  "John Smith",
-];
-
-const terminationTypes = [
-  "Medical Reasons",
-  "Redundancy",
-  "Mutual Agreement",
-  "Performance Issues",
-  "Job Abandonment",
-  "Misconduct",
-  "Layoff",
-  "End of Contract",
-  "Retirement",
-  "Gross Misconduct",
-  "Breach of Contract",
-];
-
-// ─── Seed (snake_case for API) ────────────────────────────────────────────────
-
-const sampleTerminationsSeed = sampleTerminations.map((t) => ({
-  id: t.id,
-  employee_id: t.employee,
-  termination_type_id: t.terminationType,
-  notice_date: t.noticeDate,
-  termination_date: t.terminationDate,
-  reason: t.reason,
-  description: t.description,
-  status: t.status.toLowerCase(),
-}));
-
 // ─── mapFromApi ───────────────────────────────────────────────────────────────
 
-type SelectOption = { id: string; name: string };
-
-const employeeOption = (employee: any): SelectOption => ({
-  id: String(employee?._id ?? employee?.id ?? employee?.employee_id ?? ""),
-  name: String(
-    employee?.employee_user_id?.name ??
-      employee?.user_id?.name ??
-      employee?.name ??
-      employee?.employee_name ??
-      employee?.first_name ??
-      employee?.employee_id ??
-      employee?._id ??
-      employee?.id ??
-      "",
-  ),
-});
-
-const employeeRefValue = (ref: any) => String(typeof ref === "object" ? ref?._id ?? ref?.id ?? "" : ref ?? "");
+const employeeRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? employeeUserId(ref) : String(ref ?? "");
 
 const employeeRefLabel = (ref: any, fallback: any = "") =>
-  String(
-    typeof ref === "object"
-      ? ref?.employee_user_id?.name ??
-          ref?.user_id?.name ??
-          ref?.name ??
-          ref?.employee_name ??
-          ref?.first_name ??
-          ref?.employee_id ??
-          ref?._id ??
-          ref?.id ??
-          ""
-      : fallback || ref || "",
-  );
+  typeof ref === "object"
+    ? empApiLabel(ref, ["employee_user_id", "user_id", "name", "employee_name"]) || String(fallback || "")
+    : String(fallback || ref || "");
 
 function mapFromApi(p: any): Termination {
   const empField = p.employee_id ?? p.employeeId;
@@ -269,10 +73,14 @@ function mapFromApi(p: any): Termination {
     id: String(p.id ?? p._id ?? ""),
     employeeId: employeeRefValue(empField),
     employee: employeeRefLabel(empField, p.employee),
+    terminationTypeId:
+      typeof ttField === "object"
+        ? String(ttField?._id ?? ttField?.id ?? "")
+        : String(ttField ?? ""),
     terminationType:
       typeof ttField === "object"
-        ? ttField?.name ?? ""
-        : String(ttField ?? p.terminationType ?? ""),
+        ? ttField?.name ?? ttField?.termination_type ?? ""
+        : String(p.terminationType ?? ttField ?? ""),
     noticeDate: (p.notice_date ?? p.noticeDate ?? "").slice(0, 10),
     terminationDate: (p.termination_date ?? p.terminationDate ?? "").slice(0, 10),
     reason: p.reason ?? "",
@@ -318,30 +126,9 @@ export const Terminations: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     terminationHooks,
-    { seed: sampleTerminationsSeed as any, params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const terminations = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Employee options from API
-  const empQuery = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions = useMemo(
-    () =>
-      (empQuery.data ?? [])
-        .map(employeeOption)
-        .filter((option) => option.id && option.name),
-    [empQuery.data],
-  );
-
-  // Termination type options from API
-  const ttQuery = terminationTypeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const ttOptions = useMemo(
-    () =>
-      (ttQuery.data ?? []).map((t: any) => ({
-        id: String(t.id ?? t._id ?? ""),
-        name: t.name ?? t.type_name ?? "",
-      })),
-    [ttQuery.data],
-  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -363,7 +150,9 @@ export const Terminations: React.FC = () => {
   // Form state
   const [terminationFormData, setTerminationFormData] = useState({
     employee: "",
+    employeeLabel: "",
     terminationType: "",
+    terminationTypeLabel: "",
     noticeDate: "",
     terminationDate: "",
     reason: "",
@@ -436,7 +225,9 @@ export const Terminations: React.FC = () => {
   const resetTerminationForm = () => {
     setTerminationFormData({
       employee: "",
+      employeeLabel: "",
       terminationType: "",
+      terminationTypeLabel: "",
       noticeDate: "",
       terminationDate: "",
       reason: "",
@@ -455,8 +246,10 @@ export const Terminations: React.FC = () => {
   const openEditModal = (termination: Termination) => {
     setSelectedTermination(termination);
     setTerminationFormData({
-      employee: termination.employeeId || termination.employee,
-      terminationType: termination.terminationType,
+      employee: termination.employeeId || "",
+      employeeLabel: termination.employee,
+      terminationType: termination.terminationTypeId || "",
+      terminationTypeLabel: termination.terminationType,
       noticeDate: termination.noticeDate,
       terminationDate: termination.terminationDate,
       reason: termination.reason,
@@ -641,57 +434,37 @@ export const Terminations: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={terminationFormData.employee}
-              onChange={(e) =>
+              displayName={terminationFormData.employeeLabel}
+              onChange={(id, opt) =>
                 setTerminationFormData({
                   ...terminationFormData,
-                  employee: e.target.value,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {empOptions.length > 0
-                ? empOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : employees.map((emp) => (
-                    <option key={emp} value={emp}>
-                      {emp}
-                    </option>
-                  ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Termination Type *
             </label>
-            <select
+            <AsyncSearchSelect
               value={terminationFormData.terminationType}
-              onChange={(e) =>
+              displayName={terminationFormData.terminationTypeLabel}
+              onChange={(id, opt) =>
                 setTerminationFormData({
                   ...terminationFormData,
-                  terminationType: e.target.value,
+                  terminationType: id,
+                  terminationTypeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Termination Type</option>
-              {ttOptions.length > 0
-                ? ttOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : terminationTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-            </select>
+              onSearch={searchTerminationTypes}
+              placeholder="Search termination type..."
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1016,17 +789,12 @@ export const Terminations: React.FC = () => {
           <span className="text-gray-900 font-medium">Terminations</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Terminations
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create termination" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">

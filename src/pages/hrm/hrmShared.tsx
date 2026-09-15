@@ -7,6 +7,12 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronDown, Plus, Search } from "lucide-react";
+import { getList, toArray } from "@/services/_http";
+import { employeesService } from "@/services/hrm";
+import type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
+
+const HRM_BASE = "/hrm";
+const HRM_SETUP = `${HRM_BASE}/setup`;
 
 /* ── initials avatar ───────────────────────────────────────────── */
 
@@ -66,6 +72,9 @@ export function Field({
 export const inputCls =
   "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
 
+/** Native <select> — keep-box so dark theme option lists stay readable. */
+export const selectCls = `keep-box ua-field ${inputCls}`;
+
 /* ── searchable select (reference: dropdown with search box) ───── */
 
 export function SearchSelect({
@@ -106,7 +115,7 @@ export function SearchSelect({
           setOpen(!open);
           setQuery("");
         }}
-        className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm text-left ${
+        className={`keep-box ua-field w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm text-left ${
           disabled
             ? "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
             : open
@@ -120,7 +129,7 @@ export function SearchSelect({
         <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
       </button>
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 overflow-hidden">
+        <div className="ua-dropdown-panel absolute left-0 right-0 top-full mt-1 rounded-md shadow-lg z-50 overflow-hidden">
           <div className="relative border-b border-gray-100">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -128,7 +137,7 @@ export function SearchSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search..."
-              className="w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
+              className="keep-box ua-field w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
             />
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
@@ -141,7 +150,7 @@ export function SearchSelect({
                   setOpen(false);
                 }}
                 className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
-                  o === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                  o === value ? "bg-blue-50 text-blue-700" : "text-gray-900"
                 }`}
               >
                 {o}
@@ -268,7 +277,98 @@ export function employeeOption(rec: any): { id: string; name: string } {
   };
 }
 
-/** Orange create (+) matching header / ListCreateFab — spaced from the right edge. */
+/** Live employee search (User ids for workflow employee_id fields). */
+export async function searchEmployees(q: string): Promise<AsyncOption[]> {
+  const rows = await employeesService.list({
+    page: 1,
+    limit: 50,
+    searchTerm: q || undefined,
+  });
+  return rows.map(employeeOption).filter((o) => o.id && o.name);
+}
+
+function setupOptions(rows: any[], labelKeys: string[]): AsyncOption[] {
+  return rows
+    .map((t) => ({
+      id: String(t.id ?? t._id ?? ""),
+      name: apiLabel(t, labelKeys),
+    }))
+    .filter((o) => o.id && o.name);
+}
+
+async function searchSetup(entity: string, labelKeys: string[], q: string): Promise<AsyncOption[]> {
+  const rows = await getList(`${HRM_SETUP}/${entity}`, {
+    page: 1,
+    limit: 50,
+    searchTerm: q || undefined,
+  });
+  return setupOptions(rows, labelKeys);
+}
+
+export const searchAwardTypes = (q: string) =>
+  searchSetup("award-types", ["name", "award_type", "type_name", "title"], q);
+export const searchTerminationTypes = (q: string) =>
+  searchSetup("termination-types", ["name", "termination_type", "type_name"], q);
+export const searchWarningTypes = (q: string) =>
+  searchSetup("warning-types", ["name", "warning_type", "warning_type_name", "type_name"], q);
+export const searchComplaintTypes = (q: string) =>
+  searchSetup("complaint-types", ["name", "complaint_type", "type_name"], q);
+export const searchDocumentCategories = (q: string) =>
+  searchSetup("document-categories", ["name", "document_category", "category_name"], q);
+export const searchAnnouncementCategories = (q: string) =>
+  searchSetup("announcement-categories", ["name", "announcement_category", "category_name"], q);
+export const searchEventTypes = (q: string) =>
+  searchSetup("event-types", ["name", "event_type", "type_name"], q);
+export const searchDocuments = (q: string) =>
+  getList(`${HRM_BASE}/documents`, { page: 1, limit: 50, searchTerm: q || undefined }).then((rows) =>
+    setupOptions(rows, ["title", "name"]),
+  );
+export const searchDepartmentsAll = (q: string) => searchDepartments(q);
+
+export const searchBankAccounts = (q: string) =>
+  getList("/account/bank-accounts/all", { page: 1, limit: 50, searchTerm: q || undefined }).then(
+    (rows) =>
+      toArray(rows).map((a: Record<string, unknown>) => ({
+        id: String(a._id ?? a.id ?? ""),
+        name: String(a.account_name || a.bank_name || a.name || ""),
+      })).filter((o) => o.id && o.name),
+  );
+export const searchBranches = (q: string) =>
+  searchSetup("branches", ["branch_name", "name"], q);
+export const searchDepartments = (q: string, branchId?: string) =>
+  getList(`${HRM_SETUP}/departments`, { page: 1, limit: 50, searchTerm: q || undefined }).then(
+    (rows) =>
+      setupOptions(
+        branchId
+          ? rows.filter((d: any) => {
+              const bid =
+                typeof d.branch_id === "object"
+                  ? String(d.branch_id?._id ?? d.branch_id?.id ?? "")
+                  : String(d.branch_id ?? "");
+              return !bid || bid === branchId;
+            })
+          : rows,
+        ["department_name", "name"],
+      ),
+  );
+export const searchDesignations = (q: string, departmentId?: string) =>
+  getList(`${HRM_SETUP}/designations`, { page: 1, limit: 50, searchTerm: q || undefined }).then(
+    (rows) =>
+      setupOptions(
+        departmentId
+          ? rows.filter((d: any) => {
+              const did =
+                typeof d.department_id === "object"
+                  ? String(d.department_id?._id ?? d.department_id?.id ?? "")
+                  : String(d.department_id ?? "");
+              return !did || did === departmentId;
+            })
+          : rows,
+        ["designation_name", "name"],
+      ),
+  );
+
+/** Orange create (+) — keep clear of filters / toolbar edge. */
 export function CreatePlusButton({
   onClick,
   title = "Create",
@@ -284,7 +384,7 @@ export function CreatePlusButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`w-9 h-9 flex-shrink-0 mr-2 sm:mr-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm ${className}`}
+      className={`w-9 h-9 flex-shrink-0 ml-4 mr-3 sm:ml-6 sm:mr-4 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm ${className}`}
     >
       <Plus className="w-5 h-5" strokeWidth={2.2} />
     </button>
@@ -305,6 +405,7 @@ export function IdSearchSelect({
   placeholder: string;
   disabled?: boolean;
 }) {
+  // Re-export pattern kept for local option lists; prefer AsyncSearchSelect for API lists.
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -352,7 +453,7 @@ export function IdSearchSelect({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="Type to search..."
               className="w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
             />
           </div>
@@ -381,3 +482,6 @@ export function IdSearchSelect({
     </div>
   );
 }
+
+export { AsyncSearchSelect } from "@/components/ui/AsyncSearchSelect";
+export type { AsyncOption } from "@/components/ui/AsyncSearchSelect";

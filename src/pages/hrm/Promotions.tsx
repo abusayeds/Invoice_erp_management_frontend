@@ -9,21 +9,20 @@ import { showToast } from "../../utils/toast";
 import { useResourceData } from "@/hooks/useResourceData";
 import {
   promotionHooks,
-  employeeHooks,
-  branchHooks,
-  departmentHooks,
-  designationHooks,
   hrmStatusActions,
 } from "@/services/hrm";
 import {
   Field,
   inputCls,
-  IdSearchSelect,
+  AsyncSearchSelect,
   Chip,
   HrmBreadcrumb,
   CreatePlusButton,
   apiLabel,
-  employeeOption,
+  searchEmployees,
+  searchBranches,
+  searchDepartments,
+  searchDesignations,
 } from "./hrmShared";
 import {
   Search,
@@ -64,9 +63,13 @@ interface PromotionRow {
 const emptyDraft = () => ({
   id: "",
   employeeId: "",
+  employeeName: "",
   branchId: "",
+  branchName: "",
   departmentId: "",
+  departmentName: "",
   designationId: "",
+  designationName: "",
   effectiveDate: "",
   reason: "",
   document: "",
@@ -120,47 +123,6 @@ export const Promotions: React.FC = () => {
   });
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
 
-  const empQ = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const branchQ = branchHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const deptQ = departmentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const desigQ = designationHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-
-  const empOptions = useMemo(
-    () => (empQ.data ?? []).map(employeeOption).filter((o) => o.id && o.name),
-    [empQ.data],
-  );
-  const branchOptions = useMemo(
-    () =>
-      (branchQ.data ?? [])
-        .map((b: any) => ({
-          id: String(b.id ?? b._id),
-          name: apiLabel(b, ["branch_name", "name"]) || "Branch",
-        }))
-        .filter((o) => o.id && o.name),
-    [branchQ.data],
-  );
-  const deptOptions = useMemo(() => {
-    const all = (deptQ.data ?? []).map((d: any) => ({
-      id: String(d.id ?? d._id),
-      name: apiLabel(d, ["department_name", "name"]) || "Department",
-      branchId:
-        typeof d.branch_id === "object" ? String(d.branch_id?._id ?? "") : String(d.branch_id ?? ""),
-    }));
-    return all.filter((o) => o.id && o.name);
-  }, [deptQ.data]);
-  const desigOptions = useMemo(() => {
-    return (desigQ.data ?? [])
-      .map((d: any) => ({
-        id: String(d.id ?? d._id),
-        name: apiLabel(d, ["designation_name", "name"]) || "Designation",
-        departmentId:
-          typeof d.department_id === "object"
-            ? String(d.department_id?._id ?? "")
-            : String(d.department_id ?? ""),
-      }))
-      .filter((o) => o.id && o.name);
-  }, [desigQ.data]);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
@@ -183,11 +145,6 @@ export const Promotions: React.FC = () => {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
-
-  const deptsForBranch = deptOptions.filter((d) => !draft.branchId || !d.branchId || d.branchId === draft.branchId);
-  const desigsForDept = desigOptions.filter(
-    (d) => !draft.departmentId || !d.departmentId || d.departmentId === draft.departmentId,
-  );
 
   const submit = async () => {
     if (!draft.employeeId || !draft.branchId || !draft.departmentId || !draft.designationId || !draft.effectiveDate) {
@@ -370,9 +327,13 @@ export const Promotions: React.FC = () => {
                           setDraft({
                             id: p.id,
                             employeeId: p.employeeId,
+                            employeeName: p.employee,
                             branchId: p.branchId,
+                            branchName: p.branch,
                             departmentId: p.departmentId,
+                            departmentName: p.department,
                             designationId: p.designationId,
+                            designationName: p.designation,
                             effectiveDate: p.effectiveDate,
                             reason: p.reason,
                             document: p.document || "",
@@ -448,36 +409,62 @@ export const Promotions: React.FC = () => {
             </div>
             <div className="px-6 py-5 space-y-4">
               <Field label="Employee" required>
-                <IdSearchSelect
+                <AsyncSearchSelect
                   value={draft.employeeId}
-                  onChange={(v) => setDraft({ ...draft, employeeId: v })}
-                  options={empOptions}
-                  placeholder="Select Employee"
+                  displayName={draft.employeeName}
+                  onChange={(id, opt) =>
+                    setDraft({ ...draft, employeeId: id, employeeName: opt?.name || "" })
+                  }
+                  onSearch={searchEmployees}
+                  placeholder="Search Employee"
                 />
               </Field>
               <Field label="Current Branch" required>
-                <IdSearchSelect
+                <AsyncSearchSelect
                   value={draft.branchId}
-                  onChange={(v) => setDraft({ ...draft, branchId: v, departmentId: "", designationId: "" })}
-                  options={branchOptions}
-                  placeholder="Select Current Branch"
+                  displayName={draft.branchName}
+                  onChange={(id, opt) =>
+                    setDraft({
+                      ...draft,
+                      branchId: id,
+                      branchName: opt?.name || "",
+                      departmentId: "",
+                      departmentName: "",
+                      designationId: "",
+                      designationName: "",
+                    })
+                  }
+                  onSearch={searchBranches}
+                  placeholder="Search Branch"
                 />
               </Field>
               <Field label="Current Department" required>
-                <IdSearchSelect
+                <AsyncSearchSelect
                   value={draft.departmentId}
-                  onChange={(v) => setDraft({ ...draft, departmentId: v, designationId: "" })}
-                  options={deptsForBranch}
-                  placeholder="Select Current Department"
+                  displayName={draft.departmentName}
+                  onChange={(id, opt) =>
+                    setDraft({
+                      ...draft,
+                      departmentId: id,
+                      departmentName: opt?.name || "",
+                      designationId: "",
+                      designationName: "",
+                    })
+                  }
+                  onSearch={(q) => searchDepartments(q, draft.branchId)}
+                  placeholder="Search Department"
                   disabled={!draft.branchId}
                 />
               </Field>
               <Field label="Current Designation" required>
-                <IdSearchSelect
+                <AsyncSearchSelect
                   value={draft.designationId}
-                  onChange={(v) => setDraft({ ...draft, designationId: v })}
-                  options={desigsForDept}
-                  placeholder="Select Current Designation"
+                  displayName={draft.designationName}
+                  onChange={(id, opt) =>
+                    setDraft({ ...draft, designationId: id, designationName: opt?.name || "" })
+                  }
+                  onSearch={(q) => searchDesignations(q, draft.departmentId)}
+                  placeholder="Search Designation"
                   disabled={!draft.departmentId}
                 />
               </Field>

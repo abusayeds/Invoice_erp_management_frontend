@@ -8,8 +8,13 @@ import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  searchEmployees,
+  searchComplaintTypes,
+} from "./hrmShared";
+import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -29,12 +34,7 @@ import {
   UserX,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  complaintHooks,
-  complaintTypeHooks,
-  employeeHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { complaintHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,122 +55,6 @@ interface Complaint {
   resolvedAt: string;
   createdAt: string;
 }
-
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleComplaintsSeed = [
-  {
-    id: "1",
-    employee_id: "Mark Allen",
-    against_employee_id: "Daniel Thompson",
-    complaint_type_id: "General Administrative Issues",
-    subject: "Parking and Transportation Issues Resolution",
-    description:
-      "Parking and transportation issues requiring resolution to improve employee accessibility and convenience.",
-    complaint_date: "2026-01-12",
-    status: "In progress",
-  },
-  {
-    id: "2",
-    employee_id: "Anthony Walker",
-    against_employee_id: "John Smith",
-    complaint_type_id: "Legal & Regulatory Compliance",
-    subject: "Temperature Control - Uncomfortable Working Conditions",
-    description:
-      "Temperature control issues causing uncomfortable working conditions for employees.",
-    complaint_date: "2026-01-07",
-    status: "Resolved",
-  },
-  {
-    id: "3",
-    employee_id: "Matthew Clark",
-    against_employee_id: "Robert Taylor",
-    complaint_type_id: "Diversity & Inclusion Concerns",
-    subject: "Noise Pollution - Excessive Workplace Disturbance",
-    description:
-      "Noise pollution from excessive workplace disturbance affecting concentration and productivity during work hours.",
-    complaint_date: "2026-01-02",
-    status: "In progress",
-  },
-  {
-    id: "4",
-    employee_id: "Daniel Thompson",
-    against_employee_id: "Michael Brown",
-    complaint_type_id: "Remote Work & Flexibility Issues",
-    subject: "Ergonomic Issues - Repetitive Strain Injuries",
-    description:
-      "Ergonomic issues leading to repetitive strain injuries among remote workers.",
-    complaint_date: "2025-12-28",
-    status: "Assigned",
-  },
-  {
-    id: "5",
-    employee_id: "Christopher Lee",
-    against_employee_id: "John Smith",
-    complaint_type_id: "Security & Access Control",
-    subject: "Environmental Health Hazards - Chemical Exposure",
-    description:
-      "Environmental health hazards from chemical exposure in workplace.",
-    complaint_date: "2025-12-23",
-    status: "Resolved",
-  },
-  {
-    id: "6",
-    employee_id: "James Garcia",
-    against_employee_id: "Robert Taylor",
-    complaint_type_id: "Environmental & Sustainability Issues",
-    subject: "Data Security Breach - Unauthorized Access",
-    description:
-      "Data security breach due to unauthorized access to confidential information.",
-    complaint_date: "2025-12-18",
-    status: "Resolved",
-  },
-  {
-    id: "7",
-    employee_id: "Robert Taylor",
-    against_employee_id: "Anthony Walker",
-    complaint_type_id: "Financial & Budget Concerns",
-    subject: "Substance Abuse in Workplace Environment",
-    description:
-      "Substance abuse concerns affecting workplace safety and environment.",
-    complaint_date: "2025-12-13",
-    status: "In progress",
-  },
-  {
-    id: "8",
-    employee_id: "David Wilson",
-    against_employee_id: "Michael Brown",
-    complaint_type_id: "Customer Service & Relations",
-    subject: "Conflict of Interest - Undisclosed Relationships",
-    description:
-      "Conflict of interest due to undisclosed relationships affecting decision making.",
-    complaint_date: "2025-12-08",
-    status: "Resolved",
-  },
-  {
-    id: "9",
-    employee_id: "Michael Brown",
-    against_employee_id: "Anthony Walker",
-    complaint_type_id: "Quality & Process Improvement",
-    subject: "Misuse of Company Resources and Equipment",
-    description:
-      "Misuse of company resources and equipment for personal benefit.",
-    complaint_date: "2025-12-03",
-    status: "Resolved",
-  },
-];
-
-const subjects = [
-  "Parking and Transportation Issues Resolution",
-  "Temperature Control - Uncomfortable Working Conditions",
-  "Noise Pollution - Excessive Workplace Disturbance",
-  "Ergonomic Issues - Repetitive Strain Injuries",
-  "Environmental Health Hazards - Chemical Exposure",
-  "Data Security Breach - Unauthorized Access",
-  "Substance Abuse in Workplace Environment",
-  "Conflict of Interest - Undisclosed Relationships",
-  "Misuse of Company Resources and Equipment",
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -279,24 +163,9 @@ export const Complaints: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     complaintHooks,
-    { seed: sampleComplaintsSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const empListResult = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions: SelectOption[] = useMemo(() => {
-    const data = empListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map(employeeOption).filter((option) => option.value && option.label);
-  }, [empListResult.data]);
-
-  const ctListResult = complaintTypeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const ctOptions: SelectOption[] = useMemo(() => {
-    const data = ctListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map(complaintTypeOption).filter((option) => option.value && option.label);
-  }, [ctListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -319,8 +188,11 @@ export const Complaints: React.FC = () => {
   // Form state
   const [complaintFormData, setComplaintFormData] = useState({
     employee: "",
+    employeeLabel: "",
     againstEmployee: "",
+    againstEmployeeLabel: "",
     complaintType: "",
+    complaintTypeLabel: "",
     subject: "",
     description: "",
     complaintDate: "",
@@ -394,8 +266,11 @@ export const Complaints: React.FC = () => {
   const resetComplaintForm = () => {
     setComplaintFormData({
       employee: "",
+      employeeLabel: "",
       againstEmployee: "",
+      againstEmployeeLabel: "",
       complaintType: "",
+      complaintTypeLabel: "",
       subject: "",
       description: "",
       complaintDate: "",
@@ -413,9 +288,12 @@ export const Complaints: React.FC = () => {
   const openEditModal = (complaint: Complaint) => {
     setSelectedComplaint(complaint);
     setComplaintFormData({
-      employee: complaint.employeeId || complaint.employee,
-      againstEmployee: complaint.againstEmployeeId || complaint.againstEmployee,
-      complaintType: complaint.complaintTypeId || complaint.complaintType,
+      employee: complaint.employeeId || "",
+      employeeLabel: complaint.employee,
+      againstEmployee: complaint.againstEmployeeId || "",
+      againstEmployeeLabel: complaint.againstEmployee,
+      complaintType: complaint.complaintTypeId || "",
+      complaintTypeLabel: complaint.complaintType,
       subject: complaint.subject,
       description: complaint.description,
       complaintDate: complaint.complaintDate,
@@ -562,41 +440,6 @@ export const Complaints: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayEmpOptions =
-    empOptions.length > 0
-      ? empOptions
-      : [
-          "Mark Allen",
-          "Anthony Walker",
-          "Matthew Clark",
-          "Daniel Thompson",
-          "Christopher Lee",
-          "James Garcia",
-          "Robert Taylor",
-          "David Wilson",
-          "Michael Brown",
-          "John Smith",
-        ].map((name) => ({ value: name, label: name }));
-  const displayCtOptions =
-    ctOptions.length > 0
-      ? ctOptions
-      : [
-          "General Administrative Issues",
-          "Legal & Regulatory Compliance",
-          "Diversity & Inclusion Concerns",
-          "Remote Work & Flexibility Issues",
-          "Security & Access Control",
-          "Environmental & Sustainability Issues",
-          "Financial & Budget Concerns",
-          "Customer Service & Relations",
-          "Quality & Process Improvement",
-          "Workplace Harassment",
-          "Discrimination",
-          "Payroll Issues",
-        ].map((name) => ({ value: name, label: name }));
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -634,73 +477,62 @@ export const Complaints: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={complaintFormData.employee}
-              onChange={(e) =>
+              displayName={complaintFormData.employeeLabel}
+              onChange={(id, opt) =>
                 setComplaintFormData({
                   ...complaintFormData,
-                  employee: e.target.value,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {displayEmpOptions.map((emp) => (
-                <option key={emp.value} value={emp.value}>
-                  {emp.label}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Against Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={complaintFormData.againstEmployee}
-              onChange={(e) =>
+              displayName={complaintFormData.againstEmployeeLabel}
+              onChange={(id, opt) =>
                 setComplaintFormData({
                   ...complaintFormData,
-                  againstEmployee: e.target.value,
+                  againstEmployee: id,
+                  againstEmployeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Against Employee</option>
-              {displayEmpOptions.map((emp) => (
-                <option key={emp.value} value={emp.value}>
-                  {emp.label}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Complaint Type *
             </label>
-            <select
+            <AsyncSearchSelect
               value={complaintFormData.complaintType}
-              onChange={(e) =>
+              displayName={complaintFormData.complaintTypeLabel}
+              onChange={(id, opt) =>
                 setComplaintFormData({
                   ...complaintFormData,
-                  complaintType: e.target.value,
+                  complaintType: id,
+                  complaintTypeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Complaint Type</option>
-              {displayCtOptions.map((ct) => (
-                <option key={ct.value} value={ct.value}>
-                  {ct.label}
-                </option>
-              ))}
-            </select>
+              onSearch={searchComplaintTypes}
+              placeholder="Search complaint type..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Subject *
             </label>
-            <select
+            <input
+              type="text"
               value={complaintFormData.subject}
               onChange={(e) =>
                 setComplaintFormData({
@@ -708,15 +540,9 @@ export const Complaints: React.FC = () => {
                   subject: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Subject</option>
-              {subjects.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              placeholder="Enter subject"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1015,17 +841,12 @@ export const Complaints: React.FC = () => {
         </div>
       </div>
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Complaints
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
 

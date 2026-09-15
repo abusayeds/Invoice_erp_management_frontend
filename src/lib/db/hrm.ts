@@ -118,9 +118,12 @@ export interface PayrollRecord {
   periodStart: string;
   periodEnd: string;
   payDate: string;
+  bankAccountId?: string;
   bankAccount?: string;
   notes?: string;
   status: "Draft" | "Completed";
+  totalNet?: number;
+  employeeCount?: number;
   paid: number[]; // employee ids marked paid
   excluded: number[]; // employee ids removed from this run
 }
@@ -304,6 +307,7 @@ export function useEmployees(): HrmEmployee[] | null | undefined {
 /** Map a UI employee → backend create/update body (refs resolved by name). */
 function employeeToBackend(e: HrmEmployee): Record<string, any> {
   return {
+    ...(e.employeeId?.trim() ? { employee_id: e.employeeId.trim() } : {}),
     employee_user_id: userNameToId.get(e.name),
     gender: e.gender,
     date_of_birth: e.dob ? new Date(e.dob).toISOString() : undefined,
@@ -426,25 +430,49 @@ export async function getSalaryOrDefault(empId: number): Promise<SalaryData> {
 /* Payrolls → /hrm/payroll (company-scoped). */
 const payrollStore = makeBackendStore<PayrollRecord>({
   base: "/hrm/payroll",
-  toFrontend: (d) => ({
-    id: String(d._id),
-    title: d.title || "",
-    frequency: d.payroll_frequency === "weekly" ? "Weekly" : "Monthly",
-    periodStart: hday(d.pay_period_start),
-    periodEnd: hday(d.pay_period_end),
-    payDate: hday(d.pay_date || d.pay_period_end),
-    bankAccount: d.bank_account_id?.account_name || "",
-    notes: d.notes || "",
-    status: d.status === "completed" || d.is_payroll_paid ? "Completed" : "Draft",
-    paid: [],
-    excluded: [],
-  }),
+  toFrontend: (d) => {
+    const ba = d.bank_account_id;
+    const bankAccountId =
+      typeof ba === "object" && ba
+        ? String(ba._id ?? ba.id ?? "")
+        : ba
+          ? String(ba)
+          : undefined;
+    const bankAccount =
+      typeof ba === "object" && ba
+        ? String(ba.account_name || ba.bank_name || "")
+        : "";
+    const entries = Array.isArray(d.entries) ? d.entries : [];
+    return {
+      id: String(d._id),
+      title: d.title || "",
+      frequency: d.payroll_frequency === "weekly" ? "Weekly" : "Monthly",
+      periodStart: hday(d.pay_period_start),
+      periodEnd: hday(d.pay_period_end),
+      payDate: hday(d.pay_date || d.pay_period_end),
+      bankAccountId: bankAccountId || undefined,
+      bankAccount: bankAccount || undefined,
+      notes: d.notes || "",
+      status: d.status === "completed" || d.is_payroll_paid === "paid" ? "Completed" : "Draft",
+      totalNet: d.total_net_pay != null ? Number(d.total_net_pay) : undefined,
+      employeeCount:
+        d.employee_count != null
+          ? Number(d.employee_count)
+          : entries.length > 0
+            ? entries.length
+            : 0,
+      paid: [],
+      excluded: [],
+    };
+  },
   toBackend: (p) => ({
     title: p.title,
     payroll_frequency: (p.frequency || "Monthly").toLowerCase(),
     pay_period_start: hiso(p.periodStart),
     pay_period_end: hiso(p.periodEnd),
+    pay_date: hiso(p.payDate),
     notes: p.notes || "",
+    ...(p.bankAccountId ? { bank_account_id: p.bankAccountId } : {}),
   }),
 });
 export const usePayrolls = payrollStore.use;
@@ -572,8 +600,8 @@ const shiftStore = makeBackendStore<Shift>({
     name: d.shift_name || "",
     start: d.start_time || "",
     end: d.end_time || "",
-    breakStart: d.break_start || "",
-    breakEnd: d.break_end || "",
+    breakStart: d.break_start_time || d.break_start || "",
+    breakEnd: d.break_end_time || d.break_end || "",
     night: !!d.is_night_shift,
     createdBy: "Company",
     createdAt: hday(d.createdAt),
@@ -582,6 +610,8 @@ const shiftStore = makeBackendStore<Shift>({
     shift_name: s.name,
     start_time: s.start,
     end_time: s.end,
+    break_start_time: s.breakStart,
+    break_end_time: s.breakEnd,
     is_night_shift: !!s.night,
   }),
 });
@@ -718,7 +748,10 @@ export const saveLeaveTypes = leaveTypeStore.save;
 export interface LeaveApplication {
   id: string;
   employee: string;
-  leaveType: string; // LeaveType name
+  /** User `_id` sent as `employee_id` on create (not employee profile id). */
+  employeeUserId?: string;
+  leaveType: string;
+  leaveTypeId?: string;
   start: string;
   end: string;
   days: number;
@@ -759,28 +792,46 @@ export const SEED_LEAVE_APPS: LeaveApplication[] = ([
  * resolved by name (dropdowns come from the wired employee/leave-type stores). */
 const leaveAppStore = makeBackendStore<LeaveApplication>({
   base: "/hrm/leave",
-  toFrontend: (d) => ({
-    id: String(d._id),
-    employee: d.employee_id?.employee_user_id?.name || d.employee_id?.name || "",
-    leaveType: d.leave_type_id?.name || "",
-    start: hday(d.start_date),
-    end: hday(d.end_date),
-    days: d.total_days ?? 0,
-    status: (hcap(d.status) as LeaveApplication["status"]) || "Pending",
-    appliedOn: hday(d.createdAt),
-    reason: d.reason || "",
-    approvedBy: d.approved_by?.name,
-    approvedAt: hday(d.approved_at),
-    comment: d.comment || "",
-  }),
+  toFrontend: (d) => {
+    const emp = d.employee_id;
+    const lt = d.leave_type_id;
+    const employeeUserId =
+      typeof emp === "object" && emp
+        ? String(emp._id ?? emp.id ?? "")
+        : emp
+          ? String(emp)
+          : "";
+    const leaveTypeId =
+      typeof lt === "object" && lt ? String(lt._id ?? lt.id ?? "") : lt ? String(lt) : "";
+    return {
+      id: String(d._id),
+      employee:
+        (typeof emp === "object" && emp
+          ? emp.name || emp.employee_user_id?.name
+          : undefined) || "",
+      employeeUserId,
+      leaveType: (typeof lt === "object" && lt ? lt.name : undefined) || "",
+      leaveTypeId,
+      start: hday(d.start_date),
+      end: hday(d.end_date),
+      days: d.total_days ?? 0,
+      status: (hcap(d.status) as LeaveApplication["status"]) || "Pending",
+      appliedOn: hday(d.createdAt),
+      reason: d.reason || "",
+      approvedBy: d.approved_by?.name,
+      approvedAt: hday(d.approved_at),
+      comment: d.approver_comment || d.comment || "",
+    };
+  },
   toBackend: (a) => ({
-    employee_id: employeeNameToId.get(a.employee),
-    leave_type_id: leaveTypeNameToId.get(a.leaveType),
+    employee_id:
+      a.employeeUserId ||
+      employeeNameToId.get(a.employee) ||
+      undefined,
+    leave_type_id: a.leaveTypeId || leaveTypeNameToId.get(a.leaveType),
     start_date: hiso(a.start),
     end_date: hiso(a.end),
-    total_days: Number(a.days) || 0,
     reason: a.reason || "",
-    status: (a.status || "Pending").toLowerCase(),
   }),
 });
 export const useLeaveApps = leaveAppStore.use;

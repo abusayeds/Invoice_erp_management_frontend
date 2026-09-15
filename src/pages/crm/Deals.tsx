@@ -14,12 +14,12 @@ import {
   updateCrmDeal,
   deleteCrmDeal,
   fetchCrmPipelines,
-  fetchCrmDealStages,
-  fetchCrmSources,
   fetchCrmUsers,
   fetchCrmLabels,
+  searchCrmNamed,
   type CrmNamed,
 } from "@/services/crmApi";
+import { AsyncSearchSelect } from "@/components/ui/AsyncSearchSelect";
 import {
   Search,
   Plus,
@@ -41,7 +41,6 @@ import {
   Tag,
   LayoutGrid,
   Sparkles,
-  ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 
 // Deal labels available for the "Deal Labels" quick-assign modal (matches the
@@ -115,29 +114,22 @@ export const Deals: React.FC = () => {
   const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [pipelineOptions, setPipelineOptions] = useState<CrmNamed[]>([]);
-  const [stageOptions, setStageOptions] = useState<CrmNamed[]>([]);
-  const [sourceOptions, setSourceOptions] = useState<CrmNamed[]>([]);
-  const [userOptions, setUserOptions] = useState<{ _id: string; name: string }[]>([]);
   const [labelOptions, setLabelOptions] = useState<CrmNamed[]>([]);
+  const [clientNames, setClientNames] = useState<Record<string, string>>({});
+  const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, pipes, stages, sources, users, labels] = await Promise.all([
+      const [rows, pipes, labels] = await Promise.all([
         fetchCrmDeals(),
         fetchCrmPipelines(),
-        fetchCrmDealStages(),
-        fetchCrmSources(),
-        fetchCrmUsers(),
         fetchCrmLabels(),
       ]);
       setDeals(rows.map(mapDealRow));
       setPipelineOptions(pipes);
-      setStageOptions(stages);
-      setSourceOptions(sources);
-      setUserOptions(users);
       setLabelOptions(labels);
     } catch (err: any) {
       showToast(err?.message || "Couldn't load deals", "error");
@@ -165,7 +157,8 @@ export const Deals: React.FC = () => {
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [assignedLabels, setAssignedLabels] = useState<string[]>([]);
-  const [pipelineFilter, setPipelineFilter] = useState("All");
+  const [pipelineFilterId, setPipelineFilterId] = useState("");
+  const [pipelineFilterLabel, setPipelineFilterLabel] = useState("");
 
   // Form state for create/edit
   const [formData, setFormData] = useState({
@@ -174,22 +167,59 @@ export const Deals: React.FC = () => {
     clientIds: [] as string[],
     price: 0,
     pipelineId: "",
+    pipelineDisplayName: "",
     stageId: "",
+    stageDisplayName: "",
     sourceIds: [] as string[],
     products: [] as string[],
     notes: "",
     status: "Active" as Deal["status"],
   });
 
-  const stagesForPipeline = useMemo(
-    () =>
-      formData.pipelineId
-        ? stageOptions.filter((s) => !s.pipeline_id || s.pipeline_id === formData.pipelineId)
-        : stageOptions,
-    [stageOptions, formData.pipelineId],
+  const searchCrmUsersOptions = useCallback(async (q: string) => {
+    const rows = await fetchCrmUsers(q);
+    return rows.map((u) => ({ id: u._id, name: u.name }));
+  }, []);
+
+  const searchPipelineOptions = useCallback(async (q: string) => {
+    const rows = await searchCrmNamed("/crm/pipelines/all", q);
+    return rows.map((p) => ({ id: p._id, name: p.name }));
+  }, []);
+
+  const searchDealStageOptions = useCallback(
+    async (q: string) => {
+      const rows = await searchCrmNamed("/crm/deal-stages/all", q);
+      const filtered = formData.pipelineId
+        ? rows.filter((s) => !s.pipeline_id || s.pipeline_id === formData.pipelineId)
+        : rows;
+      return filtered.map((s) => ({ id: s._id, name: s.name }));
+    },
+    [formData.pipelineId],
   );
 
-  const clientName = (id: string) => userOptions.find((u) => u._id === id)?.name || id;
+  const searchSourceOptions = useCallback(async (q: string) => {
+    const rows = await searchCrmNamed("/crm/sources/all", q);
+    return rows.map((s) => ({ id: s._id, name: s.name }));
+  }, []);
+
+  const clientName = (id: string) => clientNames[id] || "Client";
+  const sourceName = (id: string) => sourceNames[id] || "Source";
+
+  const seedClientNames = (ids: string[], names: string[]) => {
+    const map: Record<string, string> = {};
+    ids.forEach((id, i) => {
+      if (id && names[i]) map[id] = names[i];
+    });
+    setClientNames(map);
+  };
+
+  const seedSourceNames = (ids: string[], names: string[]) => {
+    const map: Record<string, string> = {};
+    ids.forEach((id, i) => {
+      if (id && names[i]) map[id] = names[i];
+    });
+    setSourceNames(map);
+  };
 
   // ─── Sorting & Filtering ───────────────────────────────────────────────────
 
@@ -204,8 +234,8 @@ export const Deals: React.FC = () => {
 
   const filteredDeals = useMemo(() => {
     let result = [...deals];
-    if (pipelineFilter && pipelineFilter !== "All")
-      result = result.filter((d) => d.pipeline === pipelineFilter || d.pipelineId === pipelineFilter);
+    if (pipelineFilterId)
+      result = result.filter((d) => d.pipelineId === pipelineFilterId);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((d) => d.name.toLowerCase().includes(q));
@@ -228,7 +258,7 @@ export const Deals: React.FC = () => {
       return 0;
     });
     return result;
-  }, [deals, searchQuery, sortField, sortDir, pipelineFilter]);
+  }, [deals, searchQuery, sortField, sortDir, pipelineFilterId]);
 
   const totalPages = Math.ceil(filteredDeals.length / perPage);
   const paginatedDeals = filteredDeals.slice(
@@ -239,13 +269,17 @@ export const Deals: React.FC = () => {
   // ─── Form Handlers ─────────────────────────────────────────────────────────
 
   const resetForm = () => {
+    setClientNames({});
+    setSourceNames({});
     setFormData({
       name: "",
       phone: "",
       clientIds: [],
       price: 0,
       pipelineId: pipelineOptions[0]?._id || "",
+      pipelineDisplayName: pipelineOptions[0]?.name || "",
       stageId: "",
+      stageDisplayName: "",
       sourceIds: [],
       products: [],
       notes: "",
@@ -261,13 +295,17 @@ export const Deals: React.FC = () => {
 
   const openEditModal = (deal: Deal) => {
     setSelectedDeal(deal);
+    seedClientNames(deal.clientIds || [], deal.clients);
+    seedSourceNames(deal.sourceIds || [], deal.sources);
     setFormData({
       name: deal.name,
       phone: deal.phone,
       clientIds: deal.clientIds || [],
       price: deal.price,
       pipelineId: deal.pipelineId || "",
+      pipelineDisplayName: deal.pipeline || "",
       stageId: deal.stageId || "",
+      stageDisplayName: deal.stage || "",
       sourceIds: deal.sourceIds || [],
       products: deal.products,
       notes: deal.notes,
@@ -435,25 +473,16 @@ export const Deals: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Clients <span className="text-red-500">*</span>
             </label>
-            <div className="relative">
-              <select
-                value=""
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v && !formData.clientIds.includes(v))
-                    setFormData({ ...formData, clientIds: [...formData.clientIds, v] });
-                }}
-                className="w-full appearance-none px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-              >
-                <option value="">Select Clients</option>
-                {userOptions.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
+            <AsyncSearchSelect
+              value=""
+              onChange={(id, opt) => {
+                if (!id || formData.clientIds.includes(id)) return;
+                setFormData({ ...formData, clientIds: [...formData.clientIds, id] });
+                if (opt) setClientNames((prev) => ({ ...prev, [id]: opt.name }));
+              }}
+              onSearch={searchCrmUsersOptions}
+              placeholder="Search to add clients"
+            />
             {formData.clientIds.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {formData.clientIds.map((c) => (
@@ -463,12 +492,18 @@ export const Deals: React.FC = () => {
                   >
                     {clientName(c)}
                     <button
-                      onClick={() =>
+                      type="button"
+                      onClick={() => {
                         setFormData({
                           ...formData,
                           clientIds: formData.clientIds.filter((x) => x !== c),
-                        })
-                      }
+                        });
+                        setClientNames((prev) => {
+                          const next = { ...prev };
+                          delete next[c];
+                          return next;
+                        });
+                      }}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -479,31 +514,37 @@ export const Deals: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Pipeline</label>
-            <select
+            <AsyncSearchSelect
               value={formData.pipelineId}
-              onChange={(e) =>
-                setFormData({ ...formData, pipelineId: e.target.value, stageId: "" })
+              displayName={formData.pipelineDisplayName}
+              onChange={(id, opt) =>
+                setFormData({
+                  ...formData,
+                  pipelineId: id,
+                  pipelineDisplayName: opt?.name ?? "",
+                  stageId: "",
+                  stageDisplayName: "",
+                })
               }
-              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-            >
-              <option value="">Select pipeline</option>
-              {pipelineOptions.map((p) => (
-                <option key={p._id} value={p._id}>{p.name}</option>
-              ))}
-            </select>
+              onSearch={searchPipelineOptions}
+              placeholder="Select pipeline"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
-            <select
+            <AsyncSearchSelect
               value={formData.stageId}
-              onChange={(e) => setFormData({ ...formData, stageId: e.target.value })}
-              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-            >
-              <option value="">Select stage</option>
-              {stagesForPipeline.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
+              displayName={formData.stageDisplayName}
+              onChange={(id, opt) =>
+                setFormData({
+                  ...formData,
+                  stageId: id,
+                  stageDisplayName: opt?.name ?? "",
+                })
+              }
+              onSearch={searchDealStageOptions}
+              placeholder="Select stage"
+            />
           </div>
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
@@ -568,67 +609,119 @@ export const Deals: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Pipeline</label>
-            <select
+            <AsyncSearchSelect
               value={formData.pipelineId}
-              onChange={(e) =>
-                setFormData({ ...formData, pipelineId: e.target.value, stageId: "" })
+              displayName={formData.pipelineDisplayName}
+              onChange={(id, opt) =>
+                setFormData({
+                  ...formData,
+                  pipelineId: id,
+                  pipelineDisplayName: opt?.name ?? "",
+                  stageId: "",
+                  stageDisplayName: "",
+                })
               }
-              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
-            >
-              <option value="">Select pipeline</option>
-              {pipelineOptions.map((p) => (
-                <option key={p._id} value={p._id}>{p.name}</option>
-              ))}
-            </select>
+              onSearch={searchPipelineOptions}
+              placeholder="Select pipeline"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Stage</label>
-            <select
+            <AsyncSearchSelect
               value={formData.stageId}
-              onChange={(e) => setFormData({ ...formData, stageId: e.target.value })}
-              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
-            >
-              <option value="">Select stage</option>
-              {stagesForPipeline.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
+              displayName={formData.stageDisplayName}
+              onChange={(id, opt) =>
+                setFormData({
+                  ...formData,
+                  stageId: id,
+                  stageDisplayName: opt?.name ?? "",
+                })
+              }
+              onSearch={searchDealStageOptions}
+              placeholder="Select stage"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Sources</label>
-            <select
-              multiple
-              value={formData.sourceIds}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  sourceIds: Array.from(e.target.selectedOptions, (o) => o.value),
-                })
-              }
-              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
-            >
-              {sourceOptions.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
+            <AsyncSearchSelect
+              value=""
+              onChange={(id, opt) => {
+                if (!id || formData.sourceIds.includes(id)) return;
+                setFormData({ ...formData, sourceIds: [...formData.sourceIds, id] });
+                if (opt) setSourceNames((prev) => ({ ...prev, [id]: opt.name }));
+              }}
+              onSearch={searchSourceOptions}
+              placeholder="Search to add sources"
+            />
+            {formData.sourceIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {formData.sourceIds.map((id) => (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs"
+                  >
+                    {sourceName(id)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          sourceIds: formData.sourceIds.filter((x) => x !== id),
+                        });
+                        setSourceNames((prev) => {
+                          const next = { ...prev };
+                          delete next[id];
+                          return next;
+                        });
+                      }}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Clients</label>
-            <select
-              multiple
-              value={formData.clientIds}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  clientIds: Array.from(e.target.selectedOptions, (o) => o.value),
-                })
-              }
-              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
-            >
-              {userOptions.map((c) => (
-                <option key={c._id} value={c._id}>{c.name}</option>
-              ))}
-            </select>
+            <AsyncSearchSelect
+              value=""
+              onChange={(id, opt) => {
+                if (!id || formData.clientIds.includes(id)) return;
+                setFormData({ ...formData, clientIds: [...formData.clientIds, id] });
+                if (opt) setClientNames((prev) => ({ ...prev, [id]: opt.name }));
+              }}
+              onSearch={searchCrmUsersOptions}
+              placeholder="Search to add clients"
+            />
+            {formData.clientIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {formData.clientIds.map((c) => (
+                  <span
+                    key={c}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs"
+                  >
+                    {clientName(c)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          clientIds: formData.clientIds.filter((x) => x !== c),
+                        });
+                        setClientNames((prev) => {
+                          const next = { ...prev };
+                          delete next[c];
+                          return next;
+                        });
+                      }}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Phone No</label>
@@ -728,35 +821,41 @@ export const Deals: React.FC = () => {
         </div>
       </div>
 
-      <div className="module-title-bar px-4 sm:px-6">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Deals</h2>
-          <div className="flex items-center gap-2">
-            <select
-              value={pipelineFilter}
-              onChange={(e) => setPipelineFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
-            >
-              <option value="All">All pipelines</option>
-              {pipelineOptions.map((p) => (
-                <option key={p._id} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-44 sm:w-52 shrink-0">
+                <AsyncSearchSelect
+                  value={pipelineFilterId}
+                  displayName={pipelineFilterLabel}
+                  onChange={(id, opt) => {
+                    setPipelineFilterId(id);
+                    setPipelineFilterLabel(opt?.name ?? "");
+                    setCurrentPage(1);
+                  }}
+                  onSearch={searchPipelineOptions}
+                  placeholder="All pipelines"
+                  className="text-sm"
+                />
+              </div>
+              <button
+                onClick={() => showToast("Kanban board coming soon", "info")}
+                className="w-9 h-9 border border-gray-300 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-50 shrink-0"
+                title="Kanban view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
             <button
-              onClick={() => showToast("Kanban board coming soon", "info")}
-              className="w-9 h-9 border border-gray-300 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-50"
-              title="Kanban view"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
+              type="button"
               onClick={openCreateModal}
-              className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
               title="Create deal"
+              aria-label="Create deal"
+              className="w-9 h-9 flex-shrink-0 ml-4 mr-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-5 h-5" strokeWidth={2.2} />
             </button>
           </div>
         </div>

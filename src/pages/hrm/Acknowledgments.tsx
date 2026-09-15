@@ -9,8 +9,15 @@ import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  employeeUserId,
+  apiLabel as empApiLabel,
+  searchEmployees,
+  searchDocuments,
+} from "./hrmShared";
+import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -26,12 +33,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
-import {
-  acknowledgmentHooks,
-  employeeHooks,
-  documentHooks,
-  hrmStatusActions,
-} from "@/services/hrm";
+import { acknowledgmentHooks, hrmStatusActions } from "@/services/hrm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ interface Acknowledgment {
   id: string;
   employeeId: string;
   employee: string;
+  documentId?: string;
   document: string;
   status: "Acknowledged" | "Pending";
   acknowledgedAt: string;
@@ -47,115 +50,15 @@ interface Acknowledgment {
   createdAt: string;
 }
 
-// ─── Sample Data (API-shaped seed) ───────────────────────────────────────────
-
-const sampleAcknowledgmentsSeed = [
-  {
-    id: "1",
-    employee_id: "Mark Allen",
-    document_id: "Business Continuity Plan",
-    acknowledgment_note:
-      "Business continuity plan is thorough and provides comprehensive disaster recovery procedures for operational resilience.",
-    status: "Acknowledged",
-  },
-  {
-    id: "2",
-    employee_id: "Anthony Walker",
-    document_id: "Customer Service Standards",
-    acknowledgment_note: "Customer service standards are clear and actionable.",
-    status: "Acknowledged",
-  },
-  {
-    id: "3",
-    employee_id: "Matthew Clark",
-    document_id: "Environmental Sustainability Plan",
-    acknowledgment_note: "",
-    status: "Pending",
-  },
-  {
-    id: "4",
-    employee_id: "Daniel Thompson",
-    document_id: "Innovation Initiative Guidelines",
-    acknowledgment_note:
-      "Innovation guidelines provide clear framework for project submissions.",
-    status: "Acknowledged",
-  },
-  {
-    id: "5",
-    employee_id: "Christopher Lee",
-    document_id: "Vendor Management Policy",
-    acknowledgment_note: "",
-    status: "Pending",
-  },
-  {
-    id: "6",
-    employee_id: "James Garcia",
-    document_id: "Retirement Plan Guide",
-    acknowledgment_note: "Retirement plan options are well explained.",
-    status: "Acknowledged",
-  },
-  {
-    id: "7",
-    employee_id: "Robert Taylor",
-    document_id: "Flexible Work Schedule",
-    acknowledgment_note:
-      "Flexible work schedule policy accommodates work-life balance.",
-    status: "Acknowledged",
-  },
-  {
-    id: "8",
-    employee_id: "David Wilson",
-    document_id: "Data Protection Guidelines",
-    acknowledgment_note:
-      "Data protection guidelines are comprehensive and up to date.",
-    status: "Acknowledged",
-  },
-  {
-    id: "9",
-    employee_id: "Michael Brown",
-    document_id: "Professional Development Fund",
-    acknowledgment_note: "",
-    status: "Pending",
-  },
-];
-
-const statuses = ["Acknowledged", "Pending"];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type SelectOption = { value: string; label: string };
-
-const employeeOption = (employee: any): SelectOption => ({
-  value: String(employee?._id ?? employee?.id ?? employee?.employee_id ?? ""),
-  label: String(
-    employee?.employee_user_id?.name ??
-      employee?.user_id?.name ??
-      employee?.name ??
-      employee?.employee_name ??
-      employee?.first_name ??
-      employee?.employee_id ??
-      employee?._id ??
-      employee?.id ??
-      "",
-  ),
-});
-
-const employeeRefValue = (ref: any) => String(typeof ref === "object" ? ref?._id ?? ref?.id ?? "" : ref ?? "");
+const employeeRefValue = (ref: any) =>
+  ref && typeof ref === "object" ? employeeUserId(ref) : String(ref ?? "");
 
 const employeeRefLabel = (ref: any, fallback: any = "") =>
-  String(
-    typeof ref === "object"
-      ? ref?.employee_user_id?.name ??
-          ref?.user_id?.name ??
-          ref?.name ??
-          ref?.employee_name ??
-          ref?.first_name ??
-          ref?.employee_id ??
-          ref?._id ??
-          ref?.id ??
-          ""
-      : fallback || ref || "",
-  );
+  typeof ref === "object"
+    ? empApiLabel(ref, ["employee_user_id", "user_id", "name", "employee_name"]) || String(fallback || "")
+    : String(fallback || ref || "");
 
 function mapFromApi(p: any): Acknowledgment {
   const empRef = p.employee_id;
@@ -164,10 +67,12 @@ function mapFromApi(p: any): Acknowledgment {
     id: String(p.id ?? p._id ?? ""),
     employeeId: employeeRefValue(empRef),
     employee: employeeRefLabel(empRef, p.employee),
+    documentId:
+      typeof docRef === "object" ? String(docRef?._id ?? docRef?.id ?? "") : String(docRef ?? ""),
     document:
       typeof docRef === "object"
-        ? docRef?.title ?? docRef?.name ?? String(docRef?._id ?? "")
-        : String(docRef ?? p.document ?? ""),
+        ? docRef?.title ?? docRef?.name ?? ""
+        : String(p.document ?? docRef ?? ""),
     status: p.status ?? "Pending",
     acknowledgedAt: (p.acknowledged_at ?? p.acknowledgedAt ?? "").slice(0, 10),
     assignedBy: refLabel(p.assigned_by ?? p.assignedBy),
@@ -194,6 +99,8 @@ type SortField =
   | "assignedBy";
 type SortDir = "asc" | "desc";
 
+const ackFilterStatuses = ["All", "Acknowledged", "Pending"];
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Acknowledgments: React.FC = () => {
@@ -201,24 +108,9 @@ export const Acknowledgments: React.FC = () => {
 
   const { items: raw, create, update, remove, refetch } = useResourceData(
     acknowledgmentHooks,
-    { seed: sampleAcknowledgmentsSeed as any[], params: { page: 1, limit: 100 } },
+    { seed: [], params: { page: 1, limit: 100 } },
   );
   const acknowledgments = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  // Load options from API
-  const empListResult = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const empOptions: SelectOption[] = useMemo(() => {
-    const data = empListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map(employeeOption).filter((option) => option.value && option.label);
-  }, [empListResult.data]);
-
-  const docListResult = documentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
-  const docOptions: string[] = useMemo(() => {
-    const data = docListResult.data as any[] | undefined;
-    if (!data) return [];
-    return data.map((e: any) => e.title ?? e.name ?? String(e._id ?? e.id ?? ""));
-  }, [docListResult.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -240,7 +132,9 @@ export const Acknowledgments: React.FC = () => {
   // Form state
   const [acknowledgmentFormData, setAcknowledgmentFormData] = useState({
     employee: "",
+    employeeLabel: "",
     document: "",
+    documentLabel: "",
     acknowledgmentNote: "",
   });
 
@@ -299,7 +193,9 @@ export const Acknowledgments: React.FC = () => {
   const resetAcknowledgmentForm = () => {
     setAcknowledgmentFormData({
       employee: "",
+      employeeLabel: "",
       document: "",
+      documentLabel: "",
       acknowledgmentNote: "",
     });
   };
@@ -313,8 +209,10 @@ export const Acknowledgments: React.FC = () => {
   const openEditModal = (acknowledgment: Acknowledgment) => {
     setSelectedAcknowledgment(acknowledgment);
     setAcknowledgmentFormData({
-      employee: acknowledgment.employeeId || acknowledgment.employee,
-      document: acknowledgment.document,
+      employee: acknowledgment.employeeId || "",
+      employeeLabel: acknowledgment.employee,
+      document: acknowledgment.documentId || "",
+      documentLabel: acknowledgment.document,
       acknowledgmentNote: acknowledgment.acknowledgmentNote,
     });
     setIsEditing(true);
@@ -427,30 +325,6 @@ export const Acknowledgments: React.FC = () => {
     </th>
   );
 
-  // ─── Fallback option arrays ───────────────────────────────────────────────
-
-  const displayEmpOptions =
-    empOptions.length > 0
-      ? empOptions
-      : [
-          "Mark Allen",
-          "Anthony Walker",
-          "Matthew Clark",
-          "Daniel Thompson",
-          "Christopher Lee",
-          "James Garcia",
-          "Robert Taylor",
-          "David Wilson",
-          "Michael Brown",
-          "John Smith",
-        ].map((name) => ({ value: name, label: name }));
-  const displayDocOptions = docOptions.length > 0 ? docOptions : [
-    "Business Continuity Plan", "Customer Service Standards",
-    "Environmental Sustainability Plan", "Innovation Initiative Guidelines",
-    "Vendor Management Policy", "Retirement Plan Guide", "Flexible Work Schedule",
-    "Data Protection Guidelines", "Professional Development Fund",
-  ];
-
   // ═══════════════════════════════════════════════════════════════════════════
   // MODALS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -488,45 +362,37 @@ export const Acknowledgments: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Employee *
             </label>
-            <select
+            <AsyncSearchSelect
               value={acknowledgmentFormData.employee}
-              onChange={(e) =>
+              displayName={acknowledgmentFormData.employeeLabel}
+              onChange={(id, opt) =>
                 setAcknowledgmentFormData({
                   ...acknowledgmentFormData,
-                  employee: e.target.value,
+                  employee: id,
+                  employeeLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Employee</option>
-              {displayEmpOptions.map((emp) => (
-                <option key={emp.value} value={emp.value}>
-                  {emp.label}
-                </option>
-              ))}
-            </select>
+              onSearch={searchEmployees}
+              placeholder="Search employee..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document *
             </label>
-            <select
+            <AsyncSearchSelect
               value={acknowledgmentFormData.document}
-              onChange={(e) =>
+              displayName={acknowledgmentFormData.documentLabel}
+              onChange={(id, opt) =>
                 setAcknowledgmentFormData({
                   ...acknowledgmentFormData,
-                  document: e.target.value,
+                  document: id,
+                  documentLabel: opt?.name ?? "",
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-            >
-              <option value="">Select Document</option>
-              {displayDocOptions.map((doc) => (
-                <option key={doc} value={doc}>
-                  {doc}
-                </option>
-              ))}
-            </select>
+              onSearch={searchDocuments}
+              placeholder="Search document..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -737,17 +603,12 @@ export const Acknowledgments: React.FC = () => {
       </div>
 
       {/* Page Header */}
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Manage Acknowledgments
           </h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create" />
         </div>
       </div>
 
@@ -805,7 +666,7 @@ export const Acknowledgments: React.FC = () => {
                       Status
                     </span>
                   </div>
-                  {statuses.map((st) => (
+                  {ackFilterStatuses.map((st) => (
                     <button
                       key={st}
                       onClick={() => {

@@ -7,22 +7,23 @@
  * per-employee salary structures.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { money } from "@/lib/db";
+import { usePayrolls, savePayrolls, type PayrollRecord } from "@/lib/db/hrm";
 import {
-  usePayrolls,
-  savePayrolls,
-  usePayrollPay,
-  newUid,
-  BANK_ACCOUNTS,
-  type PayrollRecord,
-} from "@/lib/db/hrm";
-import { Chip, Field, inputCls, HrmBreadcrumb } from "../hrmShared";
+  Chip,
+  Field,
+  inputCls,
+  HrmBreadcrumb,
+  CreatePlusButton,
+  AsyncSearchSelect,
+  searchBankAccounts,
+} from "../hrmShared";
+import { payrollApi } from "@/services/hrm";
 import {
   Search,
-  Plus,
   Filter,
   ChevronDown,
   ArrowUpDown,
@@ -42,6 +43,7 @@ const emptyDraft = () => ({
   periodStart: "",
   periodEnd: "",
   payDate: "",
+  bankAccountId: "",
   bankAccount: "",
   notes: "",
 });
@@ -49,12 +51,6 @@ const emptyDraft = () => ({
 export const Payroll: React.FC = () => {
   const navigate = useNavigate();
   const payrolls = usePayrolls();
-  useEffect(() => {
-  }, [payrolls]);
-
-  const pay = usePayrollPay(); // all-employee rows (no exclusions) for list totals
-  const totalNet = (pay || []).reduce((s, r) => s + r.net, 0);
-  const employeeCount = (pay || []).length;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -96,15 +92,31 @@ export const Payroll: React.FC = () => {
   };
 
   const submit = async () => {
-    if (!draft.title || !draft.periodStart || !draft.periodEnd || !draft.payDate || !draft.bankAccount) {
+    if (!draft.title || !draft.periodStart || !draft.periodEnd || !draft.payDate || !draft.bankAccountId) {
       showToast("Please fill all required fields", "error");
       return;
     }
+    const patch = {
+      title: draft.title,
+      frequency: draft.frequency,
+      periodStart: draft.periodStart,
+      periodEnd: draft.periodEnd,
+      payDate: draft.payDate,
+      bankAccountId: draft.bankAccountId,
+      bankAccount: draft.bankAccount,
+      notes: draft.notes,
+    };
     if (modal === "edit") {
-      await savePayrolls(list.map((p) => (p.id === draft.id ? { ...p, ...draft } : p)));
+      await savePayrolls(list.map((p) => (p.id === draft.id ? { ...p, ...patch } : p)));
       showToast("Payroll updated successfully", "success");
     } else {
-      const rec: PayrollRecord = { ...draft, id: newUid(), status: "Draft", paid: [], excluded: [] };
+      const rec: PayrollRecord = {
+        ...patch,
+        id: `local_${Date.now()}`,
+        status: "Draft",
+        paid: [],
+        excluded: [],
+      };
       await savePayrolls([rec, ...list]);
       showToast("Payroll created successfully", "success");
     }
@@ -116,8 +128,14 @@ export const Payroll: React.FC = () => {
       showToast("Payroll already completed", "info");
       return;
     }
-    await savePayrolls(list.map((r) => (r.id === p.id ? { ...r, status: "Completed" } : r)));
-    showToast("Payroll run completed", "success");
+    try {
+      await payrollApi.run(p.id);
+      await savePayrolls(list);
+      showToast("Payroll run completed", "success");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't run payroll";
+      showToast(msg, "error");
+    }
   };
 
   const confirmDelete = async () => {
@@ -127,8 +145,7 @@ export const Payroll: React.FC = () => {
     setDeleteTarget(null);
   };
 
-  const paymentStatus = (p: PayrollRecord) =>
-    p.status !== "Completed" ? "Unpaid" : p.paid.length >= employeeCount && employeeCount > 0 ? "Paid" : "Unpaid";
+  const paymentStatus = (p: PayrollRecord) => (p.status === "Completed" ? "Paid" : "Unpaid");
 
   const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
@@ -143,19 +160,16 @@ export const Payroll: React.FC = () => {
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Payrolls" onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Payrolls</h2>
-          <button
+          <CreatePlusButton
+            title="Create payroll"
             onClick={() => {
               setDraft(emptyDraft());
               setModal("create");
             }}
-            title="Create payroll"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 
@@ -250,7 +264,8 @@ export const Payroll: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {paginated.map((p) => {
                 const completed = p.status === "Completed";
-                const excludedCount = p.excluded?.length || 0;
+                const rowNet = p.totalNet ?? 0;
+                const rowCount = p.employeeCount ?? 0;
                 return (
                   <tr
                     key={p.id}
@@ -264,10 +279,10 @@ export const Payroll: React.FC = () => {
                     <td className="px-4 py-3 text-gray-600">{p.payDate}</td>
                     <td className="px-4 py-3"><Chip label={p.status} /></td>
                     <td className="px-4 py-3 text-gray-900 font-medium">
-                      {completed ? money(totalNet) : "-"}
+                      {completed ? money(rowNet) : "—"}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {completed ? Math.max(0, employeeCount - excludedCount) : "-"}
+                      {completed ? rowCount : "—"}
                     </td>
                     <td className="px-4 py-3"><Chip label={paymentStatus(p)} /></td>
                     <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -287,6 +302,7 @@ export const Payroll: React.FC = () => {
                               periodStart: p.periodStart,
                               periodEnd: p.periodEnd,
                               payDate: p.payDate,
+                              bankAccountId: p.bankAccountId || "",
                               bankAccount: p.bankAccount || "",
                               notes: p.notes || "",
                             });
@@ -383,12 +399,15 @@ export const Payroll: React.FC = () => {
                 <input type="date" value={draft.payDate} onChange={(e) => setDraft({ ...draft, payDate: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Bank Account" required>
-                <select value={draft.bankAccount} onChange={(e) => setDraft({ ...draft, bankAccount: e.target.value })} className={`${inputCls} bg-white`}>
-                  <option value="">Select Bank Account</option>
-                  {BANK_ACCOUNTS.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
+                <AsyncSearchSelect
+                  value={draft.bankAccountId}
+                  displayName={draft.bankAccount}
+                  onChange={(id, opt) =>
+                    setDraft({ ...draft, bankAccountId: id, bankAccount: opt?.name ?? draft.bankAccount })
+                  }
+                  onSearch={searchBankAccounts}
+                  placeholder="Search bank account..."
+                />
               </Field>
               <Field label="Notes">
                 <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Enter Notes" rows={3} className={inputCls} />

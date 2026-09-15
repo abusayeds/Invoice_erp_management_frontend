@@ -252,6 +252,7 @@ export const payrollApi = {
     deleteJson(`${BASE}/payroll/set-salary/${employeeProfileId}/overtimes/${id}`),
 
   // Payroll runs
+  get: (payrollId: string) => getOne<{ payroll: Record<string, unknown>; entries: Record<string, unknown>[] }>(`${BASE}/payroll/${payrollId}`),
   run: (payrollId: string) => postJson(`${BASE}/payroll/${payrollId}/run`),
   // Payslip entries
   payslipPrintUrl: (entryId: string) => `${BASE}/payroll/entries/${entryId}/print`,

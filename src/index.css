@@ -292,6 +292,36 @@ textarea.ua-field.keep-box {
   color: var(--color-base-900);
 }
 
+/* Native <select> must stay boxed app-wide (CRM/HRM). Debox + dark
+ * color-scheme made open option lists look solid white / unreadable. */
+select:not(.rounded-full, table select) {
+  background-color: var(--surface-2) !important;
+  color: var(--color-base-900) !important;
+  border: 1px solid var(--color-gray-300) !important;
+  border-radius: 0.375rem !important;
+  box-shadow: none !important;
+}
+select:not(.rounded-full, table select):focus {
+  border-color: var(--themeColor) !important;
+  box-shadow: 0 0 0 1px var(--themeColor) !important;
+}
+select option,
+select optgroup {
+  background-color: var(--surface) !important;
+  color: var(--color-base-900) !important;
+}
+
+/* Custom dropdown panels (SearchSelect / AsyncSearchSelect) */
+.ua-dropdown-panel {
+  background-color: var(--surface) !important;
+  color: var(--color-base-900) !important;
+  border: 1px solid var(--color-gray-300) !important;
+}
+.ua-dropdown-panel input {
+  background-color: var(--surface-2) !important;
+  color: var(--color-base-900) !important;
+}
+
 input:not(
     [type="checkbox"],
     [type="radio"],
@@ -309,7 +339,6 @@ input:not(
     .keep-box,
     table input
   ),
-select:not(.rounded-full, .keep-box, table select),
 textarea:not(.keep-box, table textarea) {
   border-color: transparent;
   border-bottom-color: var(--color-gray-300);
