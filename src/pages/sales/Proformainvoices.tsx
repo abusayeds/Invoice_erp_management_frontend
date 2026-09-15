@@ -950,7 +950,15 @@ export const ProformaInvoices: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Proforma Invoice" onClose={() => setModal(null)} />}
-      {modal === "preview" && !!selectedDb.id && <PdfPreviewModal docType="proformaInvoice" recordId={selectedDb.id} title="Proforma Invoice " onClose={() => setModal(null)} />}
+      {modal === "preview" && !!selectedDb.id && (
+        <PdfPreviewModal
+          docType="proformaInvoice"
+          recordId={selectedDb.id}
+          backendId={String(selected?.backendId || selectedDb._id || "") || undefined}
+          title="Proforma Invoice "
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="proformaInvoice" />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}

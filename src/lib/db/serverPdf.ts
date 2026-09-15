@@ -24,6 +24,7 @@ const WEB_TO_PDF_TYPE: Partial<Record<PdfDocType, string>> = {
   debitNote: "Debit_Note",
   paymentReceived: "Payment_Received",
   paymentMade: "Payment_Made",
+  statement: "Statement",
   // The packing slip / delivery note reuse their source document's PDF.
   packingSlip: "Invoice",
   deliveryNote: "Delivery_Challan",

@@ -718,7 +718,21 @@ export const DeliveryChallan: React.FC = () => {
 
       {/* ════════ MODALS ════════ */}
       {modal === "settings" && <AppSettingsModal initialTab="Delivery Challan" onClose={() => setModal(null)} />}
-      {modal === "preview" && (() => { const d: any = dbChallans.find((x) => String(x._id) === selected?.backendId || String(x.id) === String(selectedId)) || {}; return <PdfPreviewModal docType="deliveryChallan" recordId={d.id} title={`Delivery Challan `} onClose={() => setModal(null)} />; })()}
+      {modal === "preview" && (() => {
+        const d: any =
+          dbChallans.find(
+            (x) => String(x._id) === selected?.backendId || String(x.id) === String(selectedId),
+          ) || {};
+        return (
+          <PdfPreviewModal
+            docType="deliveryChallan"
+            recordId={d.id}
+            backendId={String(selected?.backendId || d._id || "") || undefined}
+            title={`Delivery Challan `}
+            onClose={() => setModal(null)}
+          />
+        );
+      })()}
       {modal === "email" && selected && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="deliveryChallan" />

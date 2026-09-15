@@ -628,7 +628,15 @@ export const Estimates: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Estimate" onClose={() => setModal(null)} />}
-      {modal === "preview" && !!selectedDb.id && <PdfPreviewModal docType="estimate" recordId={selectedDb.id} title="Estimate " onClose={() => setModal(null)} />}
+      {modal === "preview" && !!selectedDb.id && (
+        <PdfPreviewModal
+          docType="estimate"
+          recordId={selectedDb.id}
+          backendId={String(selected?.backendId || selectedDb._id || "") || undefined}
+          title="Estimate "
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal === "packing" && <PackingSlipModal onClose={() => setModal(null)} row={selected} />}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="estimate" />}

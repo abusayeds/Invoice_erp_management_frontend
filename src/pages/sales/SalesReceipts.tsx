@@ -608,7 +608,15 @@ export const SalesReceipts: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Sales Receipt" onClose={() => setModal(null)} />}
-      {modal === "preview" && !!selectedDb.id && <PdfPreviewModal docType="salesReceipt" recordId={selectedDb.id} title="Sales Receipt " onClose={() => setModal(null)} />}
+      {modal === "preview" && !!selectedDb.id && (
+        <PdfPreviewModal
+          docType="salesReceipt"
+          recordId={selectedDb.id}
+          backendId={String(selected?.backendId || selectedDb._id || "") || undefined}
+          title="Sales Receipt "
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
       {sigRequestOpen && <SignatureRequestModal docLabel="Sales Receipt" number={selectedDb.number || ""} customer={selectedCustomer} onClose={() => setSigRequestOpen(false)} onSend={() => { logActivity("sent", `Signature request for Sales Receipt ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }} />}

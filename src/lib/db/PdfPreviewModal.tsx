@@ -23,9 +23,11 @@ export const PdfPreviewModal: React.FC<{
   recordId: number;
   /** When >1 id is given, all are merged into one PDF (each on its own page). */
   recordIds?: number[];
+  /** Mongo `_id` — preferred for exact `/pdf/generate` preview */
+  backendId?: string;
   title: string;
   onClose: () => void;
-}> = ({ docType, recordId, recordIds, title, onClose }) => {
+}> = ({ docType, recordId, recordIds, backendId, title, onClose }) => {
   const settings = usePdfSettings(docType, "normal");
   // Batch mode: several selected records merged into a single PDF.
   const batchIds = (recordIds ?? []).filter((n) => Number.isFinite(n));
@@ -118,10 +120,10 @@ export const PdfPreviewModal: React.FC<{
             </div>
           ) : (
             // Batch fetch failed → fall back to previewing the single record.
-            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} />
+            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
           )
         ) : (
-          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} />
+          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
         )}
       </div>
     </div>

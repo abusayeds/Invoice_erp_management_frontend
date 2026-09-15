@@ -749,7 +749,15 @@ const InvoiceMoreMenu: React.FC<{ close: () => void; onAction: (a: string) => vo
 };
 
 /* ── Packing Slip / Delivery Note preview (settings-driven, live data) ── */
-const DocTypePreview: React.FC<{ docType: PdfDocType; title: string; recordId: number; recordIds?: number[]; onClose: () => void }> = ({ docType, title, recordId, recordIds, onClose }) => {
+const DocTypePreview: React.FC<{
+  docType: PdfDocType;
+  title: string;
+  recordId: number;
+  recordIds?: number[];
+  /** Mongo `_id` — exact `/pdf/generate` preview */
+  backendId?: string;
+  onClose: () => void;
+}> = ({ docType, title, recordId, recordIds, backendId, onClose }) => {
   const settings = usePdfSettings(docType, "normal");
   // Batch mode: several selected records merged into one PDF (each on its own page).
   const batchIds = (recordIds ?? []).filter((n) => Number.isFinite(n));
@@ -799,10 +807,10 @@ const DocTypePreview: React.FC<{ docType: PdfDocType; title: string; recordId: n
               <iframe src={`${batchUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} title="Documents PDF" style={{ width: "100%", height: "100%", border: "none" }} />
             </div>
           ) : (
-            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} />
+            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
           )
         ) : (
-          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} />
+          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
         )}
       </div>
     </div>
@@ -1818,9 +1826,19 @@ export const SalesInvoice: React.FC = () => {
         const cp: any = dbCustomers.find((c) => c.id === d.customerId) || {}; const cn = cp.name || "—";
         const ht = selectMode && selectedInvoices.length ? "Invoice " + selectedInvoices.map((i) => i.number.replace("#", "")).join(", ") : `Invoice${d.number || ""}`;
         void cn; void cp;
-        // Render the real backend PDF (PdfDocPreview fetches /pdf/generate for
-        // the record's _id; falls back to the local render for unsaved drafts).
-        return <DocTypePreview docType="invoice" title={ht} recordId={d.id} recordIds={batchIds.length > 1 ? batchIds : undefined} onClose={() => setModal(null)} />;
+        const pdfBackendId = String(
+          selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || d?._id || "",
+        );
+        return (
+          <DocTypePreview
+            docType="invoice"
+            title={ht}
+            recordId={d.id}
+            recordIds={batchIds.length > 1 ? batchIds : undefined}
+            backendId={pdfBackendId || undefined}
+            onClose={() => setModal(null)}
+          />
+        );
       })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} />}
       {modal === "payment" && (
@@ -1875,6 +1893,7 @@ export const SalesInvoice: React.FC = () => {
           docType={docPreview}
           title={`${docPreview === "packingSlip" ? "Packing Slip" : "Delivery Note"} ${selected.number}`}
           recordId={selected.id}
+          backendId={String(selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
           onClose={() => setDocPreview(null)}
         />
       )}

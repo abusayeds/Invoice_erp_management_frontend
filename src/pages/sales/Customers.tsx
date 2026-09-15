@@ -340,9 +340,10 @@ const StatementPreview: React.FC<{
   onClose: () => void;
   name: string;
   partyId: number;
+  backendId?: string;
   onOpenSettings: () => void;
   onDownload?: () => void;
-}> = ({ onClose, name, partyId, onOpenSettings, onDownload }) => {
+}> = ({ onClose, name, partyId, backendId, onOpenSettings, onDownload }) => {
   const settings = usePdfSettings("statement", "normal");
   const printRef = useRef<HTMLDivElement>(null);
   const print = () => {
@@ -374,7 +375,13 @@ const StatementPreview: React.FC<{
           </div>
         </div>
         <div ref={printRef} className="bg-gray-200">
-          <PdfDocPreview docType="statement" mode="normal" settings={settings} partyId={partyId} />
+          <PdfDocPreview
+            docType="statement"
+            mode="normal"
+            settings={settings}
+            partyId={partyId}
+            backendId={backendId}
+          />
         </div>
       </div>
     </Overlay>
@@ -1315,6 +1322,7 @@ export const Customers: React.FC = () => {
           onClose={() => setModal(null)}
           name={selected.name}
           partyId={selected.id}
+          backendId={selected._id ? String(selected._id) : undefined}
           onOpenSettings={() => setModal("pdfSettings")}
           onDownload={async () => downloadDocPdf({
             filename: `${selected.name} Statement`,
