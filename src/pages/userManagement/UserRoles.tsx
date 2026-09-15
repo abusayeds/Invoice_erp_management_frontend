@@ -29,7 +29,6 @@ import {
   Filter,
   Download,
   Clock,
-  Globe,
   ArrowLeft,
   Loader2,
 } from "lucide-react";
@@ -78,11 +77,6 @@ interface ApiRolePermissions {
 }
 
 /* ---------- Data ---------- */
-const languages = [
-  { code: "en", name: "English", flag: "🇬🇧" },
-  { code: "es", name: "Spanish", flag: "🇪🇸" },
-  { code: "fr", name: "French", flag: "🇫🇷" },
-];
 
 /* ===================================================================== */
 /*                          ROLES LIST VIEW                              */
@@ -95,8 +89,6 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
 
   // ── Roles from the backend ───────────────────────────────────────────────
   const [roles, setRoles] = useState<Role[]>([]);
@@ -146,72 +138,78 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
 
 
   return (
-    <div className="module-page-shell">
-      <div className="max-w-[1600px] mx-auto">
-        {/* Breadcrumb + Language */}
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span>Dashboard</span>
-            <span>/</span>
-            <span className="text-gray-900 font-medium">Roles</span>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <Globe className="w-4 h-4" />
-              {languages.find((lang) => lang.code === selectedLanguage)?.name}
-              <ChevronRight className="w-3 h-3 rotate-90" />
-            </button>
-            {showLanguageDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowLanguageDropdown(false)}
-                />
-                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-                  {languages.map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => {
-                        setSelectedLanguage(lang.code);
-                        setShowLanguageDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg flex items-center gap-2 ${
-                        selectedLanguage === lang.code
-                          ? "bg-blue-50 text-blue-600"
-                          : "text-gray-700"
-                      }`}
-                    >
-                      <span>{lang.flag}</span>
-                      {lang.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+    <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
+      <div className="dashboard-title-bar shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Manage Roles</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Manage user roles, permissions, and access levels
+          </p>
         </div>
+      </div>
 
-        {/* Header */}
-        <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-              Manage Roles
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage user roles, permissions, and access levels
-            </p>
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="max-w-[1600px] mx-auto">
+        {/* Summary Cards — top */}
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-blue-600 font-medium">Total Roles</div>
+                <div className="text-2xl font-bold text-gray-900">{roles.length}</div>
+                <div className="text-xs text-gray-500 mt-1">Active roles</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-blue-600" />
+              </div>
+            </div>
           </div>
-          {/* <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            <Plus className="w-4 h-4" />
-            Create New Role
-          </button> */}
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-green-600 font-medium">Total Permissions</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {roles.reduce((sum, role) => sum + role.permissions, 0)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Across all roles</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <Key className="w-5 h-5 text-green-600" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-purple-600 font-medium">Total Users</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {roles.reduce((sum, role) => sum + role.users.length, 0)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Assigned to roles</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                <Users className="w-5 h-5 text-purple-600" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-orange-600 font-medium">Roles in Use</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {roles.filter((role) => role.users.length > 0).length}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">With assigned users</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-orange-600" />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Search + Filters */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-300 p-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -240,7 +238,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -437,79 +435,6 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
             </div>
           </div>
         </div>
-
-        {/* Summary Cards */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-blue-600 font-medium">
-                  Total Roles
-                </div>
-                <div className="text-2xl font-bold text-blue-700">
-                  {roles.length}
-                </div>
-                <div className="text-xs text-blue-500 mt-1">Active roles</div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-blue-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-green-600 font-medium">
-                  Total Permissions
-                </div>
-                <div className="text-2xl font-bold text-green-700">
-                  {roles.reduce((sum, role) => sum + role.permissions, 0)}
-                </div>
-                <div className="text-xs text-green-500 mt-1">
-                  Across all roles
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <Key className="w-5 h-5 text-green-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-purple-600 font-medium">
-                  Total Users
-                </div>
-                <div className="text-2xl font-bold text-purple-700">
-                  {roles.reduce((sum, role) => sum + role.users.length, 0)}
-                </div>
-                <div className="text-xs text-purple-500 mt-1">
-                  Assigned to roles
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                <Users className="w-5 h-5 text-purple-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-orange-600 font-medium">
-                  Roles in Use
-                </div>
-                <div className="text-2xl font-bold text-orange-700">
-                  {roles.filter((role) => role.users.length > 0).length}
-                </div>
-                <div className="text-xs text-orange-500 mt-1">
-                  With assigned users
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-orange-600" />
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -657,45 +582,25 @@ const EditRole: React.FC<EditRoleProps> = ({
   };
 
   return (
-    <div className="module-page-shell">
-      <div className="max-w-[1600px] mx-auto">
-        {/* Breadcrumb */}
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <button
-              onClick={onBack}
-              className="hover:text-gray-900 transition-colors"
-            >
-              Dashboard
-            </button>
-            <span>/</span>
-            <button
-              onClick={onBack}
-              className="hover:text-gray-900 transition-colors"
-            >
-              Roles
-            </button>
-            <span>/</span>
-            <span className="text-gray-900 font-medium">Edit Role</span>
-          </div>
-        </div>
+    <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
+      <div className="dashboard-title-bar shrink-0 flex items-center justify-between gap-4">
+        <h1 className="text-lg font-semibold text-gray-900">
+          Edit Role: <span className="text-blue-600">{role.label}</span>
+        </h1>
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+      </div>
 
-        {/* Header */}
-        <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-            Edit Role: <span className="text-blue-600">{role.label}</span>
-          </h1>
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </button>
-        </div>
-
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="max-w-[1600px] mx-auto">
         {/* Form card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-300 p-6">
           {/* Name + Label */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -860,6 +765,7 @@ const EditRole: React.FC<EditRoleProps> = ({
               {saving ? "Updating…" : "Update"}
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>

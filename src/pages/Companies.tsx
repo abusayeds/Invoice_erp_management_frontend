@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
-import { db } from "@/lib/db/db";
 import { PdfPrintSettingsModal } from "../components/modals/PdfPrintSettingsModal";
 import { AppSettingsModal } from "../components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "../components/modals/PaymentMethodsModal";
@@ -11,13 +11,14 @@ import { BankDetailsModal } from "../components/modals/BankDetailsModal";
 import { NotesModal } from "../components/modals/NotesModal";
 import { SignatureModal } from "../components/modals/SignatureModal";
 import { TeamModal } from "../components/modals/TeamModal";
+import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
+import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import {
   Plus,
   Edit2,
   Trash2,
-  Search,
-  RefreshCw,
   ChevronDown,
+  ChevronUp,
   Settings,
   FileText,
   CreditCard,
@@ -28,7 +29,17 @@ import {
   StickyNote,
   PenLine,
   Users,
+  X,
 } from "lucide-react";
+
+interface AddressParts {
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+}
 
 interface Company {
   id: string;
@@ -47,9 +58,40 @@ interface Company {
   paymentTermsPurchase: string;
   startFiscalYear: string;
   isOwner: boolean;
+  reverseChargeSales?: boolean;
 }
 
-// ── Backend wiring (/company-register/*) ─────────────────────────────────────
+const emptyAddress = (): AddressParts => ({
+  street1: "",
+  street2: "",
+  city: "",
+  state: "",
+  zip: "",
+  country: "Bangladesh",
+});
+
+const parseAddress = (raw?: string): AddressParts => {
+  const lines = String(raw || "")
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (!lines.length) return emptyAddress();
+  if (lines.length === 1) {
+    return { ...emptyAddress(), country: lines[0] };
+  }
+  return {
+    street1: lines[0] || "",
+    street2: lines[1] || "",
+    city: lines[2] || "",
+    state: lines[3] || "",
+    zip: lines[4] || "",
+    country: lines[5] || lines[lines.length - 1] || "Bangladesh",
+  };
+};
+
+const joinAddress = (a: AddressParts) =>
+  [a.street1, a.street2, a.city, a.state, a.zip, a.country].map((x) => x.trim()).filter(Boolean).join("\n");
+
 const mapCompany = (d: any): Company => ({
   id: String(d._id),
   businessName: d.business_name ?? "",
@@ -68,6 +110,7 @@ const mapCompany = (d: any): Company => ({
   startFiscalYear: d.start_fiscal_year ?? "January",
   isOwner: !!d.is_owner,
 });
+
 const companyBody = (c: Company) => ({
   business_name: c.businessName,
   email: c.email,
@@ -86,9 +129,11 @@ const companyBody = (c: Company) => ({
   is_owner: !!c.isOwner,
 });
 
-/* App Settings modal is the shared component (src/components/modals/AppSettingsModal.tsx). */
-
-/* ── Bottom Setting Cards ───────────────────────────────────────── */
+const PAYMENT_TERMS = ["Net on receipt", "Net 7", "Net 15", "Net 30", "Net 45", "Net 60"];
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 interface SettingCard {
   icon: React.ReactNode;
@@ -98,137 +143,407 @@ interface SettingCard {
 }
 
 const SETTING_CARDS: SettingCard[] = [
-  {
-    icon: <Settings className="w-5 h-5 text-white" />,
-    title: "Currency & Format",
-    tab: "Currency & Format",
-  },
-  {
-    icon: <FileText className="w-5 h-5 text-white" />,
-    title: "PDF & Print Settings",
-    subtitle: "Standard",
-    tab: "Printer",
-  },
-  {
-    icon: <CreditCard className="w-5 h-5 text-white" />,
-    title: "Payment Methods",
-    tab: "General",
-  },
-  {
-    icon: <FileCheck className="w-5 h-5 text-white" />,
-    title: "Terms & Conditions",
-    tab: "General",
-  },
-  {
-    icon: <Percent className="w-5 h-5 text-white" />,
-    title: "Taxes",
-    tab: "General",
-  },
-  {
-    icon: <Mail className="w-5 h-5 text-white" />,
-    title: "Email Templates",
-    subtitle: "Dear <customer> <no...",
-    tab: "General",
-  },
-  {
-    icon: <Building2 className="w-5 h-5 text-white" />,
-    title: "Bank Details",
-    tab: "General",
-  },
-  {
-    icon: <StickyNote className="w-5 h-5 text-white" />,
-    title: "Notes",
-    tab: "General",
-  },
-  {
-    icon: <PenLine className="w-5 h-5 text-white" />,
-    title: "Signature",
-    tab: "General",
-  },
-  {
-    icon: <Users className="w-5 h-5 text-white" />,
-    title: "Team",
-    subtitle: "1 Member",
-    tab: "General",
-  },
+  { icon: <Settings className="w-5 h-5 text-white" />, title: "Currency & Format", tab: "Currency & Format" },
+  { icon: <FileText className="w-5 h-5 text-white" />, title: "PDF & Print Settings", subtitle: "Standard", tab: "Printer" },
+  { icon: <CreditCard className="w-5 h-5 text-white" />, title: "Payment Methods", subtitle: "---", tab: "General" },
+  { icon: <FileCheck className="w-5 h-5 text-white" />, title: "Terms & Conditions", tab: "General" },
+  { icon: <Percent className="w-5 h-5 text-white" />, title: "Taxes", tab: "General" },
+  { icon: <Mail className="w-5 h-5 text-white" />, title: "Email Templates", subtitle: "Dear <customer> <no...", tab: "General" },
+  { icon: <Building2 className="w-5 h-5 text-white" />, title: "Bank Details", tab: "General" },
+  { icon: <StickyNote className="w-5 h-5 text-white" />, title: "Notes", tab: "General" },
+  { icon: <PenLine className="w-5 h-5 text-white" />, title: "Signature", tab: "General" },
+  { icon: <Users className="w-5 h-5 text-white" />, title: "Team", subtitle: "Members", tab: "General" },
 ];
 
-/* ── Main Companies Page ───────────────────────────────────────── */
+const fieldLabel = "block text-xs text-gray-500 mb-1";
+const underlineInput =
+  "w-full bg-transparent border-0 border-b border-gray-300 rounded-none px-0 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0 focus:border-blue-500";
+const underlineSelect =
+  "w-full bg-transparent border-0 border-b border-gray-300 rounded-none px-0 py-2 text-sm text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-500";
 
-export const Companies: React.FC = () => {
-  const [showMobileList, setShowMobileList] = useState(true);
-  const [companies, setCompaniesState] = useState<Company[]>([
-    {
-      id: "1",
-      businessName: "info",
-      email: "info@inovoic.com",
-      phone: "",
-      mobile: "",
-      fax: "",
-      website: "",
-      billingAddress: "Bangladesh",
-      regNo: "",
-      vat: "",
-      paymentTermsSales: "",
-      paymentTermsPurchase: "",
-      startFiscalYear: "January",
-      isOwner: true,
-    },
-    {
-      id: "2",
-      businessName: "info",
-      email: "info@inovoic.com",
-      phone: "",
-      mobile: "",
-      fax: "",
-      website: "",
-      billingAddress: "Bangladesh",
-      regNo: "",
-      vat: "",
-      paymentTermsSales: "",
-      paymentTermsPurchase: "",
-      startFiscalYear: "January",
-      isOwner: true,
-    },
-  ]);
+type CompanyFormState = Company & {
+  billing: AddressParts;
+  shipping: AddressParts;
+};
 
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(companies[0]);
+const emptyForm = (): CompanyFormState => ({
+  id: "",
+  businessName: "",
+  email: "",
+  phone: "",
+  mobile: "",
+  fax: "",
+  website: "",
+  billingAddress: "",
+  shippingAddress: "",
+  sameAsBilling: false,
+  regNo: "",
+  vat: "",
+  paymentTermsSales: "Net on receipt",
+  paymentTermsPurchase: "Net on receipt",
+  startFiscalYear: "January",
+  isOwner: false,
+  reverseChargeSales: false,
+  billing: emptyAddress(),
+  shipping: emptyAddress(),
+});
 
-  const setCompanies = (list: Company[]) => {
-    setCompaniesState(list);
-    db.meta.put({ key: "company:list", value: list });
+const fromCompany = (c: Company): CompanyFormState => ({
+  ...c,
+  paymentTermsSales: c.paymentTermsSales || "Net on receipt",
+  paymentTermsPurchase: c.paymentTermsPurchase || "Net on receipt",
+  billing: parseAddress(c.billingAddress),
+  shipping: parseAddress(c.shippingAddress || (c.sameAsBilling ? c.billingAddress : "")),
+});
+
+const toCompany = (f: CompanyFormState): Company => {
+  const billingAddress = joinAddress(f.billing);
+  const shippingAddress = f.sameAsBilling ? billingAddress : joinAddress(f.shipping);
+  return {
+    id: f.id,
+    businessName: f.businessName.trim(),
+    email: f.email.trim(),
+    phone: f.phone.trim(),
+    mobile: f.mobile.trim(),
+    fax: f.fax.trim(),
+    website: f.website.trim(),
+    billingAddress,
+    shippingAddress,
+    sameAsBilling: !!f.sameAsBilling,
+    regNo: f.regNo.trim(),
+    vat: f.vat.trim(),
+    paymentTermsSales: f.paymentTermsSales,
+    paymentTermsPurchase: f.paymentTermsPurchase,
+    startFiscalYear: f.startFiscalYear,
+    isOwner: !!f.isOwner,
+    reverseChargeSales: !!f.reverseChargeSales,
   };
-  // Load the real company register from the backend (falls back to meta cache).
-  const loadCompanies = async (): Promise<boolean> => {
+};
+
+const AddressCol: React.FC<{
+  label: string;
+  parts: AddressParts;
+  onChange: (p: Partial<AddressParts>) => void;
+  headerRight?: React.ReactNode;
+  disabled?: boolean;
+}> = ({ label, parts, onChange, headerRight, disabled }) => (
+  <div className={disabled ? "opacity-50 pointer-events-none" : ""}>
+    <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-semibold text-gray-900">{label}</h4>
+      {headerRight}
+    </div>
+    <div className="space-y-4">
+      <div>
+        <label className={fieldLabel}>Street 1</label>
+        <input className={underlineInput} value={parts.street1} onChange={(e) => onChange({ street1: e.target.value })} />
+      </div>
+      <div>
+        <label className={fieldLabel}>Street 2</label>
+        <input className={underlineInput} value={parts.street2} onChange={(e) => onChange({ street2: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={fieldLabel}>City</label>
+          <input className={underlineInput} value={parts.city} onChange={(e) => onChange({ city: e.target.value })} />
+        </div>
+        <div>
+          <label className={fieldLabel}>State</label>
+          <input className={underlineInput} value={parts.state} onChange={(e) => onChange({ state: e.target.value })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={fieldLabel}>Zip</label>
+          <input className={underlineInput} value={parts.zip} onChange={(e) => onChange({ zip: e.target.value })} />
+        </div>
+        <div>
+          <label className={fieldLabel}>
+            Country <span className="text-red-500">*</span>
+          </label>
+          <input className={underlineInput} value={parts.country} onChange={(e) => onChange({ country: e.target.value })} />
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/** Create / Edit Company modal — layout matches client, app theme colors. */
+const CompanyFormModal: React.FC<{
+  initial: CompanyFormState;
+  title: string;
+  onClose: () => void;
+  onSave: (company: Company) => Promise<void>;
+}> = ({ initial, title, onClose, onSave }) => {
+  const [form, setForm] = useState<CompanyFormState>(initial);
+  const [addrOpen, setAddrOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const patch = (p: Partial<CompanyFormState>) => setForm((f) => ({ ...f, ...p }));
+  const patchBilling = (p: Partial<AddressParts>) =>
+    setForm((f) => ({ ...f, billing: { ...f.billing, ...p } }));
+  const patchShipping = (p: Partial<AddressParts>) =>
+    setForm((f) => ({ ...f, shipping: { ...f.shipping, ...p } }));
+
+  const commitEmail = () => {
+    const v = emailDraft.trim();
+    if (!v) return;
+    patch({ email: v });
+    setEmailDraft("");
+  };
+
+  const handleNext = async () => {
+    if (!form.businessName.trim()) return;
+    if (!form.billing.country.trim()) return;
+    setSaving(true);
     try {
-      const res = await api.raw.get("/company-register/all");
-      const arr = toArray<any>(res.data);
-      const list = arr.map(mapCompany);
-      if (list.length) {
-        setCompanies(list);
-        setSelectedCompany(list[0]);
-      }
-      return true;
-    } catch {
-      return false;
+      await onSave(toCompany(form));
+    } finally {
+      setSaving(false);
     }
   };
-  useEffect(() => {
-    loadCompanies().then((ok) => {
-      if (ok) return;
-      db.meta.get("company:list").then((row) => {
-        const stored = row?.value as Company[] | undefined;
-        if (stored?.length) {
-          setCompaniesState(stored);
-          setSelectedCompany(stored[0]);
-        }
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  const [activeTab, setActiveTab] = useState<"info" | "add">("info");
-  const [isEditing, setIsEditing] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+      <div className="w-full max-w-3xl my-6 rounded-lg overflow-hidden shadow-2xl bg-white border border-gray-300">
+        <div className="h-12 flex items-center justify-between px-5 border-b border-gray-300 bg-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="text-sm text-gray-600 hover:text-gray-900 px-2 py-1">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving || !form.businessName.trim()}
+              onClick={() => void handleNext()}
+              className="px-4 py-1.5 text-sm font-medium rounded-md bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Next"}
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
+          <div className="flex justify-center">
+            <button
+              type="button"
+              className="w-28 h-28 border border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center gap-2 text-gray-500 hover:border-blue-400"
+            >
+              <span className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                <Plus className="w-5 h-5" />
+              </span>
+              <span className="text-xs font-medium text-blue-600">Add Logo</span>
+            </button>
+          </div>
+
+          <div>
+            <label className={fieldLabel}>
+              Business Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              className={underlineInput}
+              value={form.businessName}
+              onChange={(e) => patch({ businessName: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className={fieldLabel}>Email</label>
+            {form.email ? (
+              <div className="flex items-center gap-2 py-2 border-b border-gray-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 border border-gray-300 px-2.5 py-1 text-sm text-gray-800">
+                  {form.email}
+                  <button type="button" onClick={() => patch({ email: "" })} className="text-gray-500 hover:text-gray-800">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <input
+                type="email"
+                className={underlineInput}
+                value={emailDraft}
+                placeholder="Add email"
+                onChange={(e) => setEmailDraft(e.target.value)}
+                onBlur={commitEmail}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitEmail();
+                  }
+                }}
+              />
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className={fieldLabel}>Phone</label>
+              <input className={underlineInput} value={form.phone} onChange={(e) => patch({ phone: e.target.value })} />
+            </div>
+            <div>
+              <label className={fieldLabel}>Mobile</label>
+              <input className={underlineInput} value={form.mobile} onChange={(e) => patch({ mobile: e.target.value })} />
+            </div>
+            <div>
+              <label className={fieldLabel}>Fax</label>
+              <input className={underlineInput} value={form.fax} onChange={(e) => patch({ fax: e.target.value })} />
+            </div>
+            <div>
+              <label className={fieldLabel}>Website</label>
+              <input className={underlineInput} value={form.website} onChange={(e) => patch({ website: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="border border-gray-300 rounded-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setAddrOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 text-sm font-semibold text-gray-900"
+            >
+              Address
+              {addrOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            {addrOpen && (
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-8 border-t border-gray-300">
+                <AddressCol label="Billing" parts={form.billing} onChange={patchBilling} />
+                <AddressCol
+                  label="Shipping"
+                  parts={form.sameAsBilling ? form.billing : form.shipping}
+                  onChange={patchShipping}
+                  disabled={!!form.sameAsBilling}
+                  headerRight={
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!form.sameAsBilling}
+                        onChange={(e) =>
+                          patch({
+                            sameAsBilling: e.target.checked,
+                            shipping: e.target.checked ? { ...form.billing } : form.shipping,
+                          })
+                        }
+                        className="w-3.5 h-3.5 accent-blue-600"
+                      />
+                      Same as Billing
+                    </label>
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="border border-gray-300 rounded-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 text-sm font-semibold text-gray-900"
+            >
+              Settings
+              {settingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            {settingsOpen && (
+              <div className="p-4 space-y-5 border-t border-gray-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className={fieldLabel}>Reg. No</label>
+                    <input className={underlineInput} value={form.regNo} onChange={(e) => patch({ regNo: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={fieldLabel}>Tax ID</label>
+                    <input className={underlineInput} value={form.vat} onChange={(e) => patch({ vat: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={fieldLabel}>Payment Terms (Sales)</label>
+                    <select
+                      className={underlineSelect}
+                      value={form.paymentTermsSales}
+                      onChange={(e) => patch({ paymentTermsSales: e.target.value })}
+                    >
+                      {PAYMENT_TERMS.map((t) => (
+                        <option key={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={fieldLabel}>Payment Terms (Purchases)</label>
+                    <select
+                      className={underlineSelect}
+                      value={form.paymentTermsPurchase}
+                      onChange={(e) => patch({ paymentTermsPurchase: e.target.value })}
+                    >
+                      {PAYMENT_TERMS.map((t) => (
+                        <option key={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={fieldLabel}>Start Financial Year</label>
+                    <select
+                      className={underlineSelect}
+                      value={form.startFiscalYear}
+                      onChange={(e) => patch({ startFiscalYear: e.target.value })}
+                    >
+                      {MONTHS.map((m) => (
+                        <option key={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!form.reverseChargeSales}
+                    onChange={(e) => patch({ reverseChargeSales: e.target.checked })}
+                    className="w-4 h-4 accent-blue-600"
+                  />
+                  Reverse Charge for Sales
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const InfoField: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({
+  label,
+  children,
+  className = "",
+}) => (
+  <div className={className}>
+    <p className="text-xs text-gray-500 mb-1">{label}</p>
+    <div className="text-sm text-gray-900 min-h-[1.25rem]">{children}</div>
+    <div className="border-b border-gray-300 mt-2" />
+  </div>
+);
+
+const SectionBar: React.FC<{ title: string }> = ({ title }) => (
+  <div className="px-4 py-2.5 bg-gray-100 border-y border-gray-300 -mx-6 mb-4">
+    <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+  </div>
+);
+
+export const Companies: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showMobileList, setShowMobileList] = useState(true);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [sortBy, setSortBy] = useState<"Name">("Name");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState<"create" | "edit" | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [settingsModal, setSettingsModal] = useState<{ open: boolean; tab: string }>({
     open: false,
     tab: "Currency & Format",
@@ -242,601 +557,305 @@ export const Companies: React.FC = () => {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
 
-  const emptyForm: Company = {
-    id: "",
-    businessName: "",
-    email: "",
-    phone: "",
-    mobile: "",
-    fax: "",
-    website: "",
-    billingAddress: "",
-    regNo: "",
-    vat: "",
-    paymentTermsSales: "",
-    paymentTermsPurchase: "",
-    startFiscalYear: "January",
-    isOwner: false,
-  };
-
-  const [formData, setFormData] = useState<Company>(emptyForm);
-
-  const handleAddCompany = () => {
-    setActiveTab("add");
-    setIsEditing(false);
-    setFormData(emptyForm);
-  };
-
-  const handleSaveCompany = async () => {
+  const loadCompanies = async () => {
+    setLoading(true);
     try {
-      if (formData.id) {
-        await api.raw.patch(`/company-register/${formData.id}`, companyBody(formData));
-      } else {
-        await api.raw.post("/company-register/create", companyBody(formData));
-      }
-      await loadCompanies();
-      setActiveTab("info");
-      setIsEditing(false);
-      return;
-    } catch { /* fall through to local */ }
-    if (formData.id) {
-      setCompanies(companies.map((c) => (c.id === formData.id ? formData : c)));
-      setSelectedCompany(formData);
-    } else {
-      const newCompany = { ...formData, id: Date.now().toString() };
-      setCompanies([...companies, newCompany]);
-      setSelectedCompany(newCompany);
+      const res = await api.raw.get("/company-register/all");
+      const list = toArray<any>(res.data).map(mapCompany);
+      setCompanies(list);
+      setSelectedCompany((prev) => {
+        if (!list.length) return null;
+        if (prev && list.some((c) => c.id === prev.id)) {
+          return list.find((c) => c.id === prev.id) || list[0];
+        }
+        return list[0];
+      });
+    } catch {
+      setCompanies([]);
+      setSelectedCompany(null);
+    } finally {
+      setLoading(false);
     }
-    setActiveTab("info");
-    setIsEditing(false);
   };
 
-  const handleEdit = () => {
-    if (selectedCompany) {
-      setFormData(selectedCompany);
-      setActiveTab("add");
-      setIsEditing(true);
+  useEffect(() => {
+    void loadCompanies();
+  }, []);
+
+  useEffect(() => {
+    const openCreate = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
+    if (!openCreate) return;
+    setFormOpen("create");
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
+
+  const sorted = useMemo(() => {
+    const list = [...companies];
+    list.sort((a, b) => a.businessName.localeCompare(b.businessName));
+    return list;
+  }, [companies, sortBy]);
+
+  const openCreate = () => setFormOpen("create");
+  const openEdit = () => {
+    if (selectedCompany) setFormOpen("edit");
+  };
+
+  const handleSave = async (company: Company) => {
+    if (company.id) {
+      await api.raw.patch(`/company-register/${company.id}`, companyBody(company));
+    } else {
+      await api.raw.post("/company-register/create", companyBody(company));
     }
+    setFormOpen(null);
+    await loadCompanies();
   };
 
   const handleDelete = async () => {
     if (!selectedCompany) return;
     try {
       await api.raw.delete(`/company-register/${selectedCompany.id}`);
-      await loadCompanies();
-      return;
-    } catch { /* fall through to local */ }
-    const remaining = companies.filter((c) => c.id !== selectedCompany.id);
-    setCompanies(remaining);
-    setSelectedCompany(remaining[0] ?? null);
+    } catch {
+      /* ignore */
+    }
+    await loadCompanies();
   };
 
-  const handleCancel = () => {
-    setActiveTab("info");
-    setIsEditing(false);
-  };
-
-  const handleCompanySelect = (company: Company) => {
-    setSelectedCompany(company);
-    setActiveTab("info");
-    setShowMobileList(false);
+  const handleCardClick = (card: SettingCard) => {
+    if (card.title === "PDF & Print Settings") setShowPdfModal(true);
+    else if (card.title === "Payment Methods") setShowPaymentModal(true);
+    else if (card.title === "Terms & Conditions") setShowTermsModal(true);
+    else if (card.title === "Taxes") setShowTaxesModal(true);
+    else if (card.title === "Bank Details") setShowBankDetailsModal(true);
+    else if (card.title === "Notes") setShowNotesModal(true);
+    else if (card.title === "Signature") setShowSignatureModal(true);
+    else if (card.title === "Team") setShowTeamModal(true);
+    else setSettingsModal({ open: true, tab: card.tab });
   };
 
   return (
-    <div className="module-page-shell flex flex-col overflow-hidden p-0">
-      {/* App Settings Modal */}
+    <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {settingsModal.open && (
         <AppSettingsModal
           initialTab={settingsModal.tab}
           onClose={() => setSettingsModal({ open: false, tab: "Currency & Format" })}
         />
       )}
-
-      {/* PDF & Print Settings Modal */}
-      {showPdfModal && (
-        <PdfPrintSettingsModal onClose={() => setShowPdfModal(false)} />
-      )}
-
-      {/* Payment Methods Modal */}
-      {showPaymentModal && (
-        <PaymentMethodsModal onClose={() => setShowPaymentModal(false)} />
-      )}
-
-      {/* Terms & Conditions Modal */}
-      {showTermsModal && (
-        <TermsConditionsModal onClose={() => setShowTermsModal(false)} />
-      )}
-
-      {/* Taxes Modal */}
-      {showTaxesModal && (
-        <TaxesModal onClose={() => setShowTaxesModal(false)} />
-      )}
-
-      {/* Bank Details Modal */}
-      {showBankDetailsModal && (
-        <BankDetailsModal onClose={() => setShowBankDetailsModal(false)} />
-      )}
-
-      {/* Notes Modal */}
-      {showNotesModal && (
-        <NotesModal onClose={() => setShowNotesModal(false)} />
-      )}
-
-      {/* Signature Modal */}
-      {showSignatureModal && (
-        <SignatureModal onClose={() => setShowSignatureModal(false)} />
-      )}
-
-      {/* Team Modal */}
+      {showPdfModal && <PdfPrintSettingsModal onClose={() => setShowPdfModal(false)} />}
+      {showPaymentModal && <PaymentMethodsModal onClose={() => setShowPaymentModal(false)} />}
+      {showTermsModal && <TermsConditionsModal onClose={() => setShowTermsModal(false)} />}
+      {showTaxesModal && <TaxesModal onClose={() => setShowTaxesModal(false)} />}
+      {showBankDetailsModal && <BankDetailsModal onClose={() => setShowBankDetailsModal(false)} />}
+      {showNotesModal && <NotesModal onClose={() => setShowNotesModal(false)} />}
+      {showSignatureModal && <SignatureModal onClose={() => setShowSignatureModal(false)} />}
       {showTeamModal && (
-        <TeamModal
-          onClose={() => setShowTeamModal(false)}
-          companyEmail={selectedCompany?.email}
+        <TeamModal onClose={() => setShowTeamModal(false)} companyEmail={selectedCompany?.email} />
+      )}
+
+      {formOpen && (
+        <CompanyFormModal
+          title={formOpen === "edit" ? "Edit Company" : "Create Company"}
+          initial={formOpen === "edit" && selectedCompany ? fromCompany(selectedCompany) : emptyForm()}
+          onClose={() => setFormOpen(null)}
+          onSave={handleSave}
         />
       )}
 
-      {/* Mobile Toggle */}
-      <div className="lg:hidden bg-gray-100 border-b border-gray-300 px-4 py-2">
+      {/* Mobile toggle */}
+      <div className="lg:hidden absolute top-2 left-2 z-30 bg-gray-100 border border-gray-300 px-3 py-1.5 rounded-md">
         <button
+          type="button"
           onClick={() => setShowMobileList(!showMobileList)}
-          className="flex items-center gap-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md px-3 py-1.5"
+          className="flex items-center gap-2 text-sm font-medium text-blue-600"
         >
-          {showMobileList ? "← Back to Details" : "☰ View Companies"}
+          {showMobileList ? "← Details" : "☰ Companies"}
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-        {/* LEFT PANEL */}
-        <div
-          className={`${showMobileList ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-72 bg-white border-r border-gray-300`}
-        >
-          {/* Header */}
-          <div className="module-title-bar px-5">
-            <h2 className="text-base font-semibold text-gray-900">Companies</h2>
+      {/* LEFT — same ResizableListPanel as Customers / Vendors */}
+      <div className={`${showMobileList ? "flex" : "hidden"} lg:flex h-full`}>
+        <ResizableListPanel onCreate={openCreate} createTitle="Create Company">
+          <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 tracking-tight">Companies</h2>
             <button
-              onClick={handleAddCompany}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500"
+              type="button"
+              onClick={openEdit}
+              disabled={!selectedCompany}
+              className="p-1.5 hover:bg-gray-200 rounded-md text-gray-500 disabled:opacity-40"
+              title="Edit company"
             >
               <Edit2 className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Sort */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <div className="relative inline-block">
-              <button className="flex items-center gap-1 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1.5 bg-white hover:bg-gray-50">
-                Sort by | Name
-                <ChevronDown className="w-3 h-3 ml-0.5" />
+          <div className="list-filter-toolbar flex flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2 border-b border-gray-300">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSortOpen((o) => !o)}
+                className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap"
+              >
+                Sort by | <span className="text-gray-800 font-medium">{sortBy}</span>
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
+              {sortOpen && (
+                <div className="absolute left-0 top-8 z-20 min-w-[140px] rounded-md border border-gray-300 bg-white shadow-lg py-1">
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                    onClick={() => {
+                      setSortBy("Name");
+                      setSortOpen(false);
+                    }}
+                  >
+                    Name
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* List */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            {companies.map((company) => (
-              <div
-                key={company.id}
-                onClick={() => handleCompanySelect(company)}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                  selectedCompany?.id === company.id ? "bg-blue-50" : "hover:bg-gray-50"
-                }`}
-              >
-                <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
-                  {company.businessName.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
-                    {company.businessName}
+          <div className="flex-1 overflow-y-auto pb-28">
+            {loading && <p className="px-4 py-4 text-sm text-gray-500">Loading…</p>}
+            {!loading && !sorted.length && (
+              <p className="px-4 py-4 text-sm text-gray-500">No companies yet</p>
+            )}
+            {sorted.map((company) => {
+              const active = selectedCompany?.id === company.id;
+              return (
+                <button
+                  key={company.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCompany(company);
+                    setShowMobileList(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-center gap-3 transition-colors ${
+                    active ? "bg-gray-100" : "hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+                    {(company.businessName || "?").charAt(0).toUpperCase()}
                   </div>
-                </div>
-                {company.isOwner && (
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">
-                    Owner
-                  </span>
-                )}
-              </div>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">
+                      {company.businessName || "—"}
+                    </div>
+                  </div>
+                  {company.isOwner && (
+                    <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded">Owner</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Add Button */}
-          <div className="p-4 flex justify-center border-t border-gray-100">
-            <button
-              onClick={handleAddCompany}
-              className="w-10 h-10 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-800"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT PANEL */}
-        <div
-          className={`${showMobileList ? "hidden" : "flex"} lg:flex flex-col flex-1 overflow-y-auto bg-white`}
-        >
-          {activeTab === "info" && selectedCompany ? (
-            <>
-              {/* Info Header */}
-              <div className="module-title-bar">
-                <h2 className="text-base font-semibold text-gray-900">
-                  {selectedCompany.businessName}
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleDelete}
-                    title="Delete company"
-                    className="p-2 hover:bg-gray-100 rounded-md text-gray-500"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={handleEdit}
-                    title="Edit company"
-                    className="p-2 hover:bg-gray-100 rounded-md text-gray-500"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-6">
-                {/* Basic Fields */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Business Name</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.businessName}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                  <div className="flex justify-end">
-                    <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold">
-                      {selectedCompany.businessName.charAt(0).toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Email</p>
-                  <a href={`mailto:${selectedCompany.email}`} className="text-sm text-blue-600 hover:underline">
-                    {selectedCompany.email || <span className="text-gray-400">—</span>}
-                  </a>
-                  <div className="border-b border-gray-200 mt-2" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Phone</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.phone || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Mobile</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.mobile || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Fax</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.fax || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Website</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.website || <span className="text-gray-400">—</span>}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                </div>
-
-                {/* Address Section */}
-                <div className="pt-2">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Address</h3>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Billing Address</p>
-                    <p className="text-sm text-gray-900 whitespace-pre-line">
-                      {selectedCompany.billingAddress || <span className="text-gray-400">—</span>}
-                    </p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                </div>
-
-                {/* Settings Section */}
-                <div className="pt-2">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Settings</h3>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Reg No</p>
-                      <p className="text-sm text-gray-900">{selectedCompany.regNo || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">VAT</p>
-                      <p className="text-sm text-gray-900">{selectedCompany.vat || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6 mt-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Payment Terms (Sales)</p>
-                      <p className="text-sm text-gray-900">{selectedCompany.paymentTermsSales || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Payment Terms (Purchases)</p>
-                      <p className="text-sm text-gray-900">{selectedCompany.paymentTermsPurchase || <span className="text-gray-400">—</span>}</p>
-                      <div className="border-b border-gray-200 mt-2" />
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-xs text-gray-500 mb-1">Start Fiscal Year</p>
-                    <p className="text-sm text-gray-900">{selectedCompany.startFiscalYear}</p>
-                    <div className="border-b border-gray-200 mt-2" />
-                  </div>
-                </div>
-
-                {/* Setting Cards Grid */}
-                <div className="pt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                  {SETTING_CARDS.map((card) => (
-                    <button
-                      key={card.title}
-                      onClick={() => {
-                        if (card.title === "PDF & Print Settings") setShowPdfModal(true);
-                        else if (card.title === "Payment Methods") setShowPaymentModal(true);
-                        else if (card.title === "Terms & Conditions") setShowTermsModal(true);
-                        else if (card.title === "Taxes") setShowTaxesModal(true);
-                        else if (card.title === "Bank Details") setShowBankDetailsModal(true);
-                        else if (card.title === "Notes") setShowNotesModal(true);
-                        else if (card.title === "Signature") setShowSignatureModal(true);
-                        else if (card.title === "Team") setShowTeamModal(true);
-                        else setSettingsModal({ open: true, tab: card.tab });
-                      }}
-                      className="flex flex-col items-start p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all text-left"
-                    >
-                      <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center mb-2">
-                        {card.icon}
-                      </div>
-                      <p className="text-xs font-medium text-gray-800 leading-tight">
-                        {card.title}
-                      </p>
-                      {card.subtitle && (
-                        <p className="text-xs text-gray-400 mt-0.5 truncate w-full">
-                          {card.subtitle}
-                        </p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            /* Add / Edit Form */
-            <>
-              <div className="module-title-bar">
-                <h2 className="text-base font-semibold text-gray-900">
-                  {isEditing ? "Edit Company" : "Add Company"}
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCancel}
-                    className="text-sm text-gray-600 hover:text-gray-900 px-1"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveCompany}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-5">
-                {/* logo */}
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    className="w-24 h-24 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1.5 text-gray-500 hover:border-blue-400 hover:text-blue-600"
-                  >
-                    {formData.businessName ? (
-                      <span className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-lg">
-                        {formData.businessName.charAt(0).toUpperCase()}
-                      </span>
-                    ) : (
-                      <span className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
-                        <Plus className="w-4 h-4" />
-                      </span>
-                    )}
-                    <span className="text-xs font-medium">Add Logo</span>
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                    Business Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.businessName}
-                    onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Phone</label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Mobile</label>
-                    <input
-                      type="text"
-                      value={formData.mobile}
-                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Fax</label>
-                    <input
-                      type="text"
-                      value={formData.fax}
-                      onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Website</label>
-                    <input
-                      type="text"
-                      value={formData.website}
-                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Address</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-800 mb-1.5">Billing</label>
-                      <textarea
-                        rows={4}
-                        placeholder={"Street 1\nStreet 2\nCity, State, Zip\nCountry"}
-                        value={formData.billingAddress}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            billingAddress: e.target.value,
-                            shippingAddress: formData.sameAsBilling ? e.target.value : formData.shippingAddress,
-                          })
-                        }
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-semibold text-gray-800">Shipping</label>
-                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!formData.sameAsBilling}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                sameAsBilling: e.target.checked,
-                                shippingAddress: e.target.checked ? formData.billingAddress : formData.shippingAddress,
-                              })
-                            }
-                            className="w-3.5 h-3.5 accent-blue-600"
-                          />
-                          Same as Billing
-                        </label>
-                      </div>
-                      <textarea
-                        rows={4}
-                        placeholder={"Street 1\nStreet 2\nCity, State, Zip\nCountry"}
-                        value={formData.shippingAddress || ""}
-                        disabled={!!formData.sameAsBilling}
-                        onChange={(e) => setFormData({ ...formData, shippingAddress: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.sameAsBilling ? "bg-gray-50 text-gray-400" : ""}`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Settings</h3>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Reg. No</label>
-                      <input
-                        type="text"
-                        value={formData.regNo}
-                        onChange={(e) => setFormData({ ...formData, regNo: e.target.value })}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Tax ID</label>
-                      <input
-                        type="text"
-                        value={formData.vat}
-                        onChange={(e) => setFormData({ ...formData, vat: e.target.value })}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-5 mt-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                        Payment Terms (Sales)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.paymentTermsSales}
-                        onChange={(e) => setFormData({ ...formData, paymentTermsSales: e.target.value })}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                        Payment Terms (Purchases)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.paymentTermsPurchase}
-                        onChange={(e) => setFormData({ ...formData, paymentTermsPurchase: e.target.value })}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      Start Fiscal Year
-                    </label>
-                    <select
-                      value={formData.startFiscalYear}
-                      onChange={(e) => setFormData({ ...formData, startFiscalYear: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {[
-                        "January","February","March","April","May","June",
-                        "July","August","September","October","November","December",
-                      ].map((m) => (
-                        <option key={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+          <ListSidebarFooter total={`${sorted.length}`} countLabel="Companies" />
+        </ResizableListPanel>
       </div>
+
+      {/* RIGHT — detail panel with m-2 like other modules */}
+      <section
+        className={`${showMobileList ? "hidden" : "flex"} lg:flex flex-1 overflow-y-auto custom-scrollbar flex-col m-2 bg-white border border-gray-300 shadow-sm`}
+      >
+        {selectedCompany ? (
+          <>
+            <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">{selectedCompany.businessName}</h2>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void handleDelete()}
+                  title="Delete company"
+                  className="p-2 hover:bg-gray-200 rounded-md text-gray-500"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={openEdit}
+                  title="Edit company"
+                  className="p-2 hover:bg-gray-200 rounded-md text-gray-500"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-[1fr_auto] gap-6">
+                <InfoField label="Business Name">{selectedCompany.businessName}</InfoField>
+                <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-lg">
+                  {(selectedCompany.businessName || "?").charAt(0).toUpperCase()}
+                </div>
+              </div>
+
+              <InfoField label="Email">
+                {selectedCompany.email ? (
+                  <a href={`mailto:${selectedCompany.email}`} className="text-blue-600 hover:underline">
+                    {selectedCompany.email}
+                  </a>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+              </InfoField>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <InfoField label="Phone">{selectedCompany.phone || <span className="text-gray-400">—</span>}</InfoField>
+                <InfoField label="Fax">{selectedCompany.fax || <span className="text-gray-400">—</span>}</InfoField>
+                <InfoField label="Mobile">{selectedCompany.mobile || <span className="text-gray-400">—</span>}</InfoField>
+                <InfoField label="Website">{selectedCompany.website || <span className="text-gray-400">—</span>}</InfoField>
+              </div>
+
+              <SectionBar title="Address" />
+              <InfoField label="Billing Address">
+                <span className="whitespace-pre-line">
+                  {selectedCompany.billingAddress || <span className="text-gray-400">—</span>}
+                </span>
+              </InfoField>
+
+              <SectionBar title="Settings" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <InfoField label="Reg. No">{selectedCompany.regNo || <span className="text-gray-400">—</span>}</InfoField>
+                <InfoField label="Tax ID">{selectedCompany.vat || <span className="text-gray-400">—</span>}</InfoField>
+                <InfoField label="Payment Terms (Sales)">
+                  {selectedCompany.paymentTermsSales || <span className="text-gray-400">—</span>}
+                </InfoField>
+                <InfoField label="Payment Terms (Purchases)">
+                  {selectedCompany.paymentTermsPurchase || <span className="text-gray-400">—</span>}
+                </InfoField>
+                <InfoField label="Start Financial Year">{selectedCompany.startFiscalYear || "January"}</InfoField>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" disabled checked={!!selectedCompany.reverseChargeSales} className="w-4 h-4" />
+                Reverse Charge for Sales
+              </label>
+
+              <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {SETTING_CARDS.map((card) => (
+                  <button
+                    key={card.title}
+                    type="button"
+                    onClick={() => handleCardClick(card)}
+                    className="flex flex-col items-start p-3 bg-gray-100 border border-gray-300 rounded-xl hover:border-blue-400 hover:shadow-sm transition-all text-left"
+                  >
+                    <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center mb-2">
+                      {card.icon}
+                    </div>
+                    <p className="text-xs font-medium text-gray-800 leading-tight">{card.title}</p>
+                    {card.subtitle && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate w-full">{card.subtitle}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
+            {loading ? "Loading…" : "Select a company or create one"}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

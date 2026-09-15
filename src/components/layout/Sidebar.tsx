@@ -2,7 +2,7 @@
  * File: src/components/layout/Sidebar.tsx
  * Sidebar structured to match the reference design:
  *   Dashboard · Sales · Purchases · Items · Time Logs · Projects ·
- *   Documents · Reports · Team · Integrations · Rewards · Banking · Companies
+ *   Documents · Reports · Team · Integrations · Rewards · Banking · … · Companies (last)
  * All existing modules are kept and grouped below the reference core.
  */
 
@@ -285,7 +285,6 @@ const navigationItems: NavItem[] = [
   { label: "Team", icon: Users, path: "/team" },
   { label: "Integrations", icon: Puzzle, path: "/integrations" },
   { label: "Banking", icon: Landmark, path: "/banking" },
-  { label: "Companies", icon: Building2, path: "/companies" },
 
   /* ── Accounting & finance ────────────────────────────────────── */
   {
@@ -374,6 +373,9 @@ const navigationItems: NavItem[] = [
   { label: "Email Templates", icon: Mail, path: "/email-templates" },
   { label: "Notification Templates", icon: BellRing, path: "/notification-templates" },
   { label: "Plan", icon: Building2, path: "/plan" },
+
+  /* Last item — always at the bottom of the main sidebar */
+  { label: "Companies", icon: Building2, path: "/companies" },
 ];
 
 interface SidebarProps {

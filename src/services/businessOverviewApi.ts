@@ -421,9 +421,10 @@ export async function loadQuartersReport(filters: ReportFilters): Promise<Busine
           monthIdx,
         };
         const active = Math.abs(acc.total) > 0.001 || Math.abs(acc.paid) > 0.001 || Math.abs(acc.overdue) > 0.001;
+        const countLabel = active ? String(Math.max(1, acc.count)).padStart(2, "0") : "0";
         return {
-          label: active ? `${MONTH_SHORT[monthIdx]}` : `${MONTH_SHORT[monthIdx]} (0)`,
-          count: active ? 1 : 0,
+          label: `${MONTH_SHORT[monthIdx]} (${countLabel})`,
+          count: active ? Math.max(1, acc.count) : 0,
           paid: money(acc.paid),
           due: money(acc.due),
           overdue: money(acc.overdue),

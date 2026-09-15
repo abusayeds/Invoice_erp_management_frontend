@@ -13,9 +13,38 @@ import {
   loadQuartersReport,
   loadSummaryReport,
 } from "@/services/businessOverviewApi";
+import {
+  loadEstimateReport,
+  loadInvoiceAgingReport,
+  loadPaymentReport,
+  loadSalesByCategoryReport,
+  loadSalesByCustomerReport,
+  loadSalesByProductReport,
+  loadSalesByServiceReport,
+  loadSalesByUserReport,
+  loadSalesReport,
+} from "@/services/salesReportsApi";
+import {
+  loadBillReport,
+  loadExpenseReport,
+  loadPaymentMadeReport,
+  loadPurchaseByProductReport,
+  loadPurchaseByServiceReport,
+  loadPurchaseOrderByCompanyReport,
+  loadPurchaseOrderReport,
+} from "@/services/purchaseReportsApi";
+import {
+  loadProjectReport,
+  loadStockReport,
+  loadTaxReport,
+  loadTimeLogReport,
+} from "@/services/miscReportsApi";
 import type { ReportCol, ReportFilters, ReportView } from "@/services/reportTypes";
 
 export type { ReportCol, ReportFilters, ReportView } from "@/services/reportTypes";
+export { isSalesReport } from "@/services/salesReportsApi";
+export { isPurchaseReport } from "@/services/purchaseReportsApi";
+export { isMiscReport } from "@/services/miscReportsApi";
 
 const money = (n: number) =>
   `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -33,62 +62,8 @@ const unavailable = (name: string, reason: string): ReportView => ({
   message: reason,
 });
 
-const fromListPayload = (name: string, data: any, moneyKeys: string[] = ["total", "amount"]): ReportView => {
-  const columns: Array<{ id: string; label: string }> = Array.isArray(data?.columns) ? data.columns : [];
-  const rowsRaw: Record<string, unknown>[] = Array.isArray(data?.rows) ? data.rows : [];
-  const cols: ReportCol[] = columns.map((c) => ({
-    label: c.label,
-    key: c.id,
-    right: moneyKeys.includes(c.id),
-  }));
-  const rows = rowsRaw.map((r) =>
-    columns.map((c) => {
-      const v = r[c.id];
-      if (moneyKeys.includes(c.id)) return money(Number(v) || 0);
-      return v == null || v === "" ? "—" : String(v);
-    }),
-  );
-  const totals = cols.map((c, i) => {
-    if (i === 0) return `Total (${rows.length})`;
-    if (!c.right) return "";
-    const sum = rowsRaw.reduce((s, r) => s + (Number(r[c.key || ""]) || 0), 0);
-    return money(sum);
-  });
-  return {
-    name: data?.title || name,
-    cols: cols.length ? cols : [{ label: "—" }],
-    rows,
-    totals: totals.length ? totals : [`Total (${rows.length})`],
-    source: "backend",
-  };
-};
-
-async function fetchAccountList(type: string) {
-  const res = await api.raw.get("/account/reports/list", { params: { type } });
-  return res.data?.data ?? res.data;
-}
-
-async function fetchInvoiceAging(asOfDate: string) {
-  const res = await api.raw.get("/account/reports/invoice-aging", { params: { as_of_date: asOfDate } });
-  return res.data?.data ?? res.data;
-}
-
 async function fetchBillAging(asOfDate: string) {
   const res = await api.raw.get("/account/reports/bill-aging", { params: { as_of_date: asOfDate } });
-  return res.data?.data ?? res.data;
-}
-
-async function fetchTaxSummary(fromDate: string, toDate: string) {
-  const res = await api.raw.get("/account/reports/tax-summary", {
-    params: { from_date: fromDate, to_date: toDate },
-  });
-  return res.data?.data ?? res.data;
-}
-
-async function fetchCustomerBalance(asOfDate: string, showZero: boolean) {
-  const res = await api.raw.get("/account/reports/customer-balance", {
-    params: { as_of_date: asOfDate, show_zero_balances: showZero ? "true" : "false" },
-  });
   return res.data?.data ?? res.data;
 }
 
@@ -155,69 +130,49 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
       return loadProfitByProductReport({ ...filters, asOfDate: asOf, showZero });
 
     case "Invoice Aging Report":
-      return mapAgingCustomers(reportName, await fetchInvoiceAging(asOf), "customer_name");
+      return loadInvoiceAgingReport({ ...filters, asOfDate: asOf, showZero });
 
     case "Bill Aging Report":
       return mapAgingCustomers(reportName, await fetchBillAging(asOf), "vendor_name");
 
-    case "Tax Summary Report": {
-      const data = await fetchTaxSummary(from, to);
-      const collected = Array.isArray(data?.tax_collected?.items) ? data.tax_collected.items : [];
-      const paid = Array.isArray(data?.tax_paid?.items) ? data.tax_paid.items : [];
-      const rows = [
-        ...collected.map((i: any) => ["Collected", String(i.tax_name || "—"), money(Number(i.amount) || 0)]),
-        ...paid.map((i: any) => ["Paid", String(i.tax_name || "—"), money(Number(i.amount) || 0)]),
-        ["Net liability", "—", money(Number(data?.net_tax_liability) || 0)],
-      ];
-      return {
-        name: reportName,
-        cols: [{ label: "Type" }, { label: "Tax" }, { label: "Amount", right: true }],
-        rows,
-        totals: ["", "", money(Number(data?.net_tax_liability) || 0)],
-        meta: { from: data?.from_date || from, to: data?.to_date || to },
-        source: "backend",
-      };
-    }
+    case "Tax Summary Report":
+    case "Tax Report":
+      return loadTaxReport({ ...filters, fromDate: from, toDate: to });
+
+    case "Stock Report":
+      return loadStockReport(filters);
+
+    case "Project Report":
+      return loadProjectReport(filters);
+
+    case "Time Log Report":
+      return loadTimeLogReport(filters);
 
     case "Sales Report":
-      return fromListPayload(reportName, await fetchAccountList("sales"));
+      return loadSalesReport(filters);
     case "Estimate Report":
-      return fromListPayload(reportName, await fetchAccountList("estimate"));
+      return loadEstimateReport(filters);
     case "Payment Report":
-      return fromListPayload(reportName, await fetchAccountList("payment"), ["amount"]);
-    case "Purchase Report":
-      return fromListPayload(reportName, await fetchAccountList("purchase_order"));
+      return loadPaymentReport(filters);
+    case "Bill Report":
+      return loadBillReport(filters);
+    case "Purchase Order Report":
+      return loadPurchaseOrderReport(filters);
+    case "Purchase Order By Company":
+      return loadPurchaseOrderByCompanyReport(filters);
+    case "Purchase by Product Report":
+      return loadPurchaseByProductReport(filters);
+    case "Purchase by Service Report":
+      return loadPurchaseByServiceReport(filters);
+    case "Payment Made Report":
+      return loadPaymentMadeReport(filters);
     case "Expense Report":
-      return fromListPayload(reportName, await fetchAccountList("expense"));
-    case "Stock Report":
-      return fromListPayload(reportName, await fetchAccountList("stock"), ["quantity", "buy_price", "sell_price"]);
+      return loadExpenseReport(filters);
+    case "Purchase Report":
+      return loadPurchaseOrderReport(filters);
 
-    case "Sales by Customer Report": {
-      const data = await fetchCustomerBalance(asOf, showZero);
-      const list: any[] = Array.isArray(data?.customers) ? data.customers : Array.isArray(data) ? data : [];
-      const cols: ReportCol[] = [
-        { label: "Customer" },
-        { label: "Invoiced", right: true },
-        { label: "Paid", right: true },
-        { label: "Balance", right: true },
-      ];
-      let inv = 0, paid = 0, bal = 0;
-      const rows = list.map((c) => {
-        const a = Number(c.total_invoiced ?? c.net_invoiced) || 0;
-        const b = Number(c.total_paid) || 0;
-        const d = Number(c.balance) || 0;
-        inv += a; paid += b; bal += d;
-        return [String(c.customer_name || "—"), money(a), money(b), money(d)];
-      });
-      return {
-        name: reportName,
-        cols,
-        rows,
-        totals: [`Total (${rows.length})`, money(inv), money(paid), money(bal)],
-        meta: { asOf },
-        source: "backend",
-      };
-    }
+    case "Sales by Customer Report":
+      return loadSalesByCustomerReport(filters);
 
     case "Purchase by Vendor Report": {
       const data = await fetchVendorBalance(asOf, showZero);
@@ -295,6 +250,15 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
     case "Profit & Loss":
       return loadOperationalProfitLoss({ ...filters, asOfDate: asOf, showZero });
 
+    case "Sales by User Report":
+      return loadSalesByUserReport(filters);
+    case "Sales Report by Product":
+      return loadSalesByProductReport(filters);
+    case "Sales Report by Service":
+      return loadSalesByServiceReport(filters);
+    case "Sales by Category Report":
+      return loadSalesByCategoryReport(filters);
+
     case "Double Entry Profit & Loss": {
       const data: any = await doubleEntryReports.profitLoss({ from_date: from, to_date: to });
       const revenue = Array.isArray(data?.revenue) ? data.revenue : [];
@@ -322,7 +286,6 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
 
     case "Cash Flow": {
       const data: any = await doubleEntryReports.cashFlow({ from_date: from, to_date: to });
-      // Flexible render: flatten scalar + nested totals
       const cols: ReportCol[] = [{ label: "Item" }, { label: "Amount", right: true }];
       const rows: string[][] = [];
       const pushObj = (prefix: string, obj: any) => {
@@ -333,9 +296,7 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
         });
       };
       pushObj("", data);
-      if (rows.length === 0) {
-        rows.push(["No cash-flow lines", money(0)]);
-      }
+      if (rows.length === 0) rows.push(["No cash-flow lines", money(0)]);
       return {
         name: reportName,
         cols,
@@ -351,10 +312,7 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
       if (!data) {
         return unavailable(reportName, "No balance sheet found. Generate one under Double Entry → Balance Sheets.");
       }
-      const cols: ReportCol[] = [
-        { label: "Field" },
-        { label: "Value", right: true },
-      ];
+      const cols: ReportCol[] = [{ label: "Field" }, { label: "Value", right: true }];
       const rows = [
         ["Date", String(data.balance_sheet_date || "—").slice(0, 10)],
         ["Financial year", String(data.financial_year || "—")],
@@ -373,17 +331,6 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
       };
     }
 
-    case "Sales by User Report":
-    case "Sales Report by Product":
-    case "Sales Report by Service":
-    case "Sales by Category Report":
-    case "Project Report":
-    case "Time Log Report":
-      return unavailable(
-        reportName,
-        "No dedicated backend report endpoint for this view yet. Do not use local/fake data.",
-      );
-
     default:
       return unavailable(reportName, "Report not mapped to a backend endpoint.");
   }
@@ -401,12 +348,16 @@ export function reportFilterKind(reportName: string): "as_of" | "range" | "none"
   }
   if (
     reportName === "Tax Summary Report" ||
+    reportName === "Tax Report" ||
     reportName === "Profit & Loss" ||
     reportName === "Double Entry Profit & Loss" ||
     reportName === "Cash Flow" ||
     reportName === "Summary Report" ||
     reportName === "Quarters Report" ||
-    reportName === "Profit by Product Report"
+    reportName === "Profit by Product Report" ||
+    reportName === "Stock Report" ||
+    reportName === "Time Log Report" ||
+    reportName === "Project Report"
   ) {
     return "range";
   }

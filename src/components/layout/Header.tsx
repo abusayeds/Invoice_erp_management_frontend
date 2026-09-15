@@ -20,9 +20,7 @@ import {
   Check,
   Megaphone,
   Building2,
-  User as UserIcon,
   Settings,
-  LogOut,
   Grid3x3,
   Users,
   FileText,
@@ -42,6 +40,8 @@ import {
 } from "lucide-react";
 import { SettingsDropdown } from "@/pages/SettingsDropdown";
 import useAuth from "@/hooks/useAuth";
+import { api } from "@/lib/api/client";
+import { toArray } from "@/services/_http";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -147,7 +147,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
   const displayName = user?.name || "Faisal Chowdhury";
   const displayEmail = user?.email || "chowdhuryfaisal66@gmail.com";
-  const initial = displayName.charAt(0).toUpperCase();
+
+  const [companyName, setCompanyName] = useState(displayName);
+  const [companyEmail, setCompanyEmail] = useState(displayEmail);
+  const [isOwner, setIsOwner] = useState(true);
 
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -193,6 +196,26 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     }, 180);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [searchQuery]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await api.raw.get("/company-register/all");
+        const list = toArray<any>(res.data);
+        const owner = list.find((c) => c.is_owner) || list[0];
+        if (!alive || !owner) return;
+        setCompanyName(String(owner.business_name || displayName).trim() || displayName);
+        setCompanyEmail(String(owner.email || displayEmail).trim() || displayEmail);
+        setIsOwner(!!owner.is_owner || list.length <= 1);
+      } catch {
+        /* keep defaults from auth */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [displayName, displayEmail]);
 
   // Working stopwatch: ticks every second while running; pause holds the value,
   // play resumes from where it stopped.
@@ -443,7 +466,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           )}
         </div>
 
-        {/* User avatar */}
+        {/* Company / account menu */}
         <div className="relative" ref={userRef}>
           <button
             onClick={() => {
@@ -455,33 +478,85 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             className="flex items-center gap-1 px-1 py-1 hover:bg-gray-100 rounded-full transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-              {initial}
+              {(companyName || displayName).charAt(0).toUpperCase()}
             </div>
             <ChevronDown className="hidden sm:block w-3.5 h-3.5 text-white/70" />
           </button>
 
           {showUserMenu && (
-            <div className="absolute right-0 top-11 w-52 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-              <div className="px-4 py-3 border-b border-gray-200">
-                <p className="text-sm font-semibold text-gray-900">{displayName}</p>
-                <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
-              </div>
-              <Link to="/companies" onClick={() => setShowUserMenu(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                <Building2 className="w-4 h-4 text-gray-400" /> My Company
-              </Link>
-              <Link to="/team" onClick={() => setShowUserMenu(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                <UserIcon className="w-4 h-4 text-gray-400" /> Team
-              </Link>
-              <Link to="/settings" onClick={() => setShowUserMenu(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                <Settings className="w-4 h-4 text-gray-400" /> Settings
-              </Link>
-              <div className="border-t border-gray-200 mt-1 pt-1">
+            <div className="absolute right-0 top-11 w-[280px] z-50">
+              {/* caret */}
+              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-[#2c333c] rotate-45 border-l border-t border-black/20" />
+              <div className="relative rounded-md bg-[#2c333c] border border-black/30 shadow-2xl overflow-hidden text-white">
+                {/* Profile */}
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
+                    {(companyName || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[15px] text-white truncate">{companyName}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <FileText className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                      {isOwner && (
+                        <span className="px-2 py-0.5 rounded bg-white/15 text-[11px] text-white/90">
+                          Owner
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10" />
+
                 <button
-                  onClick={() => { setShowUserMenu(false); logout(); navigate("/auth/login"); }}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  type="button"
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    navigate("/companies", { state: { openCreate: true } });
+                  }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-white hover:bg-white/5 text-left"
                 >
-                  <LogOut className="w-4 h-4" /> Sign Out
+                  <Plus className="w-4 h-4" strokeWidth={2.2} />
+                  Add Company
                 </button>
+
+                <div className="border-t border-white/10" />
+
+                <div className="px-4 py-3 text-sm text-white/90 truncate">{companyEmail}</div>
+
+                <div className="border-t border-white/10" />
+
+                <Link
+                  to="/settings"
+                  onClick={() => setShowUserMenu(false)}
+                  className="flex items-center gap-2.5 px-4 py-3 text-sm text-white hover:bg-white/5"
+                >
+                  <Settings className="w-4 h-4 text-white/80" />
+                  Settings
+                </Link>
+
+                <div className="border-t border-white/10" />
+
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <Link
+                    to="/companies"
+                    onClick={() => setShowUserMenu(false)}
+                    className="text-sm text-white hover:underline"
+                  >
+                    My Account
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      logout();
+                      navigate("/auth/login");
+                    }}
+                    className="px-3.5 py-1.5 text-sm text-white rounded bg-[#1a1f26] hover:bg-black/50 border border-white/10"
+                  >
+                    Log Out
+                  </button>
+                </div>
               </div>
             </div>
           )}

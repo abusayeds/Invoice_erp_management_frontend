@@ -32,15 +32,15 @@ import {
   Mail,
   Phone,
   Shield,
-  Globe,
   CheckCircle,
   XCircle,
   X,
   UserCheck,
-  UserPlus,
 } from "lucide-react";
 import { api } from "../../lib/api/client";
 import { alertApiError } from "../../utils/alert";
+import { fetchPaginatedList, FALLBACK_LIST_PAGINATION } from "@/services/paginatedList";
+import type { TPartyPagination } from "@/services/customerTypes";
 
 // User type definition (UI-facing, mapped from the API)
 interface User {
@@ -58,12 +58,13 @@ interface User {
 /** Shape of one entry in GET /user/all-user-for-company -> data[]. */
 interface ApiUser {
   _id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  role: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  role?: string;
   companyId?: string;
-  login: boolean;
+  login?: boolean;
+  image?: string;
   permissions?: string[];
 }
 
@@ -90,28 +91,32 @@ interface UserFilters {
   email?: string;
   role?: string;
   login?: boolean;
+  searchTerm?: string;
+  page?: number;
+  limit?: number;
 }
 
 /** Build initials from a name, e.g. "Staff Company" -> "SC". */
-const initialsFromName = (name: string): string =>
-  name
+const initialsFromName = (name?: string | null): string =>
+  String(name || "")
     .trim()
     .split(/\s+/)
+    .filter(Boolean)
     .map((n) => n[0])
     .join("")
     .toUpperCase()
-    .slice(0, 2);
+    .slice(0, 2) || "?";
 
 /** Map a raw API user to the UI User model. */
 const mapApiUser = (u: ApiUser): User => ({
-  id: u._id,
-  name: u.name,
-  email: u.email,
-  mobile: u.phone || "—",
-  role: u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : "",
-  loginStatus: u.login ? "Enabled" : "Disabled",
-  avatar: initialsFromName(u.name),
-  permissions: Array.isArray(u.permissions) ? u.permissions : [],
+  id: String(u?._id ?? ""),
+  name: String(u?.name ?? ""),
+  email: String(u?.email ?? ""),
+  mobile: u?.phone ? String(u.phone) : "—",
+  role: u?.role ? String(u.role).charAt(0).toUpperCase() + String(u.role).slice(1) : "",
+  loginStatus: u?.login ? "Enabled" : "Disabled",
+  avatar: initialsFromName(u?.name),
+  permissions: Array.isArray(u?.permissions) ? u.permissions : [],
 });
 
 /** UI role label -> API role value. (UI shows "Client" for the "customer" role.) */
@@ -123,23 +128,16 @@ const roleFilterToApi: Record<string, string | undefined> = {
   Hr: "hr",
 };
 
-// Languages
-const languages = [
-  { code: "en", name: "English", flag: "🇬🇧" },
-  { code: "es", name: "Spanish", flag: "🇪🇸" },
-  { code: "fr", name: "French", flag: "🇫🇷" },
-];
-
 export const UsersManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
+  const [pagination, setPagination] = useState<TPartyPagination>(FALLBACK_LIST_PAGINATION);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   // Filter inputs sent to the API as ?email=&role=&login=
   const [emailFilter, setEmailFilter] = useState("");
@@ -147,55 +145,87 @@ export const UsersManagement: React.FC = () => {
     "All",
   );
 
-  // ── Load users from the backend ──────────────────────────────────────────
-  // No query params -> all users. Pass { role } / { email } / { login } to filter.
+  // Debounce search → server searchTerm (only reset page when term changes)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = String(searchInput || "").trim();
+      setSearchTerm((prev) => {
+        if (prev !== next) setCurrentPage(1);
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // ── Load users from the backend (server-side page / limit / filters) ─────
   const loadUsers = useCallback(async (filters: UserFilters = {}) => {
     setLoading(true);
     setLoadError(null);
     try {
-      const params: Record<string, string | boolean> = {};
-      if (filters.email) params.email = filters.email;
-      if (filters.role) params.role = filters.role;
-      if (filters.login !== undefined) params.login = filters.login;
-
-      const data = await api.get<ApiUser[]>("/user/all-user-for-company", {
-        params,
-      });
-      setUsers(Array.isArray(data) ? data.map(mapApiUser) : []);
+      const page = filters.page ?? 1;
+      const limit = filters.limit ?? 10;
+      const { rows, pagination: meta } = await fetchPaginatedList<ApiUser>(
+        "/user/all-user-for-company",
+        {
+          page,
+          limit,
+          searchTerm: filters.searchTerm,
+          role: filters.role,
+          email: filters.email,
+          login: filters.login,
+        },
+      );
+      const list = Array.isArray(rows) ? rows : [];
+      setUsers(list.map(mapApiUser));
+      setPagination(meta ?? FALLBACK_LIST_PAGINATION);
     } catch (err) {
       setLoadError("Couldn't load users. Please try again.");
       alertApiError(err, "Couldn't load users.");
+      setUsers([]);
+      setPagination(FALLBACK_LIST_PAGINATION);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Refetch whenever page, page size, search, role, or login filter change.
+  // Email filter is applied via Apply / Enter (see applyFilters).
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  // Build the active filter set and refetch from the API.
-  // `overrides` lets the role buttons apply immediately while keeping the
-  // current email/login inputs.
-  const applyFilters = (
-    overrides: { role?: string; email?: string; login?: typeof loginFilter } = {},
-  ) => {
-    const uiRole = overrides.role ?? roleFilter;
-    const email = overrides.email ?? emailFilter;
-    const login = overrides.login ?? loginFilter;
-
-    setCurrentPage(1);
-    loadUsers({
-      role: roleFilterToApi[uiRole],
-      email: email.trim() || undefined,
-      login: login === "All" ? undefined : login === "Enabled",
+    void loadUsers({
+      page: currentPage,
+      limit: itemsPerPage,
+      searchTerm: searchTerm || undefined,
+      role: roleFilterToApi[roleFilter],
+      email: String(emailFilter || "").trim() || undefined,
+      login: loginFilter === "All" ? undefined : loginFilter === "Enabled",
     });
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- email applied via Apply button
+  }, [
+    loadUsers,
+    currentPage,
+    itemsPerPage,
+    searchTerm,
+    roleFilter,
+    loginFilter,
+  ]);
 
-  // Role buttons refetch immediately, preserving the other filters.
+  // Role buttons update filter state; useEffect reloads.
   const handleRoleFilter = (uiRole: string) => {
     setRoleFilter(uiRole);
-    applyFilters({ role: uiRole });
+    setCurrentPage(1);
+  };
+
+  // Apply email / login filters from the filter panel.
+  const applyFilters = () => {
+    setCurrentPage(1);
+    void loadUsers({
+      page: 1,
+      limit: itemsPerPage,
+      searchTerm: searchTerm || undefined,
+      role: roleFilterToApi[roleFilter],
+      email: String(emailFilter || "").trim() || undefined,
+      login: loginFilter === "All" ? undefined : loginFilter === "Enabled",
+    });
   };
 
   // Reset every filter and reload the full list.
@@ -203,9 +233,11 @@ export const UsersManagement: React.FC = () => {
     setRoleFilter("All");
     setEmailFilter("");
     setLoginFilter("All");
+    setSearchInput("");
+    setSearchTerm("");
     setCurrentPage(1);
-    loadUsers();
   };
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -251,29 +283,27 @@ export const UsersManagement: React.FC = () => {
     loginStatus: "Enabled" as "Enabled" | "Disabled",
   });
 
-  // Filter users based on search term
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.mobile.includes(searchTerm),
-  );
-
-  // Pagination
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
-  );
+  const totalPages = Math.max(1, pagination.totalPage || 1);
+  const totalData = pagination.totalData ?? users.length;
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    setCurrentPage(Math.min(Math.max(1, page), totalPages));
   };
 
   const handleItemsPerPageChange = (value: number) => {
     setItemsPerPage(value);
     setCurrentPage(1);
   };
+
+  const reloadCurrentList = () =>
+    loadUsers({
+      page: currentPage,
+      limit: itemsPerPage,
+      searchTerm: searchTerm || undefined,
+      role: roleFilterToApi[roleFilter],
+      email: String(emailFilter || "").trim() || undefined,
+      login: loginFilter === "All" ? undefined : loginFilter === "Enabled",
+    });
 
   // ── Permission catalog helpers ───────────────────────────────────────────
   // Load the catalog once; cached in state so re-opening the modal is instant.
@@ -396,8 +426,7 @@ export const UsersManagement: React.FC = () => {
       });
       setShowCreateModal(false);
       setCreateForm(emptyCreateForm);
-      // Refresh the list so the new user shows up.
-      await loadUsers();
+      await reloadCurrentList();
       showToast("User created successfully!");
     } catch (err) {
       alertApiError(err, "Couldn't create user.");
@@ -460,9 +489,9 @@ export const UsersManagement: React.FC = () => {
     setDeleting(true);
     try {
       await api.delete(`/user/delete/${selectedUser.id}`);
-      setUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
       setShowDeleteModal(false);
       setSelectedUser(null);
+      await reloadCurrentList();
       showToast("User deleted successfully!");
     } catch (err) {
       alertApiError(err, "Couldn't delete user.");
@@ -535,98 +564,103 @@ export const UsersManagement: React.FC = () => {
   };
 
   return (
-    <div className="module-page-shell">
-      <div className="max-w-[1600px] mx-auto">
-        {/* Success Toast */}
-        {showSuccessToast && (
-          <div className="fixed top-4 right-4 z-50 animate-slide-in">
-            <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              {successMessage}
-            </div>
-          </div>
-        )}
-
-        {/* Breadcrumb */}
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span>Dashboard</span>
-            <span>/</span>
-            <span className="text-gray-900 font-medium">Users</span>
-          </div>
-
-          {/* Language Selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <Globe className="w-4 h-4" />
-              {languages.find((lang) => lang.code === selectedLanguage)?.name}
-              <ChevronRight className="w-3 h-3 rotate-90" />
-            </button>
-            {showLanguageDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowLanguageDropdown(false)}
-                />
-                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-                  {languages.map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => {
-                        setSelectedLanguage(lang.code);
-                        setShowLanguageDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg flex items-center gap-2 ${
-                        selectedLanguage === lang.code
-                          ? "bg-blue-50 text-blue-600"
-                          : "text-gray-700"
-                      }`}
-                    >
-                      <span>{lang.flag}</span>
-                      {lang.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+    <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
+      {showSuccessToast && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+          <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            {successMessage}
           </div>
         </div>
+      )}
 
-        {/* Header */}
-        <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-              Manage Users
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage system users, roles, and access permissions
-            </p>
+      <div className="dashboard-title-bar shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Manage Users</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Manage system users, roles, and access permissions
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add New User
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="max-w-[1600px] mx-auto">
+        {/* User Summary Stats — top */}
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-blue-600 font-medium">Total Users</div>
+                <div className="text-2xl font-bold text-gray-900">{totalData}</div>
+                <div className="text-xs text-gray-500 mt-1">All accounts</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Users className="w-5 h-5 text-blue-600" />
+              </div>
+            </div>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add New User
-          </button>
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-green-600 font-medium">Active Users</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {users.filter((u) => u.loginStatus === "Enabled").length}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Login enabled</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <UserCheck className="w-5 h-5 text-green-600" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-purple-600 font-medium">Roles</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {new Set(users.map((u) => u.role)).size}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Different roles</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-purple-600" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl p-4 border border-gray-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-orange-600 font-medium">Disabled</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {users.filter((u) => u.loginStatus === "Disabled").length}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Login disabled</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                <XCircle className="w-5 h-5 text-orange-600" />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-300 p-4 mb-6">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -695,9 +729,8 @@ export const UsersManagement: React.FC = () => {
                   <select
                     value={loginFilter}
                     onChange={(e) => {
-                      const value = e.target.value as typeof loginFilter;
-                      setLoginFilter(value);
-                      applyFilters({ login: value });
+                      setLoginFilter(e.target.value as typeof loginFilter);
+                      setCurrentPage(1);
                     }}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
@@ -772,7 +805,7 @@ export const UsersManagement: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ) : paginatedUsers.length === 0 ? (
+                ) : users.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-12">
                       <div className="text-sm text-gray-500 text-center">
@@ -781,7 +814,7 @@ export const UsersManagement: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  paginatedUsers.map((user) => (
+                  users.map((user) => (
                   <tr
                     key={user.id}
                     className="hover:bg-gray-50 transition-colors"
@@ -887,9 +920,12 @@ export const UsersManagement: React.FC = () => {
             </div>
 
             <div className="text-sm text-gray-500">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-              {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{" "}
-              {filteredUsers.length} results
+              Showing{" "}
+              {totalData === 0
+                ? 0
+                : (currentPage - 1) * itemsPerPage + 1}{" "}
+              to {Math.min(currentPage * itemsPerPage, totalData)} of{" "}
+              {totalData} results
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -937,77 +973,6 @@ export const UsersManagement: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {/* User Summary Stats */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-blue-600 font-medium">
-                  Total Users
-                </div>
-                <div className="text-2xl font-bold text-blue-700">
-                  {users.length}
-                </div>
-                <div className="text-xs text-blue-500 mt-1">
-                  Active accounts
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-green-600 font-medium">
-                  Active Users
-                </div>
-                <div className="text-2xl font-bold text-green-700">
-                  {users.filter((u) => u.loginStatus === "Enabled").length}
-                </div>
-                <div className="text-xs text-green-500 mt-1">
-                  Currently active
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <UserCheck className="w-5 h-5 text-green-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-purple-600 font-medium">Roles</div>
-                <div className="text-2xl font-bold text-purple-700">
-                  {new Set(users.map((u) => u.role)).size}
-                </div>
-                <div className="text-xs text-purple-500 mt-1">
-                  Different roles
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-purple-600" />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-orange-600 font-medium">
-                  New This Month
-                </div>
-                <div className="text-2xl font-bold text-orange-700">8</div>
-                <div className="text-xs text-orange-500 mt-1">
-                  +23% vs last month
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                <UserPlus className="w-5 h-5 text-orange-600" />
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
