@@ -33,20 +33,30 @@ export function backendPdfType(docType: PdfDocType): string | undefined {
   return WEB_TO_PDF_TYPE[docType];
 }
 
-/** Fetch the backend PDF as a blob object URL, or null if unavailable. */
+/** True when this web doc-type has a real server PDF generator. */
+export function hasServerPdf(docType: PdfDocType): boolean {
+  return !!WEB_TO_PDF_TYPE[docType];
+}
+
+/** Fetch the backend PDF as a blob object URL, or null if unavailable.
+ *  `id` may be omitted — server returns a blank/sample PDF for that type
+ *  (used by PDF Settings preview so layout matches print exactly). */
 export async function fetchServerPdfUrl(
   docType: PdfDocType,
-  id: string | undefined,
+  id?: string,
+  opts?: { thermal?: boolean },
 ): Promise<string | null> {
   const type = WEB_TO_PDF_TYPE[docType];
-  if (!type || !id || !getToken()) return null;
+  if (!type || !getToken()) return null;
   try {
-    const res = await api.raw.post(
-      "/pdf/generate",
-      { type, id },
-      { responseType: "blob" },
-    );
-    return URL.createObjectURL(res.data as Blob);
+    const body: Record<string, unknown> = { type };
+    if (id) body.id = id;
+    if (opts?.thermal) body.thermal = true;
+    const res = await api.raw.post("/pdf/generate", body, { responseType: "blob" });
+    const blob = res.data as Blob;
+    // Auth/error responses sometimes arrive as JSON with blob content-type mishaps.
+    if (blob && blob.type && blob.type.includes("json")) return null;
+    return URL.createObjectURL(blob);
   } catch {
     return null;
   }

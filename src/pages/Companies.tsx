@@ -11,6 +11,15 @@ import { BankDetailsModal } from "../components/modals/BankDetailsModal";
 import { NotesModal } from "../components/modals/NotesModal";
 import { SignatureModal } from "../components/modals/SignatureModal";
 import { TeamModal } from "../components/modals/TeamModal";
+import { showToast } from "@/utils/toast";
+import {
+  fetchPrimaryCompanySignature,
+  createCompanySignature,
+  updateCompanySignature,
+  uploadSignatureImage,
+  resolveSignatureUrl,
+  type CompanySignature,
+} from "@/services/companySignaturesApi";
 import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import {
@@ -555,6 +564,7 @@ export const Companies: React.FC = () => {
   const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [companySignature, setCompanySignature] = useState<CompanySignature | null>(null);
   const [showTeamModal, setShowTeamModal] = useState(false);
 
   const loadCompanies = async () => {
@@ -580,7 +590,53 @@ export const Companies: React.FC = () => {
 
   useEffect(() => {
     void loadCompanies();
+    void fetchPrimaryCompanySignature()
+      .then(setCompanySignature)
+      .catch(() => setCompanySignature(null));
   }, []);
+
+  const openCompanySignature = () => {
+    void fetchPrimaryCompanySignature()
+      .then((s) => {
+        setCompanySignature(s);
+        setShowSignatureModal(true);
+      })
+      .catch(() => {
+        setCompanySignature(null);
+        setShowSignatureModal(true);
+      });
+  };
+
+  const saveCompanySignature = async (data: {
+    image: string;
+    name: string;
+    title: string;
+    date: string;
+  }) => {
+    try {
+      const imagePath = await uploadSignatureImage(
+        data.image,
+        `company-signature-${Date.now()}.png`,
+      );
+      const name =
+        data.name.trim() ||
+        selectedCompany?.businessName ||
+        "Authorized Signatory";
+      let saved: CompanySignature | null;
+      if (companySignature?.id) {
+        saved = await updateCompanySignature(companySignature.id, {
+          name,
+          image: imagePath,
+        });
+      } else {
+        saved = await createCompanySignature({ name, image: imagePath });
+      }
+      setCompanySignature(saved);
+      showToast("Company signature saved", "success");
+    } catch {
+      showToast("Couldn't save company signature", "error");
+    }
+  };
 
   useEffect(() => {
     const openCreate = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
@@ -627,7 +683,7 @@ export const Companies: React.FC = () => {
     else if (card.title === "Taxes") setShowTaxesModal(true);
     else if (card.title === "Bank Details") setShowBankDetailsModal(true);
     else if (card.title === "Notes") setShowNotesModal(true);
-    else if (card.title === "Signature") setShowSignatureModal(true);
+    else if (card.title === "Signature") openCompanySignature();
     else if (card.title === "Team") setShowTeamModal(true);
     else setSettingsModal({ open: true, tab: card.tab });
   };
@@ -647,7 +703,14 @@ export const Companies: React.FC = () => {
       {showBankDetailsModal && <BankDetailsModal onClose={() => setShowBankDetailsModal(false)} />}
       {showNotesModal && <NotesModal onClose={() => setShowNotesModal(false)} />}
       {showSignatureModal && (
-        <SignatureModal heading="Company Signature" onClose={() => setShowSignatureModal(false)} />
+        <SignatureModal
+          heading="Company Signature"
+          authorizedLabel="Authorized Signatory"
+          defaultName={companySignature?.name || selectedCompany?.businessName || ""}
+          initialImage={resolveSignatureUrl(companySignature?.image)}
+          onDone={saveCompanySignature}
+          onClose={() => setShowSignatureModal(false)}
+        />
       )}
       {showTeamModal && (
         <TeamModal onClose={() => setShowTeamModal(false)} companyEmail={selectedCompany?.email} />

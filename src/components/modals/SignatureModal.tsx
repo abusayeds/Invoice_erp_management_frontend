@@ -3,22 +3,33 @@ import { RotateCcw, Upload, Calendar } from "lucide-react";
 
 interface SignatureModalProps {
   onClose: () => void;
-  /** dialog heading — e.g. "Customer Signature" (reference) */
+  /** dialog heading — e.g. "Company Signature" / "Customer Signature" */
   heading?: string;
   /** prefill the Name field (contact person) */
   defaultName?: string;
+  /** existing signature image URL or data URL (edit mode) */
+  initialImage?: string;
+  /** label next to authorized checkbox */
+  authorizedLabel?: string;
   /** called on Done with the drawn signature + fields */
   onDone?: (data: { image: string; name: string; title: string; date: string }) => void;
 }
 
-export const SignatureModal: React.FC<SignatureModalProps> = ({ onClose, heading = "Signature", defaultName = "", onDone }) => {
+export const SignatureModal: React.FC<SignatureModalProps> = ({
+  onClose,
+  heading = "Signature",
+  defaultName = "",
+  initialImage = "",
+  authorizedLabel = "Authorized Signatory",
+  onDone,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [name, setName] = useState(defaultName);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(() => new Date().toLocaleDateString("en-US"));
-  const [authorizedSig, setAuthorizedSig] = useState("Receiver's Signature");
-  const [authorizedChecked, setAuthorizedChecked] = useState(false);
+  const [authorizedSig, setAuthorizedSig] = useState(authorizedLabel);
+  const [authorizedChecked, setAuthorizedChecked] = useState(true);
   const [penColor, setPenColor] = useState("#000000");
   const [thickness, setThickness] = useState(2);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -29,7 +40,25 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ onClose, heading
     onClose();
   };
 
-  /* init canvas */
+  const paintImage = (src: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const x = (canvas.width - img.width * scale) / 2;
+      const y = (canvas.height - img.height * scale) / 2;
+      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+    };
+    img.src = src;
+  };
+
+  /* init canvas (+ optional existing image for edit) */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -37,7 +66,8 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ onClose, heading
     if (!ctx) return;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, []);
+    if (initialImage) paintImage(initialImage);
+  }, [initialImage]);
 
   const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();

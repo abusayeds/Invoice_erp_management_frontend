@@ -9,7 +9,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { useCollection } from "./hooks";
-import { fetchServerPdfUrl } from "./serverPdf";
+import { fetchServerPdfUrl, hasServerPdf } from "./serverPdf";
 import { money } from "./format";
 import {
   type PdfDocType,
@@ -23,6 +23,10 @@ import {
   PDF_LOGO_PX,
 } from "./pdfSettings";
 import Logo from "../../assets/logo.png";
+import {
+  fetchPrimaryCompanySignature,
+  resolveSignatureUrl,
+} from "@/services/companySignaturesApi";
 
 /* ── demo company profile (backs the header block toggles) ─────── */
 const COMPANY = {
@@ -204,74 +208,94 @@ export const PdfDocPreview: React.FC<{
   partyId?: number;
   /** lock the document (e.g. packing slip for one selected invoice) */
   recordId?: number;
+  /** Mongo `_id` — preferred over Dexie lookup so preview always hits `/pdf/generate`. */
+  backendId?: string;
   className?: string;
-}> = ({ docType, mode, settings: s, partyId, recordId, className = "" }) => {
+}> = ({ docType, mode, settings: s, partyId, recordId, backendId, className = "" }) => {
   const { record, party, partyLabel, items, paymentsFor } = useDocData(docType, partyId, recordId);
 
-  // Prefer the real backend-rendered PDF for this record; fall back to the
-  // local render below if there's no backend id / it fails (keeps working
-  // offline and for unsaved drafts — no regression).
-  const backendId = record?._id ? String(record._id) : "";
+  // Prefer explicit backendId (from list/API), then Dexie `_id`.
+  const resolvedBackendId = String(backendId || record?._id || "").trim();
+  const useServer = hasServerPdf(docType);
   const [serverPdfUrl, setServerPdfUrl] = useState<string | null>(null);
-  // Loading while the backend PDF is being fetched (so we show a spinner, not
-  // the local mock). Only drops to the mock when there's no backend id or the
-  // request fails.
-  const [pdfLoading, setPdfLoading] = useState<boolean>(!!backendId);
+  const [pdfLoading, setPdfLoading] = useState<boolean>(useServer);
+  const [pdfFailed, setPdfFailed] = useState(false);
+
   useEffect(() => {
     let url: string | null = null;
     let alive = true;
-    if (backendId) {
-      setPdfLoading(true);
-      setServerPdfUrl(null);
-      fetchServerPdfUrl(docType, backendId).then((u) => {
-        url = u;
-        if (!alive) {
-          if (u) URL.revokeObjectURL(u);
-          return;
-        }
-        setServerPdfUrl(u);
-        setPdfLoading(false);
-      });
-    } else {
+    if (!useServer) {
       setPdfLoading(false);
       setServerPdfUrl(null);
+      setPdfFailed(false);
+      return () => {
+        alive = false;
+      };
     }
+    setPdfLoading(true);
+    setServerPdfUrl(null);
+    setPdfFailed(false);
+    fetchServerPdfUrl(docType, resolvedBackendId || undefined, {
+      thermal: mode === "thermal",
+    }).then((u) => {
+      url = u;
+      if (!alive) {
+        if (u) URL.revokeObjectURL(u);
+        return;
+      }
+      setServerPdfUrl(u);
+      setPdfFailed(!u);
+      setPdfLoading(false);
+    });
     return () => {
       alive = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [docType, backendId]);
+  }, [docType, resolvedBackendId, mode, useServer]);
 
-  // While the real PDF is loading, show a spinner — never the mock.
-  if (backendId && pdfLoading) {
+  // Server PDF types: never paint the local HTML mock (it diverges from print).
+  if (useServer) {
+    if (pdfLoading) {
+      return (
+        <div
+          className={className}
+          style={{ width: "100%", height: "100%", minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}
+        >
+          <div
+            className="animate-spin"
+            style={{ width: 44, height: 44, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%" }}
+          />
+        </div>
+      );
+    }
+    if (serverPdfUrl) {
+      return (
+        <div className={className} style={{ width: "100%", height: "100%", minHeight: "70vh", background: "#f3f4f6" }}>
+          <iframe
+            src={`${serverPdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+            title="Document PDF"
+            style={{ width: "100%", height: "100%", minHeight: "70vh", border: "none" }}
+          />
+        </div>
+      );
+    }
     return (
       <div
         className={className}
-        style={{ width: "100%", height: "100%", minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}
+        style={{ width: "100%", height: "100%", minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6", color: "#6b7280", fontSize: 14 }}
       >
-        <div
-          className="animate-spin"
-          style={{ width: 44, height: 44, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%" }}
-        />
+        {pdfFailed ? "Couldn't load PDF preview from server." : "No PDF preview available."}
       </div>
     );
   }
 
-  if (serverPdfUrl) {
-    // `#toolbar=0…` hides the browser's native PDF chrome so the document sits
-    // inside our own modal header/controls.
-    return (
-      <div className={className} style={{ width: "100%", height: "100%", minHeight: "70vh", background: "#f3f4f6" }}>
-        <iframe
-          src={`${serverPdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-          title="Document PDF"
-          style={{ width: "100%", height: "100%", minHeight: "70vh", border: "none" }}
-        />
-      </div>
-    );
-  }
-
-  const fmt = (d: any) => formatPdfDate(d, s.dateFormat);
+  // Statement (and any type without a server generator) — local layout only.
+  void party;
+  void partyLabel;
+  void items;
+  void paymentsFor;
+  void s;
+  void record;
   const fontPx = PDF_FONT_PX[s.fontSize];
   const family = PDF_FONT_STACK[s.font] || PDF_FONT_STACK.Arial;
   const accent = s.textColor;
@@ -364,18 +388,30 @@ export const PdfDocPreview: React.FC<{
     </div>
   );
 
-  const signature = (s.companySign === "Company" || s.contactSign) && !isStatement && (
+  const customerSigUrl = resolveSignatureUrl(record?.signature);
+  const showCompanySig = s.companySign === "Company" && !!companySigUrl;
+  const showCustomerSig = !!s.contactSign && !!customerSigUrl;
+
+  const signature = (showCompanySig || showCustomerSig) && !isStatement && (
     <div style={{ display: "flex", justifyContent: "space-between", padding: `${16 * pad}px ${8 * pad}px ${6 * pad}px` }}>
-      {s.companySign === "Company" ? (
+      {showCompanySig ? (
         <div style={{ textAlign: "center", order: s.companySignAlignment === "Left" ? 0 : 2 }}>
-          <Squiggle w={SIGN_W[s.signatureSize]} />
-          <div style={{ borderTop: `1px solid ${bc}`, fontSize: fontPx - 2, paddingTop: 3 }}>Company Signature</div>
+          <img
+            src={companySigUrl}
+            alt="Authorized Signatory"
+            style={{ maxHeight: SIGN_W[s.signatureSize] * 0.55, maxWidth: SIGN_W[s.signatureSize], objectFit: "contain", display: "block", margin: "0 auto" }}
+          />
+          <div style={{ borderTop: `1px solid ${bc}`, fontSize: fontPx - 2, paddingTop: 3 }}>Authorized Signatory</div>
         </div>
       ) : <span />}
       <span style={{ order: 1 }} />
-      {s.contactSign ? (
+      {showCustomerSig ? (
         <div style={{ textAlign: "center", alignSelf: "flex-end", order: s.contactSignAlignment === "Right" ? 2 : 0 }}>
-          <div style={{ height: SIGN_W[s.signatureSize] * 0.4 }} />
+          <img
+            src={customerSigUrl}
+            alt="Customer Signature"
+            style={{ maxHeight: SIGN_W[s.signatureSize] * 0.55, maxWidth: SIGN_W[s.signatureSize], objectFit: "contain", display: "block", margin: "0 auto" }}
+          />
           <div style={{ borderTop: `1px solid ${bc}`, fontSize: fontPx - 2, paddingTop: 3 }}>Customer Signature</div>
         </div>
       ) : <span />}
