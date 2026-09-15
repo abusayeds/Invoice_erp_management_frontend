@@ -801,7 +801,7 @@ export const ProjectsNew: React.FC = () => {
           </h2>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"
+            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
             title="Create Project"
           >
             <Plus className="w-5 h-5" />

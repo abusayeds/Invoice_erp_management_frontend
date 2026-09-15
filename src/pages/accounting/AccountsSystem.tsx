@@ -304,7 +304,7 @@ export const AccountingSystem: React.FC = () => {
         <h3 className="font-semibold text-gray-900">{title}</h3>
         <button
           onClick={onCreate}
-          className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"
+          className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
         </button>

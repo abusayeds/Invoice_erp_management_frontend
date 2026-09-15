@@ -1,19 +1,29 @@
 /**
  * File: src/pages/crm/CmsSystemSetup.tsx
- * CRM System Setup — rebuilt from the ERPGO reference in the Qayd light/blue
- * theme. Left tab rail: Pipelines · Lead Stages · Deal Stages · Labels ·
- * Sources. Stages & Labels are grouped under per-pipeline sub-tabs. Everything
- * (pipelines/stages/labels/sources) persists in the Dexie `meta` table under a
- * single `crm:setup` row (meta trick — no schema bump), mirroring appSettings.
+ * CRM System Setup — pipelines, stages, labels, sources via backend API.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import { api } from "@/lib/api/client";
-import { toArray } from "@/services/_http";
-import { db } from "../../lib/db";
 import { showToast } from "../../utils/toast";
+import {
+  fetchCrmSetupBundle,
+  createCrmPipeline,
+  updateCrmPipeline,
+  deleteCrmPipeline,
+  createCrmLeadStage,
+  updateCrmLeadStage,
+  deleteCrmLeadStage,
+  createCrmDealStage,
+  updateCrmDealStage,
+  deleteCrmDealStage,
+  createCrmLabel,
+  updateCrmLabel,
+  deleteCrmLabel,
+  createCrmSource,
+  updateCrmSource,
+  deleteCrmSource,
+} from "@/services/crmApi";
 import {
   Plus,
   Pencil,
@@ -36,12 +46,14 @@ interface Stage {
   id: string;
   name: string;
   pipeline: string;
+  pipelineId?: string;
   order: number;
 }
 interface Label {
   id: string;
   name: string;
   pipeline: string;
+  pipelineId?: string;
   color: string;
 }
 interface SetupData {
@@ -52,60 +64,12 @@ interface SetupData {
   sources: Named[];
 }
 
-const uid = () => Math.random().toString(36).slice(2, 10);
-const SETUP_KEY = "crm:setup";
-
-const DEFAULT_SETUP: SetupData = {
-  pipelines: [
-    { id: "pl1", name: "Marketing" },
-    { id: "pl2", name: "Lead Qualification" },
-    { id: "pl3", name: "Sales" },
-  ],
-  leadStages: [
-    ...["Prospect", "Contacted", "Engaged", "Qualified", "Converted"].map((n, i) => ({
-      id: uid(),
-      name: n,
-      pipeline: "Marketing",
-      order: i + 1,
-    })),
-    ...["New", "Attempted", "Working", "Qualified", "Unqualified"].map((n, i) => ({
-      id: uid(),
-      name: n,
-      pipeline: "Lead Qualification",
-      order: i + 1,
-    })),
-  ],
-  dealStages: [
-    ...["Campaign Launch", "Lead Generation", "Nurturing", "Qualification", "Handoff"].map((n, i) => ({
-      id: uid(),
-      name: n,
-      pipeline: "Marketing",
-      order: i + 1,
-    })),
-    ...["Prospecting", "Proposal", "Negotiation", "Closing", "Won"].map((n, i) => ({
-      id: uid(),
-      name: n,
-      pipeline: "Sales",
-      order: i + 1,
-    })),
-  ],
-  labels: [
-    { id: uid(), name: "First Visit", pipeline: "Marketing", color: "#ef4444" },
-    { id: uid(), name: "Return Visitor", pipeline: "Marketing", color: "#f97316" },
-    { id: uid(), name: "Content Downloaded", pipeline: "Marketing", color: "#3b82f6" },
-    { id: uid(), name: "Form Submitted", pipeline: "Marketing", color: "#22c55e" },
-    { id: uid(), name: "MQL Ready", pipeline: "Marketing", color: "#8b5cf6" },
-  ],
-  sources: [
-    "Content Marketing",
-    "Networking Events",
-    "Industry Publication",
-    "SEO Organic Search",
-    "Webinar Registration",
-    "Direct Mail Campaign",
-    "Partner Referral",
-    "Website Contact Form",
-  ].map((n) => ({ id: uid(), name: n })),
+const EMPTY_SETUP: SetupData = {
+  pipelines: [],
+  leadStages: [],
+  dealStages: [],
+  labels: [],
+  sources: [],
 };
 
 const LABEL_COLORS = [
@@ -119,67 +83,55 @@ const LABEL_COLORS = [
   "#14b8a6",
 ];
 
-function useSetup(): SetupData | undefined {
-  return useLiveQuery(async () => {
-    const row = await db.meta.get(SETUP_KEY);
-    return (row?.value as SetupData) || null;
-  }, []) as SetupData | undefined;
-}
-const saveSetup = (value: SetupData) => db.meta.put({ key: SETUP_KEY, value });
-
 // ─── Component ────────────────────────────────────────────────────────────────
 type TabId = "Pipelines" | "Lead Stages" | "Deal Stages" | "Labels" | "Sources";
 
 export const CrmSystemSetup: React.FC = () => {
   const navigate = useNavigate();
-  const stored = useSetup();
-  const data: SetupData = stored ?? DEFAULT_SETUP;
+  const [data, setData] = useState<SetupData>(EMPTY_SETUP);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (stored === null) saveSetup(DEFAULT_SETUP);
-  }, [stored]);
-
-  // Pull real CRM setup (pipelines/stages/labels/sources) from the backend.
-  useEffect(() => {
-    Promise.all([
-      api.raw.get("/crm/pipelines/all"),
-      api.raw.get("/crm/lead-stages/all"),
-      api.raw.get("/crm/deal-stages/all"),
-      api.raw.get("/crm/labels/all"),
-      api.raw.get("/crm/sources/all"),
-    ])
-      .then(([pl, ls, ds, lb, sr]) => {
-        const pipelines = toArray<any>(pl.data);
-        if (!pipelines.length) return;
-        const pipeName: Record<string, string> = {};
-        pipelines.forEach((p: any) => (pipeName[String(p._id)] = p.name ?? ""));
-        const pid = (v: any) => (v && typeof v === "object" ? String(v._id) : String(v || ""));
-        const stages = (raw: any) =>
-          toArray<any>(raw).map((s: any) => ({
-            id: String(s._id),
-            name: s.name ?? "",
-            pipeline: pipeName[pid(s.pipeline_id)] ?? "",
-            order: Number(s.order) || 0,
-          }));
-        const named = (raw: any) =>
-          toArray<any>(raw).map((x: any) => ({ id: String(x._id), name: x.name ?? "" }));
-        saveSetup({
-          pipelines: named(pl.data),
-          leadStages: stages(ls.data),
-          dealStages: stages(ds.data),
-          labels: toArray<any>(lb.data).map((l: any) => ({
-            id: String(l._id),
-            name: l.name ?? "",
-            pipeline: pipeName[pid(l.pipeline_id)] ?? "",
-            color: l.color ?? "#3b82f6",
-          })),
-          sources: named(sr.data),
-        });
-      })
-      .catch(() => {});
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const bundle = await fetchCrmSetupBundle();
+      const pipeName: Record<string, string> = {};
+      bundle.pipelines.forEach((p) => {
+        pipeName[p._id] = p.name;
+      });
+      const stages = (list: typeof bundle.leadStages) =>
+        list.map((s) => ({
+          id: s._id,
+          name: s.name,
+          pipeline: (s.pipeline_id && pipeName[s.pipeline_id]) || "",
+          pipelineId: s.pipeline_id || "",
+          order: s.order || 0,
+        }));
+      setData({
+        pipelines: bundle.pipelines.map((p) => ({ id: p._id, name: p.name })),
+        leadStages: stages(bundle.leadStages),
+        dealStages: stages(bundle.dealStages),
+        labels: bundle.labels.map((l) => ({
+          id: l._id,
+          name: l.name,
+          pipeline: (l.pipeline_id && pipeName[l.pipeline_id]) || "",
+          pipelineId: l.pipeline_id || "",
+          color: l.color || "#3b82f6",
+        })),
+        sources: bundle.sources.map((s) => ({ id: s._id, name: s.name })),
+      });
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't load system setup", "error");
+      setData(EMPTY_SETUP);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const commit = (next: SetupData) => saveSetup(next);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const [tab, setTab] = useState<TabId>("Pipelines");
   const pipelineNames = data.pipelines.map((p) => p.name);
@@ -203,6 +155,8 @@ export const CrmSystemSetup: React.FC = () => {
     { id: "Sources", icon: Globe },
   ];
 
+  const pipeIdByName = (name: string) => data.pipelines.find((p) => p.name === name)?.id || "";
+
   const openCreate = () => {
     setEditingId(null);
     setForm({ name: "", pipeline: activePipe || pipelineNames[0] || "", color: LABEL_COLORS[0] });
@@ -218,41 +172,66 @@ export const CrmSystemSetup: React.FC = () => {
     setModal(tab);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return showToast("Name is required", "info");
-    const next = { ...data };
-    if (tab === "Pipelines") {
-      if (editingId)
-        next.pipelines = data.pipelines.map((p) => (p.id === editingId ? { ...p, name: form.name.trim() } : p));
-      else next.pipelines = [...data.pipelines, { id: uid(), name: form.name.trim() }];
-    } else if (tab === "Sources") {
-      if (editingId)
-        next.sources = data.sources.map((s) => (s.id === editingId ? { ...s, name: form.name.trim() } : s));
-      else next.sources = [...data.sources, { id: uid(), name: form.name.trim() }];
-    } else if (tab === "Lead Stages" || tab === "Deal Stages") {
-      const key = tab === "Lead Stages" ? "leadStages" : "dealStages";
-      const list = data[key];
-      if (editingId)
-        next[key] = list.map((s) => (s.id === editingId ? { ...s, name: form.name.trim(), pipeline: form.pipeline } : s));
-      else {
-        const order = list.filter((s) => s.pipeline === form.pipeline).length + 1;
-        next[key] = [...list, { id: uid(), name: form.name.trim(), pipeline: form.pipeline, order }];
+    setSaving(true);
+    try {
+      const name = form.name.trim();
+      const pipeline_id = pipeIdByName(form.pipeline);
+      if (tab === "Pipelines") {
+        if (editingId) await updateCrmPipeline(editingId, name);
+        else await createCrmPipeline(name);
+      } else if (tab === "Sources") {
+        if (editingId) await updateCrmSource(editingId, name);
+        else await createCrmSource(name);
+      } else if (tab === "Lead Stages") {
+        if (!pipeline_id) {
+          showToast("Select a pipeline", "info");
+          setSaving(false);
+          return;
+        }
+        if (editingId) await updateCrmLeadStage(editingId, { name, pipeline_id });
+        else await createCrmLeadStage({ name, pipeline_id });
+      } else if (tab === "Deal Stages") {
+        if (!pipeline_id) {
+          showToast("Select a pipeline", "info");
+          setSaving(false);
+          return;
+        }
+        if (editingId) await updateCrmDealStage(editingId, { name, pipeline_id });
+        else await createCrmDealStage({ name, pipeline_id });
+      } else if (tab === "Labels") {
+        if (editingId) await updateCrmLabel(editingId, { name, color: form.color, pipeline_id: pipeline_id || undefined });
+        else await createCrmLabel({ name, color: form.color, pipeline_id: pipeline_id || undefined });
       }
-    } else if (tab === "Labels") {
-      if (editingId)
-        next.labels = data.labels.map((l) => (l.id === editingId ? { ...l, name: form.name.trim(), pipeline: form.pipeline, color: form.color } : l));
-      else next.labels = [...data.labels, { id: uid(), name: form.name.trim(), pipeline: form.pipeline, color: form.color }];
+      setModal(null);
+      showToast(editingId ? "Updated" : "Created", "success");
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't save", "error");
+    } finally {
+      setSaving(false);
     }
-    commit(next);
-    setModal(null);
-    showToast(editingId ? "Updated" : "Created", "success");
   };
 
-  const remove = (kind: keyof SetupData, id: string) => {
-    commit({ ...data, [kind]: (data[kind] as any[]).filter((x) => x.id !== id) } as SetupData);
+  const remove = async (kind: keyof SetupData, id: string) => {
+    setSaving(true);
+    try {
+      if (kind === "pipelines") await deleteCrmPipeline(id);
+      else if (kind === "leadStages") await deleteCrmLeadStage(id);
+      else if (kind === "dealStages") await deleteCrmDealStage(id);
+      else if (kind === "labels") await deleteCrmLabel(id);
+      else if (kind === "sources") await deleteCrmSource(id);
+      showToast("Deleted", "success");
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't delete", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const countFor = (list: { pipeline: string }[], pipe: string) =>
+    const countFor = (list: { pipeline: string }[], pipe: string) =>
     list.filter((s) => s.pipeline === pipe).length;
 
   // ── sub components ──
@@ -260,7 +239,7 @@ export const CrmSystemSetup: React.FC = () => {
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        <button onClick={openCreate} className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700">
+        <button onClick={openCreate} className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm">
           <Plus className="w-4 h-4" />
         </button>
       </div>
@@ -302,7 +281,7 @@ export const CrmSystemSetup: React.FC = () => {
             <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-semibold">{i + 1}</div>
             <span className="flex-1 text-sm text-gray-900">{s.name}</span>
             <button onClick={() => openEdit(s)} className="text-blue-600 hover:text-blue-800"><Pencil className="w-4 h-4" /></button>
-            <button onClick={() => remove(tab === "Lead Stages" ? "leadStages" : "dealStages", s.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => void remove(tab === "Lead Stages" ? "leadStages" : "dealStages", s.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
         {rows.length === 0 && <div className="text-center text-gray-400 py-8">No stages in this pipeline.</div>}
@@ -330,7 +309,7 @@ export const CrmSystemSetup: React.FC = () => {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <button onClick={() => openEdit(p)} className="text-blue-600 hover:text-blue-800"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => remove("pipelines", p.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => void remove("pipelines", p.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -365,7 +344,7 @@ export const CrmSystemSetup: React.FC = () => {
                   <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: l.color }} />
                   <span className="flex-1 text-sm text-gray-900">{l.name}</span>
                   <button onClick={() => openEdit(l)} className="text-blue-600 hover:text-blue-800"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => remove("labels", l.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => void remove("labels", l.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
               {rows.length === 0 && <div className="col-span-full text-center text-gray-400 py-8">No labels in this pipeline.</div>}
@@ -391,7 +370,7 @@ export const CrmSystemSetup: React.FC = () => {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <button onClick={() => openEdit(s)} className="text-blue-600 hover:text-blue-800"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => remove("sources", s.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => void remove("sources", s.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -496,7 +475,7 @@ export const CrmSystemSetup: React.FC = () => {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setModal(null)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button onClick={save} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">{editingId ? "Update" : "Create"}</button>
+              <button onClick={() => void save()} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : editingId ? "Update" : "Create"}</button>
             </div>
           </div>
         </div>

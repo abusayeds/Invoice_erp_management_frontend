@@ -26,6 +26,8 @@ import { SignatureBlock } from "@/components/ui/SignatureBlock";
 import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
+import { BillPaymentsModal } from "@/components/modals/BillPaymentsModal";
+import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
 import {
   Search,
@@ -83,7 +85,6 @@ const bills: Bill[] = [
 const sortFields = ["Name", "First Name", "Last Name", "Bill date", "Bill #", "Due Date", "Status", "Total"];
 const sortDirections = ["Ascending", "Descending"];
 const statusList: (Status | "All" | "Trash")[] = ["All", "Draft", "Sent", "Paid", "Partially Paid", "Overdue", "Trash"];
-const paymentMethods = ["Paypal", "Stripe", "Venmo", "Paypal Checkout", "Braintree", "Custom", "UPI", "Google Pay", "Apple Pay", "Square"];
 const duplicateAs = ["As Bill", "As Debit Note"];
 const BILL_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
 const BILL_TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
@@ -211,46 +212,6 @@ const AddVendorModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
-/* ── Add Payment modal ($ icon) — persists via onSave ──────────── */
-const PaymentModal: React.FC<{ onClose: () => void; bill: Bill; due: number; onSave: (amount: number, method: string, notes: string) => void }> = ({ onClose, bill, due, onSave }) => {
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState(paymentMethods[0]);
-  const [notes, setNotes] = useState("");
-  const amt = parseFloat(amount) || 0;
-  return (
-    <Overlay onClose={onClose}>
-      <div className="w-full max-w-lg my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className="text-base font-semibold text-gray-900">Add Payment</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button
-              onClick={() => amt > 0 && onSave(Math.min(amt, due), method, notes)}
-              disabled={amt <= 0}
-              className={`px-4 py-1.5 text-sm rounded-md ${amt <= 0 ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
-            >Save</button>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <FloatField label="Vendor" value={bill.name} />
-          <div className="grid grid-cols-2 gap-3"><FloatField label="Payment date" value={new Date().toLocaleDateString("en-US")} icon={<Calendar className="w-4 h-4" />} />
-            <div><label className="text-xs text-gray-500">Type</label><select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white">{paymentMethods.map((m) => <option key={m}>{m}</option>)}</select></div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Amount</label>
-            <div className="flex items-center gap-2 mt-1">
-              <button onClick={() => setAmount(due.toFixed(2))} className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap">Full Payment</button>
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white text-right" />
-            </div>
-            <div className="text-xs text-gray-400 text-right mt-1">{fmtMoney(due)} Due</div>
-          </div>
-          <div><label className="text-xs text-gray-500">Notes</label><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /></div>
-        </div>
-      </div>
-    </Overlay>
-  );
-};
-
 /* ── BILL preview (white document) ─────────────────────────────── */
 const PreviewModal: React.FC<{ onClose: () => void; bill: Bill }> = ({ onClose, bill }) => (
   <Overlay onClose={onClose}>
@@ -363,7 +324,7 @@ export const Bills: React.FC = () => {
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
+  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings" | "payment">(null);
   const [createMode, setCreateMode] = useState(!!navState?.openCreate);
   useEffect(() => {
     if (navState?.openCreate) {
@@ -450,24 +411,18 @@ export const Bills: React.FC = () => {
     const rec = dbBills.find((d) => d.id === selectedDb.id);
     await repo.update("bills", selectedDb.id, { activity: [...(rec?.activity || []), { kind, text, ts: Date.now(), dateLabel: nowLabel() }] });
   };
-  /** $ Add Payment — open Payment Made form with vendor + bill prefilled. */
-  const openBillPayment = () => {
-    const row = (backendBills?.rows ?? []).find((r) => {
-      const linked = dbBills.find((b) => String(b._id) === r._id);
-      return linked?.id === selectedId || r.number.replace(/^#/, "") === selected?.number?.replace(/^#/, "");
-    });
-    const vendorId = row?.vendorId || "";
-    navigate("/purchase/payment-made", {
-      state: {
-        openCreate: true,
-        vendorId,
-        vendorName: selected?.name || row?.vendorName,
-        billId: row?._id,
-        billNumber: selected?.number || row?.number,
-        dueAmount: row?.dueAmount ?? selectedDb.amountDue ?? 0,
-      },
-    });
-  };
+  const { data: paymentMethodOptions = [] } = useQuery({
+    queryKey: ["payment-methods-options"],
+    queryFn: fetchPaymentMethods,
+    staleTime: 60_000,
+  });
+
+  /** $ Add Payment — same split-pane modal as Invoice → Payment Received. */
+  const openBillPayment = () => setModal("payment");
+  const selectedBillRow = (backendBills?.rows ?? []).find((r) => {
+    const linked = dbBills.find((b) => String(b._id) === r._id);
+    return linked?.id === selectedId || r.number.replace(/^#/, "") === selected?.number?.replace(/^#/, "") || r._id === selected?.backendId;
+  });
   /** Create a debit note from this bill (⋮ Debit Note / Duplicate ▸ As Debit Note). */
   const createDebitNote = async () => {
     const n = await nextNumber("debitNotes");
@@ -804,6 +759,29 @@ export const Bills: React.FC = () => {
       )}
 
       {/* ════════ MODALS ════════ */}
+      {modal === "payment" && (
+        <BillPaymentsModal
+          open
+          bill={{
+            _id: String(selectedBillRow?._id || selected?.backendId || selectedDb._id || ""),
+            bill_number: (selectedBillRow?.number || selected?.number || selectedDb.number || "").replace(/^#/, ""),
+            currency: selectedBillRow?.currency || selectedDb.currency || "USD",
+            total: selectedBillRow?.amount ?? selectedDb.total ?? 0,
+            balance_amount: selectedBillRow?.dueAmount ?? selectedDb.amountDue ?? 0,
+            paid_amount: selectedBillRow?.paidAmount ?? selectedDb.amountPaid ?? 0,
+            vendor_id: selectedBillRow?.vendorId
+              ? { _id: selectedBillRow.vendorId, name: selectedBillRow.vendorName || selected?.name }
+              : selectedVendor._id
+                ? { _id: String(selectedVendor._id), name: selectedVendor.contact || selectedVendor.name }
+                : undefined,
+            vendor_name: selected?.name || selectedBillRow?.vendorName || "",
+            payment_method: [],
+          }}
+          paymentMethods={paymentMethodOptions}
+          onClose={() => setModal(null)}
+          onSaved={() => setModal(null)}
+        />
+      )}
       {modal === "settings" && <AppSettingsModal initialTab="Bill" onClose={() => setModal(null)} />}
       {modal === "preview" && (() => { const d: any = dbBills.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="bill" recordId={d.id} title={`Bill `} onClose={() => setModal(null)} />; })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} bill={selected} />}

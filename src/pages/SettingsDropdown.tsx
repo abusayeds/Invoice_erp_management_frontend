@@ -103,7 +103,7 @@ export const SettingsDropdown: React.FC = () => {
             {flyout === "language" && (
               <div className="mr-1 w-56 max-h-[min(70vh,520px)] overflow-y-auto rounded-md border border-gray-300 bg-gray-100 shadow-xl py-1">
                 {LANGUAGE_OPTIONS.map((lang) => (
-                  <button
+                <button
                     key={lang.code}
                     type="button"
                     onClick={() => {
@@ -114,10 +114,10 @@ export const SettingsDropdown: React.FC = () => {
                     className="w-full px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-200"
                   >
                     {lang.name}
-                  </button>
+                      </button>
                 ))}
-              </div>
-            )}
+        </div>
+      )}
 
             {/* Main gear menu */}
             <div className="w-64 rounded-md border border-gray-300 bg-gray-100 shadow-xl py-1">
@@ -140,10 +140,10 @@ export const SettingsDropdown: React.FC = () => {
                   {hasSubmenu && <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />}
                 </button>
               ))}
-            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+            </div>
 
       {activePage === "app-settings" && (
         <AppSettingsModal onClose={() => setActivePage(null)} />
@@ -199,7 +199,7 @@ export const SettingsDropdown: React.FC = () => {
                   : "max-w-4xl"
             }
           />
-        )}
+      )}
     </>
   );
 };

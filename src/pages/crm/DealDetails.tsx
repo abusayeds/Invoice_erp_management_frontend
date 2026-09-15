@@ -13,7 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { showToast } from "../../utils/toast";
 import { useCollection } from "../../lib/db";
-import { sampleDeals } from "./Deals";
+import type { Deal } from "./Deals";
 import {
   useDealDetail,
   saveDealDetail,
@@ -87,29 +87,34 @@ export const DealDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
-  // Fetch the real deal from the backend; fall back to the sample by id.
-  const [deal, setDeal] = useState(() => sampleDeals.find((d) => d.id === id));
+  // Fetch the real deal from the backend.
+  const [deal, setDeal] = useState<Deal | undefined>(undefined);
   useEffect(() => {
     if (!id) return;
     api.raw.get(`/crm/deals/${id}`).then((res) => {
       const d = (res.data?.data ?? res.data) as any;
       if (!d || !d._id) return;
       const nm = (v: any) => (v && typeof v === "object" ? v.name ?? "" : "");
+      const idOf = (v: any) => (v && typeof v === "object" ? String(v._id) : String(v || ""));
       setDeal({
         id: String(d._id),
         name: d.name ?? "",
         price: Number(d.price) || 0,
         tasks: { completed: (d.tasks ?? []).filter((t: any) => t.status === "completed" || t.completed).length, total: (d.tasks ?? []).length },
         clients: (d.clients ?? []).map((c: any) => c?.name ?? c).filter(Boolean),
+        clientIds: (d.clients ?? []).map((c: any) => idOf(c)).filter(Boolean),
         stage: nm(d.stage_id),
+        stageId: idOf(d.stage_id),
         status: d.status === "Won" ? "Won" : d.status === "Lost" ? "Lost" : "Active",
         phone: d.phone ?? "",
         pipeline: nm(d.pipeline_id),
+        pipelineId: idOf(d.pipeline_id),
         sources: (d.sources ?? []).map((s: any) => s?.name ?? s).filter(Boolean),
+        sourceIds: (d.sources ?? []).map((s: any) => idOf(s)).filter(Boolean),
         products: (d.products ?? []).map((p: any) => p?.productName ?? p?.name ?? p).filter(Boolean),
         notes: d.notes ?? "",
         createdAt: d.createdAt ?? "",
-      } as any);
+      });
       // Seed the local detail from the REAL, company-scoped deal document.
       saveDealDetail(id, leadDetailFromApi(d));
     }).catch(() => {});
@@ -348,7 +353,7 @@ export const DealDetail: React.FC = () => {
       <div className="flex items-center justify-between px-5 py-4">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         {onAdd && (
-          <button onClick={onAdd} className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700">
+          <button onClick={onAdd} className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm">
             <Plus className="w-4 h-4" />
           </button>
         )}

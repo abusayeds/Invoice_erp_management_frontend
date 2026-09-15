@@ -57,7 +57,7 @@ function Panel({
         </div>
         <button
           onClick={onAdd}
-          className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700"
+          className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
           title={`Add ${title.toLowerCase()}`}
         >
           <Plus className="w-4 h-4" />

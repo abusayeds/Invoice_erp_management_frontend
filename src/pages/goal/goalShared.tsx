@@ -64,7 +64,7 @@ export function ListShell({
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           {onCreate && (
-            <button onClick={onCreate} title={`Create ${current.toLowerCase()}`} className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700">
+            <button onClick={onCreate} title={`Create ${current.toLowerCase()}`} className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm">
               <Plus className="w-5 h-5" />
             </button>
           )}

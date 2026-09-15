@@ -13,7 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { showToast } from "../../utils/toast";
 import { useCollection } from "../../lib/db";
-import { sampleLeads, users as ASSIGNABLE_USERS } from "./Leads";
+import type { Lead } from "./Leads";
 import {
   useLeadDetail,
   saveLeadDetail,
@@ -89,8 +89,8 @@ export const LeadDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
-  // Fetch the real lead from the backend; fall back to the sample by id.
-  const [lead, setLead] = useState(() => sampleLeads.find((l) => l.id === id));
+  // Fetch the real lead from the backend.
+  const [lead, setLead] = useState<Lead | undefined>(undefined);
   useEffect(() => {
     if (!id) return;
     api.raw.get(`/crm/leads/${id}`).then((res) => {
@@ -104,11 +104,13 @@ export const LeadDetail: React.FC = () => {
         phone: l.phone ?? "",
         subjects: l.subject ?? "",
         assignedTo: (l.assigned_users ?? []).map((u: any) => u?.name ?? u).filter(Boolean),
+        assignedUserIds: (l.assigned_users ?? []).map((u: any) => (u && typeof u === "object" ? String(u._id) : String(u))).filter(Boolean),
         tasks: [],
         followUpDate: l.date ? String(l.date).slice(0, 10) : "",
         stage: nm(l.stage_id) || "Lead",
+        stageId: l.stage_id && typeof l.stage_id === "object" ? String(l.stage_id._id) : String(l.stage_id || ""),
         createdAt: l.createdAt ?? "",
-      } as any);
+      });
       // Seed the local detail from the REAL, company-scoped lead document
       // (embedded tasks/calls/emails/discussions + assigned refs) — never demo.
       saveLeadDetail(id, leadDetailFromApi(l));
@@ -376,7 +378,7 @@ export const LeadDetail: React.FC = () => {
         {onAdd && (
           <button
             onClick={onAdd}
-            className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700"
+            className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
           </button>

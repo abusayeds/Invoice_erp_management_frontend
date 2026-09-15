@@ -801,7 +801,7 @@ export const Awards: React.FC = () => {
           <h2 className="text-lg font-semibold text-gray-900">Manage Awards</h2>
           <button
             onClick={openCreateModal}
-            className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"
+            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
           </button>

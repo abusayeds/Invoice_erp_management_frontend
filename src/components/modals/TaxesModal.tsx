@@ -353,7 +353,7 @@ export const TaxesModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             )}
             <button
               onClick={() => setFabMenu(!fabMenu)}
-              className="w-12 h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-lg transition-colors"
+              className="w-12 h-12 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center shadow-lg transition-colors"
               title="Add tax"
             >
               <Plus className="w-6 h-6" />

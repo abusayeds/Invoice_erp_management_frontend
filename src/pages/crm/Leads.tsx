@@ -5,11 +5,18 @@
  * Design matches provided screenshot and existing component patterns
  */
 
-import React, { useState, useMemo, useEffect } from "react";
-import { api } from "@/lib/api/client";
-import { toArray } from "@/services/_http";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
+import {
+  fetchCrmLeads,
+  createCrmLead,
+  updateCrmLead,
+  deleteCrmLead,
+  fetchCrmLeadStages,
+  fetchCrmUsers,
+  type CrmNamed,
+} from "@/services/crmApi";
 import {
   Search,
   Plus,
@@ -52,167 +59,35 @@ export interface Lead {
   email: string;
   phone: string;
   subjects: string;
-  assignedTo: string[]; // user IDs or names
+  assignedTo: string[];
+  assignedUserIds?: string[];
   tasks: LeadTask[];
   followUpDate: string;
-  stage:
-    | "Lead"
-    | "Contacted"
-    | "Prospect"
-    | "Qualified"
-    | "Engaged"
-    | "Converted";
+  stage: string;
+  stageId?: string;
   createdAt: string;
 }
 
-// ─── Sample Data (based on screenshot) ───────────────────────────────────────
+// Live lists come from API — empty exports kept for LeadDetail import compat.
+export const users: User[] = [];
+export const sampleLeads: Lead[] = [];
 
-export const users: User[] = [
-  { id: "1", name: "John Smith" },
-  { id: "2", name: "Jane Doe" },
-  { id: "3", name: "Michael Brown" },
-  { id: "4", name: "Sarah Wilson" },
-];
+const mapLeadRow = (row: import("@/services/crmApi").CrmLeadRow): Lead => ({
+  id: row._id,
+  name: row.name,
+  email: row.email,
+  phone: row.phone,
+  subjects: row.subject,
+  assignedTo: row.assignedUsers.map((u) => u.name),
+  assignedUserIds: row.assignedUsers.map((u) => u._id),
+  tasks: [],
+  followUpDate: row.date,
+  stage: row.stageName,
+  stageId: row.stageId,
+  createdAt: row.createdAt,
+});
 
-export const sampleLeads: Lead[] = [
-  {
-    id: "1",
-    name: "Jaxon Russell",
-    email: "jaxon.russell@example.com",
-    phone: "+1234567890",
-    subjects: "AI Implementation",
-    assignedTo: ["John Smith"],
-    tasks: [
-      { id: "t1", title: "Initial call", completed: false },
-      { id: "t2", title: "Send proposal", completed: false },
-    ],
-    followUpDate: "2026-02-06",
-    stage: "Converted",
-    createdAt: "2026-01-15",
-  },
-  {
-    id: "2",
-    name: "Skylar Alexander",
-    email: "skylar.alexander@example.com",
-    phone: "+1234567891",
-    subjects: "API Integration",
-    assignedTo: ["Jane Doe"],
-    tasks: [
-      { id: "t3", title: "Technical discussion", completed: false },
-      { id: "t4", title: "Share documentation", completed: false },
-    ],
-    followUpDate: "2026-02-02",
-    stage: "Qualified",
-    createdAt: "2026-01-16",
-  },
-  {
-    id: "3",
-    name: "Maverick Bryant",
-    email: "maverick.bryant@example.com",
-    phone: "+1234567892",
-    subjects: "Marketing Automation",
-    assignedTo: ["Michael Brown"],
-    tasks: [{ id: "t5", title: "Demo presentation", completed: true }],
-    followUpDate: "2026-01-23",
-    stage: "Engaged",
-    createdAt: "2026-01-10",
-  },
-  {
-    id: "4",
-    name: "Savannah Henderson",
-    email: "savannah.henderson@example.com",
-    phone: "+1234567893",
-    subjects: "Platform Migration",
-    assignedTo: ["Sarah Wilson"],
-    tasks: [{ id: "t6", title: "Site audit", completed: true }],
-    followUpDate: "2026-01-09",
-    stage: "Engaged",
-    createdAt: "2026-01-05",
-  },
-  {
-    id: "5",
-    name: "Kai Foster",
-    email: "kai.foster@example.com",
-    phone: "+1234567894",
-    subjects: "Custom Development",
-    assignedTo: ["John Smith", "Jane Doe"],
-    tasks: [
-      { id: "t7", title: "Requirements gathering", completed: true },
-      { id: "t8", title: "Quote sent", completed: true },
-      { id: "t9", title: "Follow-up call", completed: true },
-    ],
-    followUpDate: "2025-12-26",
-    stage: "Contacted",
-    createdAt: "2025-12-01",
-  },
-  {
-    id: "6",
-    name: "Aurora Simmons",
-    email: "aurora.simmons@example.com",
-    phone: "+1234567895",
-    subjects: "Service Integration",
-    assignedTo: ["Michael Brown"],
-    tasks: [
-      { id: "t10", title: "Initial contact", completed: true },
-      { id: "t11", title: "Demo setup", completed: true },
-      { id: "t12", title: "Proposal review", completed: true },
-    ],
-    followUpDate: "2025-12-13",
-    stage: "Contacted",
-    createdAt: "2025-11-20",
-  },
-  {
-    id: "7",
-    name: "Ezra Butler",
-    email: "ezra.butler@example.com",
-    phone: "+1234567896",
-    subjects: "Solution Consultation",
-    assignedTo: ["Sarah Wilson"],
-    tasks: [
-      { id: "t13", title: "Discovery call", completed: true },
-      { id: "t14", title: "ROI analysis", completed: true },
-    ],
-    followUpDate: "2025-11-18",
-    stage: "Prospect",
-    createdAt: "2025-10-25",
-  },
-  {
-    id: "8",
-    name: "Violet Richardson",
-    email: "violet.richardson@example.com",
-    phone: "+1234567897",
-    subjects: "Pricing Information",
-    assignedTo: ["John Smith"],
-    tasks: [
-      { id: "t15", title: "Quote prepared", completed: true },
-      { id: "t16", title: "Negotiation call", completed: true },
-      { id: "t17", title: "Contract sent", completed: true },
-    ],
-    followUpDate: "2025-10-11",
-    stage: "Prospect",
-    createdAt: "2025-09-30",
-  },
-  {
-    id: "9",
-    name: "Leo Ward",
-    email: "leo.ward@example.com",
-    phone: "+1234567898",
-    subjects: "Partnership Inquiry",
-    assignedTo: ["Jane Doe"],
-    tasks: [{ id: "t18", title: "Introduction call", completed: true }],
-    followUpDate: "2025-09-16",
-    stage: "Prospect",
-    createdAt: "2025-09-01",
-  },
-];
-
-type SortField =
-  | "name"
-  | "subjects"
-  | "assignedTo"
-  | "tasks"
-  | "followUpDate"
-  | "stage";
+type SortField = "name" | "subjects" | "assignedTo" | "tasks" | "followUpDate" | "stage";
 type SortDir = "asc" | "desc";
 
 // ─── Helper: get tasks count display ─────────────────────────────────────────
@@ -224,8 +99,8 @@ const getTasksDisplay = (tasks: LeadTask[]): string => {
 
 // ─── Helper: stage badge styling ─────────────────────────────────────────────
 
-const getStageBadge = (stage: Lead["stage"]) => {
-  const styles = {
+const getStageBadge = (stage: string) => {
+  const styles: Record<string, string> = {
     Lead: "bg-gray-100 text-gray-700",
     Contacted: "bg-blue-100 text-blue-700",
     Prospect: "bg-yellow-100 text-yellow-700",
@@ -233,44 +108,41 @@ const getStageBadge = (stage: Lead["stage"]) => {
     Engaged: "bg-orange-100 text-orange-700",
     Converted: "bg-green-100 text-green-700",
   };
-  return styles[stage];
+  return styles[stage] || "bg-gray-100 text-gray-700";
 };
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const Leads: React.FC = () => {
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<Lead[]>(sampleLeads);
-  // Load real leads from the backend (falls back to the sample list on failure).
-  useEffect(() => {
-    let alive = true;
-    api.raw
-      .get("/crm/leads/all")
-      .then((res) => {
-        const arr = toArray<any>(res.data);
-        if (!alive || !arr.length) return;
-        const nm = (v: any) => (v && typeof v === "object" ? v.name ?? "" : "");
-        const ymd = (v: any) => (v ? String(v).slice(0, 10) : "");
-        setLeads(
-          arr.map((l: any) => ({
-            id: String(l._id ?? l.id),
-            name: l.name ?? "",
-            email: l.email ?? "",
-            phone: l.phone ?? "",
-            subjects: l.subject ?? "",
-            assignedTo: (l.assigned_users ?? []).map((u: any) => u?.name ?? u).filter(Boolean),
-            tasks: [],
-            followUpDate: ymd(l.date),
-            stage: nm(l.stage_id) || "Lead",
-            createdAt: l.createdAt ?? "",
-          })) as Lead[],
-        );
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [stageOptions, setStageOptions] = useState<CrmNamed[]>([]);
+  const [userOptions, setUserOptions] = useState<{ _id: string; name: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rows, stages, crmUsers] = await Promise.all([
+        fetchCrmLeads(),
+        fetchCrmLeadStages(),
+        fetchCrmUsers(),
+      ]);
+      setLeads(rows.map(mapLeadRow));
+      setStageOptions(stages);
+      setUserOptions(crmUsers);
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't load leads", "error");
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -293,9 +165,9 @@ export const Leads: React.FC = () => {
     email: "",
     phone: "",
     subjects: "",
-    assignedTo: [] as string[],
+    assignedUserId: "",
     followUpDate: "",
-    stage: "Lead" as Lead["stage"],
+    stageId: "",
   });
 
   // ─── Sorting & Filtering ───────────────────────────────────────────────────
@@ -355,9 +227,9 @@ export const Leads: React.FC = () => {
       email: "",
       phone: "",
       subjects: "",
-      assignedTo: [],
+      assignedUserId: "",
       followUpDate: "",
-      stage: "Lead",
+      stageId: stageOptions[0]?._id || "",
     });
   };
 
@@ -374,9 +246,9 @@ export const Leads: React.FC = () => {
       email: lead.email,
       phone: lead.phone,
       subjects: lead.subjects,
-      assignedTo: lead.assignedTo,
+      assignedUserId: lead.assignedUserIds?.[0] || "",
       followUpDate: lead.followUpDate,
-      stage: lead.stage,
+      stageId: lead.stageId || "",
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -391,7 +263,7 @@ export const Leads: React.FC = () => {
     setShowDeleteModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       showToast("Name is required", "info");
       return;
@@ -404,57 +276,52 @@ export const Leads: React.FC = () => {
       showToast("Follow-up date is required", "info");
       return;
     }
-
-    if (isEditing && selectedLead) {
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === selectedLead.id
-            ? {
-                ...l,
-                name: formData.name.trim(),
-                email: formData.email.trim(),
-                phone: formData.phone.trim(),
-                subjects: formData.subjects.trim(),
-                assignedTo: formData.assignedTo,
-                followUpDate: formData.followUpDate,
-                stage: formData.stage,
-              }
-            : l,
-        ),
-      );
-      showToast("Lead updated successfully!", "success");
-      setShowEditModal(false);
-    } else {
-      const newId = (leads.length + 1).toString();
-      const newLead: Lead = {
-        id: newId,
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
         name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        subjects: formData.subjects.trim(),
-        assignedTo: formData.assignedTo,
-        tasks: [],
-        followUpDate: formData.followUpDate,
-        stage: formData.stage,
-        createdAt: new Date().toISOString().split("T")[0],
+        email: formData.email.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        subject: formData.subjects.trim(),
+        date: formData.followUpDate,
+        stage_id: formData.stageId || undefined,
+        assigned_users: formData.assignedUserId ? [formData.assignedUserId] : [],
       };
-      setLeads((prev) => [newLead, ...prev]);
-      showToast("Lead created successfully!", "success");
-      setShowCreateModal(false);
+      if (isEditing && selectedLead) {
+        await updateCrmLead(selectedLead.id, payload);
+        showToast("Lead updated successfully!", "success");
+        setShowEditModal(false);
+      } else {
+        await createCrmLead(payload);
+        showToast("Lead created successfully!", "success");
+        setShowCreateModal(false);
+      }
+      resetForm();
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't save lead", "error");
+    } finally {
+      setSaving(false);
     }
-    resetForm();
   };
 
-  const handleDelete = () => {
-    if (selectedLead) {
-      setLeads((prev) => prev.filter((l) => l.id !== selectedLead.id));
+  const handleDelete = async () => {
+    if (!selectedLead) return;
+    setSaving(true);
+    try {
+      await deleteCrmLead(selectedLead.id);
       showToast("Lead deleted successfully!", "success");
       setShowDeleteModal(false);
       setSelectedLead(null);
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't delete lead", "error");
+    } finally {
+      setSaving(false);
     }
   };
 
-  // ─── Sort Header Component ─────────────────────────────────────────────────
+// ─── Sort Header Component ─────────────────────────────────────────────────
 
   const SortHeader: React.FC<{ field: SortField; label: string }> = ({
     field,
@@ -651,18 +518,18 @@ export const Leads: React.FC = () => {
               User <span className="text-red-500">*</span>
             </label>
             <select
-              value={formData.assignedTo[0] || ""}
+              value={formData.assignedUserId}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  assignedTo: e.target.value ? [e.target.value] : [],
+                  assignedUserId: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
             >
               <option value="">Select User</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.name}>
+              {userOptions.map((u) => (
+                <option key={u._id} value={u._id}>
                   {u.name}
                 </option>
               ))}
@@ -694,26 +561,23 @@ export const Leads: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
             />
           </div>
-          {/* Stage — edit only (create defaults to Lead, matching reference) */}
-          {isEditing && (
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
-              <select
-                value={formData.stage}
-                onChange={(e) =>
-                  setFormData({ ...formData, stage: e.target.value as Lead["stage"] })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-              >
-                <option value="Lead">Lead</option>
-                <option value="Contacted">Contacted</option>
-                <option value="Prospect">Prospect</option>
-                <option value="Qualified">Qualified</option>
-                <option value="Engaged">Engaged</option>
-                <option value="Converted">Converted</option>
-              </select>
-            </div>
-          )}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
+            <select
+              value={formData.stageId}
+              onChange={(e) =>
+                setFormData({ ...formData, stageId: e.target.value })
+              }
+              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+            >
+              <option value="">Select stage</option>
+              {stageOptions.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
           <button
@@ -723,10 +587,11 @@ export const Leads: React.FC = () => {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
-            {isEditing ? "Update" : "Create"}
+            {saving ? "Saving…" : isEditing ? "Update" : "Create"}
           </button>
         </div>
       </div>
@@ -802,14 +667,17 @@ export const Leads: React.FC = () => {
         </div>
       </div>
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Leads</h2>
           <button
+            type="button"
             onClick={openCreateModal}
-            className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"
+            title="Create lead"
+            aria-label="Create lead"
+            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm mr-1"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-5 h-5" strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -875,67 +743,20 @@ export const Leads: React.FC = () => {
                   >
                     All
                   </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Lead");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Lead
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Contacted");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Contacted
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Prospect");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Prospect
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Qualified");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Qualified
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Engaged");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Engaged
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStageFilter("Converted");
-                      setCurrentPage(1);
-                      setShowFilters(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    Converted
-                  </button>
-                  <button
+                  {stageOptions.map((s) => (
+                    <button
+                      key={s._id}
+                      onClick={() => {
+                        setStageFilter(s.name);
+                        setCurrentPage(1);
+                        setShowFilters(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                                    <button
                     onClick={() => setShowFilters(false)}
                     className="w-full px-3 py-1.5 text-left text-sm text-blue-600 hover:bg-blue-50"
                   >

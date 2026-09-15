@@ -1,14 +1,15 @@
 /**
- * Navbar global search dropdown — live results + module filters.
- * Click input → module picker opens (default All); type → live results.
+ * Navbar global search — UI matches product screenshots.
+ * Uses remapped gray scale: gray-900 = light text, gray-100/200 = dark surfaces.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
   ChevronDown,
   Check,
   Loader2,
+  Calendar,
   Users,
   FileText,
   Receipt,
@@ -32,6 +33,7 @@ import {
   type GlobalSearchHit,
   type GlobalSearchModule,
 } from "@/services/globalSearchApi";
+import { dateBounds } from "@/services/dashboardSummaryApi";
 
 const MODULE_ICON: Record<Exclude<GlobalSearchModule, "All">, React.ElementType> = {
   Customers: Users,
@@ -57,15 +59,53 @@ const MODULE_ICON: Record<Exclude<GlobalSearchModule, "All">, React.ElementType>
   Companies: Building2,
 };
 
+const PERIOD_OPTIONS = [
+  "All",
+  "Today",
+  "This Week",
+  "Last Week",
+  "This Month",
+  "Last 30 Days",
+  "Last Month",
+  "Last 90 Days",
+  "This Quarter",
+  "Last Quarter",
+  "Last 6 Months",
+  "This Year",
+  "Last 12 Months",
+  "Last Year",
+  "This Financial Year",
+  "Last Financial Year",
+] as const;
+
+type PeriodOption = (typeof PERIOD_OPTIONS)[number];
+
+const moduleLabel = (m: GlobalSearchModule) => (m === "All" ? "All Modules" : m);
+
+const inPeriod = (dateLabel: string, period: PeriodOption): boolean => {
+  if (period === "All" || !dateLabel || dateLabel === "—") return true;
+  const d = new Date(dateLabel);
+  if (Number.isNaN(d.getTime())) return true;
+  try {
+    const { from, to } = dateBounds(period);
+    const t = d.getTime();
+    return t >= new Date(from).setHours(0, 0, 0, 0) && t <= new Date(to).setHours(23, 59, 59, 999);
+  } catch {
+    return true;
+  }
+};
+
 export const GlobalSearch: React.FC = () => {
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [module, setModule] = useState<GlobalSearchModule>("All");
-  const [rightFilter, setRightFilter] = useState("All");
+  const [period, setPeriod] = useState<PeriodOption>("All");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [open, setOpen] = useState(false);
   const [moduleMenuOpen, setModuleMenuOpen] = useState(false);
-  const [rightMenuOpen, setRightMenuOpen] = useState(false);
+  const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hits, setHits] = useState<GlobalSearchHit[]>([]);
   const [visibleCount, setVisibleCount] = useState(12);
@@ -75,7 +115,7 @@ export const GlobalSearch: React.FC = () => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setModuleMenuOpen(false);
-        setRightMenuOpen(false);
+        setPeriodMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", h);
@@ -96,7 +136,7 @@ export const GlobalSearch: React.FC = () => {
         const rows = await runGlobalSearch({
           query: q,
           module,
-          limit: Math.max(visibleCount, 20),
+          limit: Math.max(visibleCount, 24),
         });
         if (!cancelled) setHits(rows);
       } catch {
@@ -111,48 +151,64 @@ export const GlobalSearch: React.FC = () => {
     };
   }, [query, module, visibleCount]);
 
+  const filteredHits = useMemo(() => {
+    if (period === "All" && !customFrom && !customTo) return hits;
+    return hits.filter((h) => {
+      if (customFrom || customTo) {
+        const d = new Date(h.date);
+        if (Number.isNaN(d.getTime())) return true;
+        const t = d.getTime();
+        if (customFrom && t < new Date(customFrom).setHours(0, 0, 0, 0)) return false;
+        if (customTo && t > new Date(customTo).setHours(23, 59, 59, 999)) return false;
+        return true;
+      }
+      return inPeriod(h.date, period);
+    });
+  }, [hits, period, customFrom, customTo]);
+
   const reset = () => {
     setQuery("");
     setHits([]);
     setOpen(false);
     setModuleMenuOpen(false);
-    setRightMenuOpen(false);
+    setPeriodMenuOpen(false);
     setVisibleCount(12);
     setModule("All");
-    setRightFilter("All");
+    setPeriod("All");
+    setCustomFrom("");
+    setCustomTo("");
   };
 
   const openPanel = () => {
     setOpen(true);
-    setModuleMenuOpen(true);
-    setRightMenuOpen(false);
+    setPeriodMenuOpen(false);
+    setModuleMenuOpen(false);
   };
 
   const go = (hit: GlobalSearchHit) => {
     setOpen(false);
     setModuleMenuOpen(false);
+    setPeriodMenuOpen(false);
     setQuery("");
-    if (hit.selectedId) {
-      navigate(hit.path, { state: { selectedId: hit.selectedId } });
-    } else {
-      navigate(hit.path);
-    }
+    if (hit.selectedId) navigate(hit.path, { state: { selectedId: hit.selectedId } });
+    else navigate(hit.path);
   };
 
-  const shown = hits.slice(0, visibleCount);
+  const shown = filteredHits.slice(0, visibleCount);
   const hasQuery = query.trim().length > 0;
 
   return (
     <div className="relative flex-1 min-w-0" ref={rootRef}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none z-10" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-500 pointer-events-none z-10" />
       <input
         type="text"
-        placeholder="Search contact, invoice, estimate..."
+        placeholder="Search…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
           setModuleMenuOpen(false);
+          setPeriodMenuOpen(false);
           setVisibleCount(12);
         }}
         onFocus={openPanel}
@@ -161,40 +217,50 @@ export const GlobalSearch: React.FC = () => {
           if (e.key === "Escape") {
             setOpen(false);
             setModuleMenuOpen(false);
+            setPeriodMenuOpen(false);
             return;
           }
           if (e.key === "Enter" && shown[0]) go(shown[0]);
         }}
-        className="keep-box ua-field w-full pl-9 pr-16 py-2.5 text-sm border border-gray-200 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-600 rounded-md"
+        className="keep-box ua-field w-full h-12 pl-10 pr-14 text-[15px] rounded-md border border-gray-300 placeholder:text-gray-500 focus:outline-none focus:border-blue-600"
+        style={{ backgroundColor: "var(--surface-2)", color: "var(--color-base-900)" }}
       />
-      {query.trim() && (
+      {query.trim() ? (
         <button
           type="button"
           onClick={reset}
-          className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded"
+          className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs font-medium rounded hover:opacity-80"
+          style={{ color: "var(--color-base-900)" }}
           title="Reset"
         >
           Reset
         </button>
-      )}
+      ) : null}
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+0.4rem)] w-[min(92vw,480px)] max-h-[min(78vh,520px)] flex flex-col bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50">
-            <div className="relative">
+        <div
+          className="absolute left-0 top-[calc(100%+6px)] w-[min(92vw,460px)] rounded-md shadow-2xl border border-gray-300 z-50 overflow-visible"
+          style={{ backgroundColor: "var(--surface)", color: "var(--color-base-900)" }}
+        >
+          <div className="flex items-stretch gap-3 p-3">
+            <div className="relative flex-1 min-w-0">
               <button
                 type="button"
                 onClick={() => {
                   setModuleMenuOpen((o) => !o);
-                  setRightMenuOpen(false);
+                  setPeriodMenuOpen(false);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md border border-gray-200 bg-white max-w-[180px]"
+                className="w-full h-12 inline-flex items-center justify-between gap-2 px-3 text-[15px] border border-gray-300 rounded-md hover:border-gray-400"
+                style={{ backgroundColor: "var(--surface-2)", color: "var(--color-base-900)" }}
               >
-                <span className="truncate">{module}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                <span className="truncate">{moduleLabel(module)}</span>
+                <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
               </button>
               {moduleMenuOpen && (
-                <div className="absolute left-0 z-[60] mt-1 min-w-[200px] max-h-64 overflow-y-auto custom-scrollbar bg-white border border-gray-200 rounded-md shadow-xl py-1">
+                <div
+                  className="absolute left-0 top-[calc(100%+4px)] z-[70] w-full min-w-[260px] max-h-[min(80vh,520px)] overflow-y-auto custom-scrollbar border border-gray-300 rounded-md shadow-2xl py-1"
+                  style={{ backgroundColor: "var(--surface)", color: "var(--color-base-900)" }}
+                >
                   {GLOBAL_SEARCH_MODULES.map((opt) => (
                     <button
                       key={opt}
@@ -204,112 +270,166 @@ export const GlobalSearch: React.FC = () => {
                         setModuleMenuOpen(false);
                         setVisibleCount(12);
                       }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      className="w-full flex items-center justify-between gap-2 px-3 py-3.5 text-[15px] hover:bg-gray-100 text-left"
+                      style={{ color: "var(--color-base-900)" }}
                     >
-                      <span className="truncate">{opt}</span>
-                      {opt === module && <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+                      <span className="truncate">{opt === "All" ? "All" : opt}</span>
+                      {opt === module && <Check className="w-4 h-4 flex-shrink-0" />}
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative flex-1 min-w-0">
               <button
                 type="button"
                 onClick={() => {
-                  setRightMenuOpen((o) => !o);
+                  setPeriodMenuOpen((o) => !o);
                   setModuleMenuOpen(false);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md border border-gray-200 bg-white max-w-[120px]"
+                className="w-full h-12 inline-flex items-center justify-between gap-2 px-3 text-[15px] border border-gray-300 rounded-md hover:border-gray-400"
+                style={{ backgroundColor: "var(--surface-2)", color: "var(--color-base-900)" }}
               >
-                <span className="truncate">{rightFilter}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                <span className="truncate">{period}</span>
+                <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
               </button>
-              {rightMenuOpen && (
-                <div className="absolute right-0 z-[60] mt-1 min-w-[120px] overflow-y-auto custom-scrollbar bg-white border border-gray-200 rounded-md shadow-xl py-1">
-                  {["All"].map((opt) => (
+              {periodMenuOpen && (
+                <div
+                  className="absolute right-0 top-[calc(100%+4px)] z-[70] w-[min(92vw,300px)] max-h-[min(80vh,520px)] overflow-y-auto custom-scrollbar border border-gray-300 rounded-md shadow-2xl py-1"
+                  style={{ backgroundColor: "var(--surface)", color: "var(--color-base-900)" }}
+                >
+                  {PERIOD_OPTIONS.map((opt) => (
                     <button
                       key={opt}
                       type="button"
                       onClick={() => {
-                        setRightFilter(opt);
-                        setRightMenuOpen(false);
+                        setPeriod(opt);
+                        setCustomFrom("");
+                        setCustomTo("");
+                        setPeriodMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      className="w-full flex items-center justify-between gap-2 px-3 py-3.5 text-[15px] hover:bg-gray-100 text-left"
+                      style={{ color: "var(--color-base-900)" }}
                     >
                       <span>{opt}</span>
-                      {opt === rightFilter && <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+                      {opt === period && !customFrom && !customTo && (
+                        <Check className="w-4 h-4 flex-shrink-0" />
+                      )}
                     </button>
                   ))}
+                  <div className="border-t border-gray-300 mt-1 px-3 py-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm flex-1" style={{ color: "var(--color-base-900)" }}>
+                        Date Range
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customFrom && customTo) {
+                            setPeriod("All");
+                            setPeriodMenuOpen(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 hover:bg-gray-100"
+                        style={{ backgroundColor: "var(--surface-2)", color: "var(--color-base-900)" }}
+                      >
+                        Go
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 pl-6">
+                      <input
+                        type="date"
+                        value={customFrom}
+                        onChange={(e) => {
+                          setCustomFrom(e.target.value);
+                          setPeriod("All");
+                        }}
+                        className="keep-box ua-field flex-1 min-w-0 px-2 py-1.5 text-xs rounded"
+                      />
+                      <span className="text-gray-500 text-xs">–</span>
+                      <input
+                        type="date"
+                        value={customTo}
+                        onChange={(e) => {
+                          setCustomTo(e.target.value);
+                          setPeriod("All");
+                        }}
+                        className="keep-box ua-field flex-1 min-w-0 px-2 py-1.5 text-xs rounded"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[120px]">
-            {!hasQuery ? (
-              <div className="px-4 py-8 text-sm text-gray-500 text-center">
-                Select a module (default <span className="font-medium text-gray-700">All</span>), then type to search.
-              </div>
-            ) : loading && hits.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Searching…
-              </div>
-            ) : shown.length === 0 ? (
-              <div className="px-4 py-10 text-sm text-gray-500 text-center">Search result not found.</div>
-            ) : (
-              <ul>
-                {shown.map((hit) => {
-                  const Icon = MODULE_ICON[hit.module] || FileText;
-                  return (
-                    <li key={hit.id}>
-                      <button
-                        type="button"
-                        onClick={() => go(hit)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                      >
-                        <span className="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                          <Icon className="w-4 h-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm text-gray-900 truncate">
-                            <span className="font-medium">{hit.module}</span>
-                            <span className="text-gray-400"> • </span>
-                            <span>{hit.title}</span>
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
-                            <span className="truncate">{hit.number}</span>
-                            {hit.date !== "—" && (
-                              <>
-                                <span className="text-gray-300">·</span>
-                                <span className="whitespace-nowrap">{hit.date}</span>
-                              </>
+          {hasQuery && (
+            <div className="border-t border-gray-300">
+              <div className="max-h-[min(55vh,360px)] overflow-y-auto custom-scrollbar">
+                {loading && filteredHits.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Searching…
+                  </div>
+                ) : shown.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Search result not found.</div>
+                ) : (
+                  <ul>
+                    {shown.map((hit) => {
+                      const Icon = MODULE_ICON[hit.module] || FileText;
+                      return (
+                        <li key={hit.id}>
+                          <button
+                            type="button"
+                            onClick={() => go(hit)}
+                            className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-100 border-b border-gray-300 last:border-b-0 transition-colors"
+                          >
+                            <span className="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                              <Icon className="w-4 h-4" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[15px] truncate" style={{ color: "var(--color-base-900)" }}>
+                                <span className="font-medium">{hit.module}</span>
+                                <span className="text-gray-500"> • </span>
+                                <span>{hit.title}</span>
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+                                <span className="truncate">{hit.number}</span>
+                                {hit.date !== "—" && (
+                                  <>
+                                    <span className="text-gray-400">·</span>
+                                    <span className="whitespace-nowrap">{hit.date}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            {hit.amount !== "—" && (
+                              <span
+                                className="text-[15px] font-medium whitespace-nowrap flex-shrink-0"
+                                style={{ color: "var(--color-base-900)" }}
+                              >
+                                {hit.amount}
+                              </span>
                             )}
-                          </div>
-                        </div>
-                        {hit.amount !== "—" && (
-                          <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-shrink-0">
-                            {hit.amount}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          {hasQuery && shown.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setVisibleCount((n) => n + 12)}
-              className="w-full px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 border-t border-gray-200 text-center font-medium"
-            >
-              Show more results...
-            </button>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+              {shown.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((n) => n + 12)}
+                  className="w-full px-4 py-2.5 text-sm text-blue-500 hover:bg-gray-100 border-t border-gray-300 text-center"
+                >
+                  Show more results...
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

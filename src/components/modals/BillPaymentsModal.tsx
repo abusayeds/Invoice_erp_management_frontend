@@ -1,26 +1,35 @@
+/**
+ * Bill → Add Payment modal — same split-pane UX as InvoicePaymentsModal,
+ * with Vendor / Bill instead of Customer / Invoice (Payment Made).
+ */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Eye, FileText, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
-import { useCollection } from "@/lib/db";
-import type { BackendInvoiceDoc } from "@/services/invoicesApi";
+import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
+import { updateBill } from "@/services/billsApi";
 import {
-  createInvoicePayment,
-  deleteInvoicePayment,
-  deletePaymentReceived,
-  fetchInvoiceDirectPayments,
-  fetchPaymentReceived,
-  updateInvoicePayment,
-  updatePaymentReceived,
-  type BackendInvoicePaymentDoc,
-  type BackendPaymentReceivedDoc,
-} from "@/services/paymentReceivedApi";
+  createVendorPayment,
+  fetchVendorPayments,
+  type VendorPaymentListRow,
+} from "@/services/vendorPaymentsApi";
 import type { PaymentMethodOption } from "@/services/paymentMethodsApi";
-import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 
-interface InvoicePaymentsModalProps {
+export type BillPaymentDoc = {
+  _id: string;
+  bill_number?: string;
+  currency?: string;
+  total?: number;
+  balance_amount?: number;
+  paid_amount?: number;
+  vendor_id?: string | { _id?: string; name?: string; businessProfile?: { companyName?: string } };
+  vendor_name?: string;
+  payment_method?: string[];
+};
+
+interface BillPaymentsModalProps {
   open: boolean;
-  invoice: BackendInvoiceDoc | null;
+  bill: BillPaymentDoc | null;
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onSaved?: () => void;
@@ -34,20 +43,6 @@ const text = (value: unknown): string => {
 
 const numberValue = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0;
-
-const dateLabel = (value?: string): string => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-};
-
-const inputDateValue = (value?: string): string => {
-  if (!value) return new Date().toISOString().slice(0, 10);
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
-  return date.toISOString().slice(0, 10);
-};
 
 const todayInput = () => new Date().toISOString().slice(0, 10);
 
@@ -65,39 +60,23 @@ const currencyLabel = (amount: number, currency?: string) => {
   }
 };
 
-const customerName = (invoice: BackendInvoiceDoc | null) => {
-  if (!invoice) return "No Customer";
-  const customer = invoice.customer_id;
-  if (customer && typeof customer === "object") {
-    return customer.businessProfile?.companyName?.trim() || customer.name?.trim() || text(invoice.customer_name) || "No Customer";
+const vendorNameOf = (bill: BillPaymentDoc | null) => {
+  if (!bill) return "No Vendor";
+  const vendor = bill.vendor_id;
+  if (vendor && typeof vendor === "object") {
+    return vendor.businessProfile?.companyName?.trim() || vendor.name?.trim() || text(bill.vendor_name) || "No Vendor";
   }
-  return text(invoice.customer_name) || "No Customer";
+  return text(bill.vendor_name) || "No Vendor";
 };
 
-const customerSubtitle = (invoice: BackendInvoiceDoc | null) => {
-  const customer = invoice?.customer_id;
-  if (customer && typeof customer === "object") return text(customer.name);
-  return "";
+const vendorIdOf = (bill: BillPaymentDoc | null) => {
+  const vendor = bill?.vendor_id;
+  if (vendor && typeof vendor === "object") return text(vendor._id);
+  return text(vendor);
 };
 
-const firstPaymentMethod = (payment: BackendPaymentReceivedDoc) =>
-  Array.isArray(payment.payment_method) && payment.payment_method.length > 0
-    ? text(payment.payment_method[0]) || "Cash"
-    : "Cash";
-
-type UnifiedPayment = {
-  id: string;
-  serial: string;
-  invoiceNumber: string;
-  dateLabel: string;
-  timestamp: number;
-  amount: number;
-  currency: string;
-  method: string;
-  notes: string;
-  internalNotes: string;
-  source: "payment" | "paymentReceived";
-};
+const billNumberOf = (bill: BillPaymentDoc | null) =>
+  text(bill?.bill_number).replace(/^#/, "") || "—";
 
 const modalShell = "bg-white text-gray-900 border-gray-300";
 const modalSidebar = "bg-white border-gray-300";
@@ -131,7 +110,9 @@ const Dropdown: React.FC<{
       </button>
       {open && (
         <div
-          className={`absolute z-30 mt-2 min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}
+          className={`absolute z-30 mt-2 min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${
+            align === "right" ? "right-0" : "left-0"
+          } ${panelClass}`}
         >
           {children(() => setOpen(false))}
         </div>
@@ -140,17 +121,28 @@ const Dropdown: React.FC<{
   );
 };
 
-export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
+type UnifiedPayment = {
+  id: string;
+  serial: string;
+  billNumber: string;
+  dateLabel: string;
+  timestamp: number;
+  amount: number;
+  currency: string;
+  method: string;
+  notes: string;
+  internalNotes: string;
+};
+
+export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   open,
-  invoice,
+  bill,
   paymentMethods,
   onClose,
   onSaved,
 }) => {
   const queryClient = useQueryClient();
-  const localInvoices = useCollection<any>("invoices");
-  const localPaymentsReceived = useCollection<any>("paymentsReceived");
-  const [selectedPaymentId, setSelectedPaymentId] = useState<string>("");
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [showForm, setShowForm] = useState(true);
   const [paymentSerial, setPaymentSerial] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInput());
@@ -158,120 +150,76 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
-  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
-  const [customerId, setCustomerId] = useState("");
-  const [customerQuery, setCustomerQuery] = useState("");
-  const [customerOpen, setCustomerOpen] = useState(false);
-  const customerRef = useRef<HTMLDivElement>(null);
+  const [vendorId, setVendorId] = useState("");
+  const [vendorQuery, setVendorQuery] = useState("");
+  const [vendorOpen, setVendorOpen] = useState(false);
+  const vendorRef = useRef<HTMLDivElement>(null);
 
-  const invoiceId = invoice?._id ?? "";
-  const localInvoice = useMemo(() => localInvoices.find((item) => String(item._id) === invoiceId), [invoiceId, localInvoices]);
-  const invoiceCustomerId =
-    invoice?.customer_id && typeof invoice.customer_id === "object"
-      ? text(invoice.customer_id._id)
-      : text(invoice?.customer_id);
-  const dueAmount = numberValue(invoice?.balance_amount ?? invoice?.total);
+  const billId = bill?._id ?? "";
+  const billVendorId = vendorIdOf(bill);
+  const dueAmount = numberValue(bill?.balance_amount ?? bill?.total);
   const preferredMethods = useMemo(() => {
     const configured = paymentMethods.map((item) => item.name).filter(Boolean);
-    const invoiceSpecific = Array.isArray(invoice?.payment_method) ? invoice.payment_method.filter(Boolean) : [];
-    return [...new Set([...invoiceSpecific, ...configured])];
-  }, [invoice?.payment_method, paymentMethods]);
+    const billSpecific = Array.isArray(bill?.payment_method) ? bill.payment_method.filter(Boolean) : [];
+    return [...new Set([...billSpecific, ...configured])];
+  }, [bill?.payment_method, paymentMethods]);
 
   useEffect(() => {
     if (!open) return;
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
+    setVendorId(billVendorId);
+    setVendorQuery(vendorNameOf(bill));
     setPaymentDate(todayInput());
     setPaymentSerial("");
     setMethod(preferredMethods[0] || "Cash");
     setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setNotes("");
     setInternalNotes("");
-    setEditingPaymentId(null);
-  }, [open, preferredMethods, dueAmount, invoiceId]);
+  }, [open, preferredMethods, dueAmount, billId, billVendorId, bill]);
 
   const { data: paymentsData, isFetching } = useQuery({
-    queryKey: ["invoice-payments", invoiceId],
-    queryFn: async () => {
-      const [invoiceReceived, customerReceived, direct] = await Promise.all([
-        fetchPaymentReceived({ invoice_id: invoiceId, limit: 100, sort: "-date" }),
-        fetchPaymentReceived({ customer_id: invoiceCustomerId || undefined, limit: 100, sort: "-date" }),
-        fetchInvoiceDirectPayments(invoiceId),
-      ]);
-      return { received: [...invoiceReceived.rows, ...customerReceived.rows], direct };
-    },
-    enabled: open && !!invoiceId,
+    queryKey: ["bill-payments", billId],
+    queryFn: async () => fetchVendorPayments({ bill_id: billId, limit: 100, sort: "-payment_date" }),
+    enabled: open && !!billId,
     placeholderData: (prev) => prev,
   });
 
   const payments = useMemo<UnifiedPayment[]>(() => {
-    const received = (paymentsData?.received ?? []).map((payment, index) => ({
-      id: payment._id,
-      serial: text(payment.payment_number) || `PR-${String(index + 1).padStart(4, "0")}`,
-      invoiceNumber: text(payment.invoice_number) || text(invoice?.invoice_number),
-      dateLabel: dateLabel(payment.date ?? payment.createdAt),
-      timestamp: new Date(payment.date ?? payment.createdAt ?? 0).getTime() || 0,
-      amount: numberValue(payment.total ?? payment.sub_total),
-      currency: text(payment.currency) || text(invoice?.currency) || "USD",
-      method: firstPaymentMethod(payment),
-      notes: text(payment.notes),
-      internalNotes: text(payment.internal_notes),
-      source: "paymentReceived" as const,
-    }));
-    const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc, index) => ({
-      id: payment._id,
-      serial: text(payment.payment_number) || `PAY-${String(index + 1).padStart(4, "0")}`,
-      invoiceNumber: text(invoice?.invoice_number),
-      dateLabel: dateLabel(payment.payment_date ?? payment.createdAt),
-      timestamp: new Date(payment.payment_date ?? payment.createdAt ?? 0).getTime() || 0,
-      amount: numberValue(payment.amount),
-      currency: text(invoice?.currency) || "USD",
-      method: text(payment.payment_type) || "Cash",
-      notes: text(payment.notes),
-      internalNotes: text(payment.internal_notes),
-      source: "payment" as const,
-    }));
-    const local = localPaymentsReceived
-      .filter((payment) => {
-        if (localInvoice?.id && payment.invoiceId === localInvoice.id) return true;
-        if (invoiceCustomerId && String(payment.customerId) === String(localInvoice?.customerId ?? "")) return true;
-        return false;
-      })
-      .map((payment, index) => ({
-        id: `local-${payment.id}`,
-        serial: text(payment.number) || `PR-LOCAL-${String(index + 1).padStart(4, "0")}`,
-        invoiceNumber: text(payment.invoiceNumber) || text(invoice?.invoice_number),
-        dateLabel: dateLabel(payment.date),
-        timestamp: new Date(payment.date ?? 0).getTime() || 0,
-        amount: numberValue(payment.amount ?? payment.total ?? payment.subTotal),
-        currency: text(payment.currency) || text(invoice?.currency) || "USD",
-        method: text(payment.method) || "Cash",
-        notes: text(payment.notes),
-        internalNotes: text(payment.internalNotes),
-        source: "paymentReceived" as const,
-      }));
-    const merged = [...direct, ...received, ...local].sort((a, b) => b.timestamp - a.timestamp);
-    return merged.filter((payment, index, arr) => arr.findIndex((item) => item.id === payment.id && item.source === payment.source) === index);
-  }, [invoice, invoiceCustomerId, localInvoice, localPaymentsReceived, paymentsData]);
+    const rows = (paymentsData?.rows ?? []) as VendorPaymentListRow[];
+    return rows
+      .map((payment) => ({
+        id: payment._id,
+        serial: payment.number || "—",
+        billNumber: payment.billNo.replace(/^#/, "") || billNumberOf(bill),
+        dateLabel: payment.dateLabel,
+        timestamp: payment.paymentDateIso ? new Date(payment.paymentDateIso).getTime() || 0 : 0,
+        amount: payment.amount,
+        currency: text(bill?.currency) || "USD",
+        method: payment.method || "Cash",
+        notes: payment.note === "No Notes" ? "" : payment.note,
+        internalNotes: "",
+      }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [bill, paymentsData?.rows]);
 
-  const customerSearch = useQuery({
-    queryKey: ["invoice-payment-customers", customerQuery],
-    queryFn: async () => fetchCustomers({ page: 1, limit: 20, searchTerm: customerQuery.trim() || undefined }),
+  const vendorSearch = useQuery({
+    queryKey: ["bill-payment-vendors", vendorQuery],
+    queryFn: async () => fetchVendors({ page: 1, limit: 20, searchTerm: vendorQuery.trim() || undefined }),
     staleTime: 30_000,
     enabled: open && showForm,
   });
-  const customerOptions = customerSearch.data?.rows ?? [];
+  const vendorOptions: VendorListRow[] = vendorSearch.data?.rows ?? [];
+
   useEffect(() => {
     const handleMouseDown = (event: MouseEvent) => {
-      if (customerRef.current && !customerRef.current.contains(event.target as Node)) setCustomerOpen(false);
+      if (vendorRef.current && !vendorRef.current.contains(event.target as Node)) setVendorOpen(false);
     };
     document.addEventListener("mousedown", handleMouseDown);
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, []);
 
   const nextPaymentNumber = useMemo(
-    () => `PAY-${String(payments.filter((payment) => payment.source === "payment").length + 1).padStart(4, "0")}`,
-    [payments],
+    () => `PM-${String(payments.length + 1).padStart(4, "0")}`,
+    [payments.length],
   );
 
   const selectedPayment = payments.find((payment) => payment.id === selectedPaymentId) ?? payments[0] ?? null;
@@ -289,10 +237,9 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   const openCreateForm = () => {
     setShowForm(true);
-    setEditingPaymentId(null);
     setSelectedPaymentId("");
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
+    setVendorId(billVendorId);
+    setVendorQuery(vendorNameOf(bill));
     setPaymentSerial(nextPaymentNumber);
     setMethod(preferredMethods[0] || "Cash");
     setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
@@ -301,101 +248,46 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setInternalNotes("");
   };
 
-  const openEditForm = () => {
-    if (!selectedPayment) return;
-    setEditingPaymentId(selectedPayment.id);
-    setShowForm(true);
-    setSelectedPaymentId(selectedPayment.id);
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
-    setPaymentSerial(selectedPayment.serial);
-    setPaymentDate(inputDateValue(selectedPayment.dateLabel));
-    setMethod(selectedPayment.method || preferredMethods[0] || "Cash");
-    setAmount(selectedPayment.amount.toFixed(2));
-    setNotes(selectedPayment.notes);
-    setInternalNotes(selectedPayment.internalNotes);
-  };
-
   const refreshPayments = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["invoice-payments", invoiceId] });
-    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", invoiceId] });
+    await queryClient.invalidateQueries({ queryKey: ["bill-payments", billId] });
+    await queryClient.invalidateQueries({ queryKey: ["bills-backend-list"] });
+    await queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
   };
 
   const savePaymentMut = useMutation({
     mutationFn: async () => {
       const parsedAmount = Math.max(0, Number(amount) || 0);
       const serial = text(paymentSerial) || nextPaymentNumber;
-      if (editingPaymentId && selectedPayment) {
-        if (selectedPayment.source === "paymentReceived") {
-          return updatePaymentReceived(editingPaymentId, {
-            customer_id: customerId || invoiceCustomerId || undefined,
-            invoice_id: invoiceId || undefined,
-            invoice_number: text(invoice.invoice_number) || undefined,
-            payment_number: serial,
-            currency: text(invoice.currency) || undefined,
-            date: paymentDate,
-            payment_method: [method || "Cash"],
-            notes,
-            internal_notes: internalNotes,
-            total: parsedAmount,
-            sub_total: parsedAmount,
-            product: [],
-            service: [],
-          });
-        }
-        return updateInvoicePayment(editingPaymentId, {
-          customer_id: customerId || invoiceCustomerId,
-          invoice_id: invoiceId,
-          payment_number: serial,
-          payment_date: paymentDate,
-          payment_type: method || "Cash",
-          amount: parsedAmount,
-          notes,
-          internal_notes: internalNotes,
-          type: "invoice",
-        });
-      }
+      const vId = vendorId || billVendorId;
+      if (!vId) throw new Error("No vendor");
+      if (!billId) throw new Error("No bill");
 
-      return createInvoicePayment({
-        customer_id: customerId || invoiceCustomerId,
-        invoice_id: invoiceId,
-        payment_number: serial,
+      await createVendorPayment({
+        vendor_id: vId,
+        payment_amount: parsedAmount,
         payment_date: paymentDate,
-        payment_type: method || "Cash",
-        amount: parsedAmount,
-        notes,
-        internal_notes: internalNotes,
-        type: "invoice",
+        payment_method: [method || "Cash"],
+        notes: notes || undefined,
+        reference_number: serial,
+        allocations: [{ invoice_id: billId, allocated_amount: parsedAmount }],
+      });
+
+      const paid = numberValue(bill?.paid_amount) + parsedAmount;
+      const due = Math.max(0, dueAmount - parsedAmount);
+      await updateBill(billId, {
+        paid_amount: +paid.toFixed(2),
+        balance_amount: +due.toFixed(2),
+        status: due <= 0 ? "Paid" : "Partial",
       });
     },
     onSuccess: () => {
-      refreshPayments();
-      showToast(editingPaymentId ? "Payment updated" : "Payment saved", "success");
-      setEditingPaymentId(null);
+      void refreshPayments();
+      showToast("Payment saved", "success");
       setShowForm(false);
       onSaved?.();
     },
-    onError: () => {
-      showToast(editingPaymentId ? "Payment update failed" : "Payment save failed", "error");
-    },
-  });
-
-  const deletePaymentMut = useMutation({
-    mutationFn: async () => {
-      if (!selectedPayment) throw new Error("No payment selected");
-      if (selectedPayment.source === "paymentReceived") {
-        await deletePaymentReceived(selectedPayment.id);
-        return;
-      }
-      await deleteInvoicePayment(selectedPayment.id);
-    },
-    onSuccess: async () => {
-      await refreshPayments();
-      setSelectedPaymentId("");
-      showToast("Payment deleted", "success");
-    },
-    onError: () => {
-      showToast("Could not delete payment", "error");
+    onError: (err: any) => {
+      showToast(err?.message || "Payment save failed", "error");
     },
   });
 
@@ -422,8 +314,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             <div class="row">
               <div>
                 <div style="font-size:20px; font-weight:700;">info</div>
-                <div>${customerName(invoice)}</div>
-                <div>${customerSubtitle(invoice) || ""}</div>
+                <div>${vendorNameOf(bill)}</div>
               </div>
               <table>
                 <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
@@ -433,7 +324,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
               </table>
             </div>
             <div class="amount">${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
-            <div class="section"><strong>Invoice</strong><div>${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}</div></div>
+            <div class="section"><strong>Bill</strong><div>${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}</div></div>
             <div class="section"><strong>Notes</strong><div>${selectedPayment.notes || "No Notes"}</div></div>
             <div class="section"><strong>Internal Notes</strong><div>${selectedPayment.internalNotes || "No Internal Notes"}</div></div>
           </div>
@@ -444,7 +335,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     if (mode === "email") {
       const subject = encodeURIComponent(title);
       const mailBody = encodeURIComponent(
-        `Customer: ${customerName(invoice)}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
+        `Vendor: ${vendorNameOf(bill)}\nPayment #: ${selectedPayment.serial}\nBill: ${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
       );
       window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
       return;
@@ -461,7 +352,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     if (mode === "print") popup.print();
   };
 
-  if (!open || !invoice) return null;
+  if (!open || !bill) return null;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
@@ -478,11 +369,12 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
           <div className="flex h-full">
             <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
               <div className={`flex items-center border-b px-4 py-3 ${modalHeader}`}>
-                <h2 className="text-lg font-semibold">Payment Received</h2>
+                <h2 className="text-lg font-semibold">Payment Made</h2>
               </div>
 
               <div className={`border-b px-4 py-3 ${modalSidebar}`}>
                 <button
+                  type="button"
                   onClick={openCreateForm}
                   className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-gray-400"
                 >
@@ -497,21 +389,26 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                   return (
                     <button
                       key={payment.id}
+                      type="button"
                       onClick={() => {
                         setSelectedPaymentId(payment.id);
                         setShowForm(false);
                       }}
-                      className={`w-full border-b border-gray-300 px-4 py-3 text-left transition-colors ${active ? "bg-gray-100" : modalHover}`}
+                      className={`w-full border-b border-gray-300 px-4 py-3 text-left transition-colors ${
+                        active ? "bg-gray-100" : modalHover
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-gray-900">{customerName(invoice)}</div>
+                          <div className="truncate text-sm font-semibold text-gray-900">{vendorNameOf(bill)}</div>
                           <div className="mt-0.5 text-xs text-gray-500">{payment.serial}</div>
                           <div className="mt-0.5 truncate text-xs text-gray-500">{payment.notes || "No Notes"}</div>
                         </div>
                         <div className="flex max-w-[140px] min-w-0 flex-col items-end">
                           <span className="truncate text-xs text-gray-500">{payment.dateLabel}</span>
-                          <span className="mt-0.5 text-sm font-semibold text-gray-900">{currencyLabel(payment.amount, payment.currency)}</span>
+                          <span className="mt-0.5 text-sm font-semibold text-gray-900">
+                            {currencyLabel(payment.amount, payment.currency)}
+                          </span>
                           <span className="mt-0.5 w-full truncate text-right text-xs text-gray-500">{payment.method}</span>
                         </div>
                       </div>
@@ -526,7 +423,10 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
               <div className={`border-t px-4 py-3 text-center ${modalHeader}`}>
                 <div className="text-lg font-semibold text-gray-900">
-                  {currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice.currency))}
+                  {currencyLabel(
+                    payments.reduce((sum, item) => sum + item.amount, 0),
+                    text(bill.currency),
+                  )}
                 </div>
                 <div className="text-xs text-gray-500">
                   {payments.length} {payments.length === 1 ? "Payment" : "Payments"}
@@ -538,15 +438,16 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
               {showForm ? (
                 <div className="flex-1 overflow-y-auto border-0 bg-white">
                   <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 pr-14">
-                    <h3 className="text-lg font-semibold text-gray-900">{editingPaymentId ? "Edit Payment" : "Add Payment"}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Add Payment</h3>
                     <div className="flex items-center gap-2">
-                      <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
+                      <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
                         Cancel
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
-                          if (!invoiceCustomerId) {
-                            showToast("This invoice has no linked customer", "warning");
+                          if (!(vendorId || billVendorId)) {
+                            showToast("This bill has no linked vendor", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
@@ -557,9 +458,10 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                         Save
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
-                          if (!invoiceCustomerId) {
-                            showToast("This invoice has no linked customer", "warning");
+                          if (!(vendorId || billVendorId)) {
+                            showToast("This bill has no linked vendor", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
@@ -576,48 +478,62 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     <div className="space-y-4">
                       <div>
                         <label className="text-xs text-gray-500">Payment #</label>
-                        <input value={paymentSerial || nextPaymentNumber} onChange={(e) => setPaymentSerial(e.target.value)} className={fieldClass} />
+                        <input
+                          value={paymentSerial || nextPaymentNumber}
+                          onChange={(e) => setPaymentSerial(e.target.value)}
+                          className={fieldClass}
+                        />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500">Customer</label>
-                        <div className="relative" ref={customerRef}>
+                        <label className="text-xs text-gray-500">Vendor</label>
+                        <div className="relative" ref={vendorRef}>
                           <input
-                            value={customerQuery}
-                            onFocus={() => setCustomerOpen(true)}
-                            onChange={(e) => { setCustomerQuery(e.target.value); setCustomerOpen(true); }}
-                            placeholder="Search customer"
+                            value={vendorQuery}
+                            onFocus={() => setVendorOpen(true)}
+                            onChange={(e) => {
+                              setVendorQuery(e.target.value);
+                              setVendorOpen(true);
+                            }}
+                            placeholder="Search vendor"
                             className={fieldClass}
                           />
-                          {customerOpen && (
+                          {vendorOpen && (
                             <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                              {customerOptions.map((customer: TCustomerRow) => (
+                              {vendorOptions.map((vendor) => (
                                 <button
-                                  key={customer._id}
+                                  key={vendor._id}
                                   type="button"
                                   onClick={() => {
-                                    setCustomerId(customer._id);
-                                    setCustomerQuery(customer.name);
-                                    setCustomerOpen(false);
+                                    setVendorId(vendor._id);
+                                    setVendorQuery(vendor.name);
+                                    setVendorOpen(false);
                                   }}
                                   className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 >
-                                  {customer.name}
+                                  {vendor.name}
                                 </button>
                               ))}
-                              {customerOptions.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">No customers found</div>}
+                              {vendorOptions.length === 0 && (
+                                <div className="px-3 py-2 text-sm text-gray-400">No vendors found</div>
+                              )}
                             </div>
                           )}
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500">Invoice #</label>
-                        <input value={text(invoice.invoice_number)} readOnly className={fieldClass} />
+                        <label className="text-xs text-gray-500">Bill #</label>
+                        <input value={billNumberOf(bill)} readOnly className={fieldClass} />
                       </div>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                           <label className="text-xs text-gray-500">Payment date</label>
                           <div className="relative">
-                            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={`${fieldClass} pr-10`} />
+                            <input
+                              type="date"
+                              value={paymentDate}
+                              onChange={(e) => setPaymentDate(e.target.value)}
+                              className={`${fieldClass} pr-10`}
+                            />
                             <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                           </div>
                         </div>
@@ -636,20 +552,36 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <div>
                         <label className="text-xs text-gray-500">Amount</label>
                         <div className="mt-1 flex items-center gap-2">
-                          <button onClick={() => setAmount(dueAmount.toFixed(2))} className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">
+                          <button
+                            type="button"
+                            onClick={() => setAmount(dueAmount.toFixed(2))}
+                            className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                          >
                             Full Payment
                           </button>
-                          <input value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900" />
+                          <input
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                          />
                         </div>
                       </div>
                       <div className={`rounded-md border p-4 ${modalSection}`}>
                         <div className="text-sm text-gray-500">
-                          Outstanding Balance: <span className="font-semibold text-gray-900">{currencyLabel(dueAmount, text(invoice.currency))}</span>
+                          Outstanding Balance:{" "}
+                          <span className="font-semibold text-gray-900">
+                            {currencyLabel(dueAmount, text(bill.currency))}
+                          </span>
                         </div>
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Notes</label>
-                        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none" />
+                        <textarea
+                          rows={4}
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
+                        />
                       </div>
                     </div>
 
@@ -666,13 +598,13 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <div>
                         <label className="text-xs text-gray-500">Attachment</label>
                         <div className="mt-1 grid grid-cols-1 rounded-md border border-gray-200 divide-y divide-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
+                          <button type="button" className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
                             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                               <Upload className="h-4 w-4" />
                             </span>
                             <span className="text-xs text-gray-600">Upload from Computer</span>
                           </button>
-                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
+                          <button type="button" className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
                             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                               <FileText className="h-4 w-4" />
                             </span>
@@ -687,36 +619,75 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                 <div className="flex flex-1 flex-col overflow-y-auto bg-white">
                   <div className="flex h-12 items-center justify-between gap-3 border-b border-gray-300 bg-gray-100 px-6 pr-14">
                     <div className="min-w-0">
-                      <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">{customerName(invoice)}</h3>
-                      {customerSubtitle(invoice) && <p className="truncate text-xs text-gray-500">{customerSubtitle(invoice)}</p>}
+                      <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">
+                        {vendorNameOf(bill)}
+                      </h3>
                     </div>
                     <div className="flex items-center gap-0.5">
-                      <button title="Edit" onClick={openEditForm} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button
+                        type="button"
+                        title="Edit"
+                        onClick={openCreateForm}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                      >
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button title="Preview" onClick={() => openReceiptWindow("preview")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button
+                        type="button"
+                        title="Preview"
+                        onClick={() => openReceiptWindow("preview")}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                      >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button title="Print" onClick={() => openReceiptWindow("print")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button
+                        type="button"
+                        title="Print"
+                        onClick={() => openReceiptWindow("print")}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                      >
                         <Printer className="h-4 w-4" />
                       </button>
-                      <button title="Email" onClick={() => openReceiptWindow("email")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button
+                        type="button"
+                        title="Email"
+                        onClick={() => openReceiptWindow("email")}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                      >
                         <Mail className="h-4 w-4" />
                       </button>
                       <Dropdown
                         align="right"
                         panelClass="w-48"
-                        trigger={<span className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"><MoreVertical className="h-4 w-4" /></span>}
+                        trigger={
+                          <span className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                            <MoreVertical className="h-4 w-4" />
+                          </span>
+                        }
                       >
                         {(close) => (
                           <>
-                            <button onClick={() => { openEditForm(); close(); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                openCreateForm();
+                                close();
+                              }}
+                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                            >
                               Edit
                               <Pencil className="h-4 w-4 text-gray-400" />
                             </button>
-                            <button onClick={() => { deletePaymentMut.mutate(); close(); }} disabled={deletePaymentMut.isPending} className="flex w-full items-center gap-2 border-t border-gray-200 px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-50 disabled:opacity-50">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                showToast("Trash is not available for vendor payments yet", "info");
+                                close();
+                              }}
+                              className="flex w-full items-center gap-2 border-t border-gray-200 px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-50"
+                            >
                               <Trash2 className="h-4 w-4" />
-                              {deletePaymentMut.isPending ? "Deleting..." : "Trash"}
+                              Trash
                             </button>
                           </>
                         )}
@@ -727,7 +698,9 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                   <div className="flex items-center justify-between gap-4 border-b border-gray-300 px-5 py-3">
                     <div>
                       <div className="text-xs text-gray-500">{selectedPayment.serial}</div>
-                      <div className="text-sm font-semibold text-gray-900">{currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {currencyLabel(selectedPayment.amount, selectedPayment.currency)}
+                      </div>
                     </div>
                     <div className="flex items-center gap-12">
                       <div>
@@ -742,10 +715,14 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                   </div>
 
                   <div className="border-b border-gray-300">
-                    <div className="border-b border-gray-300 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-900">Invoices</div>
+                    <div className="border-b border-gray-300 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-900">
+                      Bills
+                    </div>
                     <div className="flex items-center justify-between px-5 py-4 text-sm text-gray-900">
-                      <span>{selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}</span>
-                      <span className="font-semibold text-gray-900">{currencyLabel(selectedPayment.amount, selectedPayment.currency)}</span>
+                      <span>{selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}</span>
+                      <span className="font-semibold text-gray-900">
+                        {currencyLabel(selectedPayment.amount, selectedPayment.currency)}
+                      </span>
                     </div>
                   </div>
 
@@ -756,20 +733,22 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     </div>
                     <div className="px-5 py-3">
                       <div className="mb-2 text-sm font-semibold text-gray-900">Internal Notes</div>
-                      <div className="text-sm text-gray-600">{selectedPayment.internalNotes || "No Internal Notes"}</div>
+                      <div className="text-sm text-gray-600">
+                        {selectedPayment.internalNotes || "No Internal Notes"}
+                      </div>
                     </div>
                   </div>
 
                   <div className="px-5 py-4">
                     <div className="mb-2 text-sm font-semibold text-gray-900">Attachment</div>
                     <div className="grid grid-cols-2 rounded-md border border-gray-200 divide-x divide-gray-200">
-                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
+                      <button type="button" className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                           <Upload className="h-4 w-4" />
                         </span>
                         <span className="text-xs text-gray-600">Upload from Computer</span>
                       </button>
-                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
+                      <button type="button" className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                           <FileText className="h-4 w-4" />
                         </span>
@@ -791,4 +770,4 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   );
 };
 
-export default InvoicePaymentsModal;
+export default BillPaymentsModal;

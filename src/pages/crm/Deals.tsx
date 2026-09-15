@@ -5,11 +5,21 @@
  * Design matches provided screenshots and existing component patterns
  */
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
-import { api } from "@/lib/api/client";
-import { toArray } from "@/services/_http";
+import {
+  fetchCrmDeals,
+  createCrmDeal,
+  updateCrmDeal,
+  deleteCrmDeal,
+  fetchCrmPipelines,
+  fetchCrmDealStages,
+  fetchCrmSources,
+  fetchCrmUsers,
+  fetchCrmLabels,
+  type CrmNamed,
+} from "@/services/crmApi";
 import {
   Search,
   Plus,
@@ -36,15 +46,6 @@ import {
 
 // Deal labels available for the "Deal Labels" quick-assign modal (matches the
 // System Setup › Labels reference — brand colours preserved).
-const DEAL_LABELS = [
-  { name: "First Visit", color: "#ef4444" },
-  { name: "Return Visitor", color: "#f97316" },
-  { name: "Content Downloaded", color: "#3b82f6" },
-  { name: "Form Submitted", color: "#22c55e" },
-  { name: "MQL Ready", color: "#8b5cf6" },
-];
-const PIPELINES = ["Marketing", "Lead Qualification", "Sales"];
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Deal {
@@ -53,156 +54,42 @@ export interface Deal {
   price: number;
   tasks: { completed: number; total: number };
   clients: string[];
+  clientIds?: string[];
   stage: string;
+  stageId?: string;
   status: "Active" | "Won" | "Lost";
   phone: string;
   pipeline: string;
+  pipelineId?: string;
   sources: string[];
+  sourceIds?: string[];
   products: string[];
   notes: string;
   createdAt: string;
 }
 
-// ─── Sample Data (based on screenshot) ───────────────────────────────────────
+// Live lists come from API — empty export kept for DealDetails import compat.
+export const sampleDeals: Deal[] = [];
 
-export const sampleDeals: Deal[] = [
-  {
-    id: "1",
-    name: "Marketing Analytics Platform",
-    price: 42000,
-    tasks: { completed: 0, total: 0 },
-    clients: ["Acme Corp"],
-    stage: "Nurturing",
-    status: "Won",
-    phone: "+74767921217",
-    pipeline: "Marketing",
-    sources: ["Website Contact Form", "Networking Events"],
-    products: ["IT Support Service", "Laptop"],
-    notes:
-      "Vendor evaluation process concluded with our solution selected as preferred choice. Reference customer calls completed successfully and due diligence phase finalized with positive outcome.",
-    createdAt: "2026-01-15",
-  },
-  {
-    id: "2",
-    name: "Video Production Services",
-    price: 55000,
-    tasks: { completed: 0, total: 0 },
-    clients: ["MediaWorks"],
-    stage: "Nurturing",
-    status: "Won",
-    phone: "+1234567890",
-    pipeline: "Sales",
-    sources: ["Referral"],
-    products: ["Video Editing Suite"],
-    notes: "",
-    createdAt: "2026-01-10",
-  },
-  {
-    id: "3",
-    name: "Email Marketing Automation",
-    price: 22000,
-    tasks: { completed: 0, total: 0 },
-    clients: ["StartupX"],
-    stage: "Lead Generation",
-    status: "Won",
-    phone: "+1987654321",
-    pipeline: "Marketing",
-    sources: ["LinkedIn"],
-    products: ["Email Platform"],
-    notes: "",
-    createdAt: "2026-01-05",
-  },
-  {
-    id: "4",
-    name: "Custom Development - From Lead",
-    price: 28000,
-    tasks: { completed: 3, total: 3 },
-    clients: ["TechCorp"],
-    stage: "Lead Generation",
-    status: "Active",
-    phone: "+1122334455",
-    pipeline: "Development",
-    sources: ["Website Contact Form"],
-    products: ["Custom API Integration"],
-    notes: "",
-    createdAt: "2025-12-28",
-  },
-  {
-    id: "5",
-    name: "Service Integration - From Lead",
-    price: 35000,
-    tasks: { completed: 3, total: 3 },
-    clients: ["ServiceHub"],
-    stage: "Lead Generation",
-    status: "Active",
-    phone: "+5544332211",
-    pipeline: "Integration",
-    sources: ["Networking Events"],
-    products: ["API Gateway"],
-    notes: "",
-    createdAt: "2025-12-20",
-  },
-  {
-    id: "6",
-    name: "Solution Consultation - From Lead",
-    price: 25000,
-    tasks: { completed: 2, total: 2 },
-    clients: ["ConsultCo"],
-    stage: "Campaign Launch",
-    status: "Active",
-    phone: "+9988776655",
-    pipeline: "Consulting",
-    sources: ["Referral"],
-    products: ["Consultation Package"],
-    notes: "",
-    createdAt: "2025-12-10",
-  },
-  {
-    id: "7",
-    name: "Pricing Information - From Lead",
-    price: 65000,
-    tasks: { completed: 3, total: 3 },
-    clients: ["PriceWatchers"],
-    stage: "Campaign Launch",
-    status: "Active",
-    phone: "+4433221100",
-    pipeline: "Sales",
-    sources: ["Website Contact Form"],
-    products: ["Pricing Module"],
-    notes: "",
-    createdAt: "2025-12-01",
-  },
-  {
-    id: "8",
-    name: "Partnership Inquiry - From Lead",
-    price: 45000,
-    tasks: { completed: 1, total: 1 },
-    clients: ["PartnerInc"],
-    stage: "Campaign Launch",
-    status: "Active",
-    phone: "+6677889900",
-    pipeline: "Partnership",
-    sources: ["Networking Events"],
-    products: ["Partnership Kit"],
-    notes: "",
-    createdAt: "2025-11-25",
-  },
-  {
-    id: "9",
-    name: "Product Demo Request - From Lead",
-    price: 35000,
-    tasks: { completed: 1, total: 1 },
-    clients: ["DemoCo"],
-    stage: "Campaign Launch",
-    status: "Active",
-    phone: "+5566778899",
-    pipeline: "Sales",
-    sources: ["LinkedIn"],
-    products: ["Demo Software"],
-    notes: "",
-    createdAt: "2025-11-18",
-  },
-];
+const mapDealRow = (row: import("@/services/crmApi").CrmDealRow): Deal => ({
+  id: row._id,
+  name: row.name,
+  price: row.price,
+  tasks: { completed: row.tasksDone, total: row.tasksTotal },
+  clients: row.clients.map((c) => c.name),
+  clientIds: row.clients.map((c) => c._id),
+  stage: row.stageName,
+  stageId: row.stageId,
+  status: row.status === "Won" ? "Won" : row.status === "Lost" ? "Lost" : "Active",
+  phone: row.phone,
+  pipeline: row.pipelineName,
+  pipelineId: row.pipelineId,
+  sources: row.sources.map((s) => s.name),
+  sourceIds: row.sources.map((s) => s._id),
+  products: row.products.map((p) => p.name),
+  notes: row.notes,
+  createdAt: row.createdAt,
+});
 
 type SortField = "name" | "price" | "tasks" | "clients" | "stage" | "status";
 type SortDir = "asc" | "desc";
@@ -226,42 +113,44 @@ const getStatusBadge = (status: Deal["status"]) => {
 
 export const Deals: React.FC = () => {
   const navigate = useNavigate();
-  const [deals, setDeals] = useState<Deal[]>(sampleDeals);
-  // Load real deals from the backend (falls back to the sample list on failure).
-  useEffect(() => {
-    let alive = true;
-    api.raw
-      .get("/crm/deals/all")
-      .then((res) => {
-        const arr = toArray<any>(res.data);
-        if (!alive || !arr.length) return;
-        const nm = (v: any) => (v && typeof v === "object" ? v.name ?? "" : "");
-        setDeals(
-          arr.map((d: any) => ({
-            id: String(d._id ?? d.id),
-            name: d.name ?? "",
-            price: Number(d.price) || 0,
-            tasks: {
-              completed: (d.tasks ?? []).filter((t: any) => t.status === "completed" || t.completed).length,
-              total: (d.tasks ?? []).length,
-            },
-            clients: (d.clients ?? []).map((c: any) => c?.name ?? c).filter(Boolean),
-            stage: nm(d.stage_id),
-            status: d.status === "Won" ? "Won" : d.status === "Lost" ? "Lost" : "Active",
-            phone: d.phone ?? "",
-            pipeline: nm(d.pipeline_id),
-            sources: (d.sources ?? []).map((s: any) => s?.name ?? s).filter(Boolean),
-            products: (d.products ?? []).map((p: any) => p?.productName ?? p?.name ?? p).filter(Boolean),
-            notes: d.notes ?? "",
-            createdAt: d.createdAt ?? "",
-          })) as Deal[],
-        );
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [pipelineOptions, setPipelineOptions] = useState<CrmNamed[]>([]);
+  const [stageOptions, setStageOptions] = useState<CrmNamed[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<CrmNamed[]>([]);
+  const [userOptions, setUserOptions] = useState<{ _id: string; name: string }[]>([]);
+  const [labelOptions, setLabelOptions] = useState<CrmNamed[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rows, pipes, stages, sources, users, labels] = await Promise.all([
+        fetchCrmDeals(),
+        fetchCrmPipelines(),
+        fetchCrmDealStages(),
+        fetchCrmSources(),
+        fetchCrmUsers(),
+        fetchCrmLabels(),
+      ]);
+      setDeals(rows.map(mapDealRow));
+      setPipelineOptions(pipes);
+      setStageOptions(stages);
+      setSourceOptions(sources);
+      setUserOptions(users);
+      setLabelOptions(labels);
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't load deals", "error");
+      setDeals([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -276,34 +165,31 @@ export const Deals: React.FC = () => {
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [assignedLabels, setAssignedLabels] = useState<string[]>([]);
-  const [pipelineFilter, setPipelineFilter] = useState("Marketing");
+  const [pipelineFilter, setPipelineFilter] = useState("All");
 
   // Form state for create/edit
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
-    clients: [] as string[],
+    clientIds: [] as string[],
     price: 0,
-    pipeline: "",
-    stage: "",
-    sources: [] as string[],
+    pipelineId: "",
+    stageId: "",
+    sourceIds: [] as string[],
     products: [] as string[],
     notes: "",
     status: "Active" as Deal["status"],
   });
 
-  // Available clients for dropdown (mock)
-  const availableClients = [
-    "Acme Corp",
-    "MediaWorks",
-    "StartupX",
-    "TechCorp",
-    "ServiceHub",
-    "ConsultCo",
-    "PriceWatchers",
-    "PartnerInc",
-    "DemoCo",
-  ];
+  const stagesForPipeline = useMemo(
+    () =>
+      formData.pipelineId
+        ? stageOptions.filter((s) => !s.pipeline_id || s.pipeline_id === formData.pipelineId)
+        : stageOptions,
+    [stageOptions, formData.pipelineId],
+  );
+
+  const clientName = (id: string) => userOptions.find((u) => u._id === id)?.name || id;
 
   // ─── Sorting & Filtering ───────────────────────────────────────────────────
 
@@ -318,8 +204,8 @@ export const Deals: React.FC = () => {
 
   const filteredDeals = useMemo(() => {
     let result = [...deals];
-    if (pipelineFilter)
-      result = result.filter((d) => d.pipeline === pipelineFilter);
+    if (pipelineFilter && pipelineFilter !== "All")
+      result = result.filter((d) => d.pipeline === pipelineFilter || d.pipelineId === pipelineFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((d) => d.name.toLowerCase().includes(q));
@@ -356,11 +242,11 @@ export const Deals: React.FC = () => {
     setFormData({
       name: "",
       phone: "",
-      clients: [],
+      clientIds: [],
       price: 0,
-      pipeline: "",
-      stage: "",
-      sources: [],
+      pipelineId: pipelineOptions[0]?._id || "",
+      stageId: "",
+      sourceIds: [],
       products: [],
       notes: "",
       status: "Active",
@@ -369,6 +255,7 @@ export const Deals: React.FC = () => {
 
   const openCreateModal = () => {
     resetForm();
+    setSelectedDeal(null);
     setShowCreateModal(true);
   };
 
@@ -377,11 +264,11 @@ export const Deals: React.FC = () => {
     setFormData({
       name: deal.name,
       phone: deal.phone,
-      clients: deal.clients,
+      clientIds: deal.clientIds || [],
       price: deal.price,
-      pipeline: deal.pipeline,
-      stage: deal.stage,
-      sources: deal.sources,
+      pipelineId: deal.pipelineId || "",
+      stageId: deal.stageId || "",
+      sourceIds: deal.sourceIds || [],
       products: deal.products,
       notes: deal.notes,
       status: deal.status,
@@ -404,68 +291,56 @@ export const Deals: React.FC = () => {
       prev.includes(name) ? prev.filter((l) => l !== name) : [...prev, name],
     );
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       showToast("Deal name is required", "info");
       return;
     }
-    if (formData.clients.length === 0) {
-      showToast("Please select at least one client", "info");
-      return;
-    }
-
-    if (selectedDeal) {
-      setDeals((prev) =>
-        prev.map((d) =>
-          d.id === selectedDeal.id
-            ? {
-                ...d,
-                name: formData.name.trim(),
-                phone: formData.phone,
-                clients: formData.clients,
-                price: formData.price,
-                pipeline: formData.pipeline,
-                stage: formData.stage,
-                sources: formData.sources,
-                products: formData.products,
-                notes: formData.notes,
-                status: formData.status,
-              }
-            : d,
-        ),
-      );
-      showToast("Deal updated successfully!", "success");
-      setShowEditModal(false);
-    } else {
-      const newId = (deals.length + 1).toString();
-      const newDeal: Deal = {
-        id: newId,
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
         name: formData.name.trim(),
-        price: formData.price,
-        tasks: { completed: 0, total: 0 },
-        clients: formData.clients,
-        stage: formData.stage || "Lead Generation",
-        status: "Active",
-        phone: formData.phone,
-        pipeline: formData.pipeline,
-        sources: formData.sources,
-        products: formData.products,
-        notes: formData.notes,
-        createdAt: new Date().toISOString().split("T")[0],
+        price: formData.price || 0,
+        phone: formData.phone.trim() || undefined,
+        notes: formData.notes.trim() || undefined,
+        pipeline_id: formData.pipelineId || undefined,
+        stage_id: formData.stageId || undefined,
+        clients: formData.clientIds,
+        sources: formData.sourceIds,
+        status: formData.status,
       };
-      setDeals((prev) => [newDeal, ...prev]);
-      showToast("Deal created successfully!", "success");
-      setShowCreateModal(false);
+      if (selectedDeal && showEditModal) {
+        await updateCrmDeal(selectedDeal.id, payload);
+        showToast("Deal updated successfully!", "success");
+        setShowEditModal(false);
+      } else {
+        await createCrmDeal(payload);
+        showToast("Deal created successfully!", "success");
+        setShowCreateModal(false);
+      }
+      resetForm();
+      setSelectedDeal(null);
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't save deal", "error");
+    } finally {
+      setSaving(false);
     }
-    resetForm();
   };
 
-  const handleDelete = () => {
-    if (selectedDeal) {
-      setDeals((prev) => prev.filter((d) => d.id !== selectedDeal.id));
+  const handleDelete = async () => {
+    if (!selectedDeal) return;
+    setSaving(true);
+    try {
+      await deleteCrmDeal(selectedDeal.id);
       showToast("Deal deleted successfully!", "success");
       setShowDeleteModal(false);
       setSelectedDeal(null);
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't delete deal", "error");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -565,33 +440,33 @@ export const Deals: React.FC = () => {
                 value=""
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v && !formData.clients.includes(v))
-                    setFormData({ ...formData, clients: [...formData.clients, v] });
+                  if (v && !formData.clientIds.includes(v))
+                    setFormData({ ...formData, clientIds: [...formData.clientIds, v] });
                 }}
                 className="w-full appearance-none px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
               >
                 <option value="">Select Clients</option>
-                {availableClients.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                {userOptions.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
                   </option>
                 ))}
               </select>
               <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
-            {formData.clients.length > 0 && (
+            {formData.clientIds.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {formData.clients.map((c) => (
+                {formData.clientIds.map((c) => (
                   <span
                     key={c}
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs"
                   >
-                    {c}
+                    {clientName(c)}
                     <button
                       onClick={() =>
                         setFormData({
                           ...formData,
-                          clients: formData.clients.filter((x) => x !== c),
+                          clientIds: formData.clientIds.filter((x) => x !== c),
                         })
                       }
                     >
@@ -602,6 +477,34 @@ export const Deals: React.FC = () => {
               </div>
             )}
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pipeline</label>
+            <select
+              value={formData.pipelineId}
+              onChange={(e) =>
+                setFormData({ ...formData, pipelineId: e.target.value, stageId: "" })
+              }
+              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+            >
+              <option value="">Select pipeline</option>
+              {pipelineOptions.map((p) => (
+                <option key={p._id} value={p._id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
+            <select
+              value={formData.stageId}
+              onChange={(e) => setFormData({ ...formData, stageId: e.target.value })}
+              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+            >
+              <option value="">Select stage</option>
+              {stagesForPipeline.map((s) => (
+                <option key={s._id} value={s._id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
           <button
@@ -611,10 +514,11 @@ export const Deals: React.FC = () => {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
-            Create
+            {saving ? "Saving…" : "Create"}
           </button>
         </div>
       </div>
@@ -664,73 +568,65 @@ export const Deals: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Pipeline</label>
-            <input
-              type="text"
-              value={formData.pipeline}
+            <select
+              value={formData.pipelineId}
               onChange={(e) =>
-                setFormData({ ...formData, pipeline: e.target.value })
+                setFormData({ ...formData, pipelineId: e.target.value, stageId: "" })
               }
-              className="w-full border rounded-md px-3 py-2"
-            />
+              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
+            >
+              <option value="">Select pipeline</option>
+              {pipelineOptions.map((p) => (
+                <option key={p._id} value={p._id}>{p.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Stage</label>
-            <input
-              type="text"
-              value={formData.stage}
-              onChange={(e) =>
-                setFormData({ ...formData, stage: e.target.value })
-              }
-              className="w-full border rounded-md px-3 py-2"
-            />
+            <select
+              value={formData.stageId}
+              onChange={(e) => setFormData({ ...formData, stageId: e.target.value })}
+              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
+            >
+              <option value="">Select stage</option>
+              {stagesForPipeline.map((s) => (
+                <option key={s._id} value={s._id}>{s.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Sources</label>
-            <input
-              type="text"
-              value={formData.sources.join(", ")}
+            <select
+              multiple
+              value={formData.sourceIds}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  sources: e.target.value.split(",").map((s) => s.trim()),
+                  sourceIds: Array.from(e.target.selectedOptions, (o) => o.value),
                 })
               }
-              className="w-full border rounded-md px-3 py-2"
-              placeholder="Comma separated"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Products</label>
-            <input
-              type="text"
-              value={formData.products.join(", ")}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  products: e.target.value.split(",").map((s) => s.trim()),
-                })
-              }
-              className="w-full border rounded-md px-3 py-2"
-              placeholder="Comma separated"
-            />
+              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
+            >
+              {sourceOptions.map((s) => (
+                <option key={s._id} value={s._id}>{s.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Clients</label>
             <select
               multiple
-              value={formData.clients}
+              value={formData.clientIds}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  clients: Array.from(e.target.selectedOptions, (o) => o.value),
+                  clientIds: Array.from(e.target.selectedOptions, (o) => o.value),
                 })
               }
-              className="w-full border rounded-md px-3 py-2"
+              className="keep-box ua-field w-full border rounded-md px-3 py-2 bg-white"
             >
-              {availableClients.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+              {userOptions.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
               ))}
             </select>
           </div>
@@ -766,10 +662,11 @@ export const Deals: React.FC = () => {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-40"
           >
-            Update
+            {saving ? "Saving…" : "Update"}
           </button>
         </div>
       </div>
@@ -840,9 +737,10 @@ export const Deals: React.FC = () => {
               onChange={(e) => setPipelineFilter(e.target.value)}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
             >
-              {PIPELINES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              <option value="All">All pipelines</option>
+              {pipelineOptions.map((p) => (
+                <option key={p._id} value={p.name}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -855,7 +753,7 @@ export const Deals: React.FC = () => {
             </button>
             <button
               onClick={openCreateModal}
-              className="w-9 h-9 bg-blue-600 text-white rounded-md flex items-center justify-center hover:bg-blue-700"
+              className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
               title="Create deal"
             >
               <Plus className="w-5 h-5" />
@@ -1107,7 +1005,7 @@ export const Deals: React.FC = () => {
               </button>
             </div>
             <div className="p-6 grid grid-cols-2 gap-3">
-              {DEAL_LABELS.map((l) => (
+              {labelOptions.map((l) => (
                 <label key={l.name} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1117,7 +1015,7 @@ export const Deals: React.FC = () => {
                   />
                   <span
                     className="px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                    style={{ backgroundColor: l.color }}
+                    style={{ backgroundColor: l.color || "#3b82f6" }}
                   >
                     {l.name}
                   </span>

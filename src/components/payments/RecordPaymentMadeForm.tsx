@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, FileText, Upload } from "lucide-react";
+import { Calendar, FileText, Upload, X } from "lucide-react";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { fetchBills, updateBill, type BillListRow } from "@/services/billsApi";
 import { recordVendorPayment } from "@/services/vendorPaymentsApi";
@@ -23,6 +23,8 @@ type Props = {
   onClose: () => void;
   onSaved: (id: string) => void;
   prefill?: PaymentMadePrefill;
+  /** When true, drop page margins so the form fits a centered modal shell. */
+  asModal?: boolean;
 };
 
 const fieldClass =
@@ -43,7 +45,7 @@ const money = (n: number, currency = "USD") => {
   }
 };
 
-export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefill }) => {
+export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefill, asModal = false }) => {
   const [vendorId, setVendorId] = useState(prefill?.vendorId ?? "");
   const [vendorQuery, setVendorQuery] = useState(prefill?.vendorName ?? "");
   const [vendorOpen, setVendorOpen] = useState(false);
@@ -187,7 +189,11 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
   const due = selectedBill?.dueAmount ?? prefill?.dueAmount ?? 0;
 
   return (
-    <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
+    <section
+      className={`overflow-y-auto custom-scrollbar bg-white border border-gray-300 shadow-sm ${
+        asModal ? "rounded-lg max-h-[90vh]" : "flex-1 m-2"
+      }`}
+    >
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">Add Payment</h1>
         <div className="flex items-center gap-2">
@@ -209,6 +215,14 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save & Send"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            className="ml-1 w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>
