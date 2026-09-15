@@ -11,13 +11,12 @@ import { showToast } from "../../utils/toast";
 import {
   useHolidays,
   saveHolidays,
-  HOLIDAY_TYPES,
+  useHolidayTypes,
   type Holiday,
 } from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb } from "./hrmShared";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "./hrmShared";
 import {
   Search,
-  Plus,
   Filter,
   ChevronDown,
   ArrowUpDown,
@@ -65,8 +64,12 @@ const yesNo = (v: boolean) => (
 export const Holidays: React.FC = () => {
   const navigate = useNavigate();
   const holidays = useHolidays();
+  const holidayTypes = useHolidayTypes();
+  const typeNames = (holidayTypes || []).map((t) => t.name).filter(Boolean);
   useEffect(() => {
   }, [holidays]);
+  useEffect(() => {
+  }, [holidayTypes]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -121,19 +124,16 @@ export const Holidays: React.FC = () => {
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Holidays" onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Holidays</h2>
-          <button
+          <CreatePlusButton
+            title="Create holiday"
             onClick={() => {
               setDraft(emptyDraft());
               setModal("create");
             }}
-            title="Create holiday"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 
@@ -180,7 +180,7 @@ export const Holidays: React.FC = () => {
               {showFilters && (
                 <div className="absolute right-0 top-10 w-60 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50 max-h-72 overflow-y-auto">
                   <div className="px-3 py-1.5 text-xs font-medium text-gray-500 border-b border-gray-100">Holiday Type</div>
-                  {["All", ...HOLIDAY_TYPES].map((t) => (
+                  {["All", ...typeNames].map((t) => (
                     <button
                       key={t}
                       onClick={() => {
@@ -311,7 +311,7 @@ export const Holidays: React.FC = () => {
               <Field label="Holiday Type" required>
                 <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
                   <option value="">Select Holiday Type</option>
-                  {HOLIDAY_TYPES.map((t) => (
+                  {typeNames.map((t) => (
                     <option key={t}>{t}</option>
                   ))}
                 </select>

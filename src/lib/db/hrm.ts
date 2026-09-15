@@ -239,6 +239,10 @@ const salaryKey = (id: number | string) => `hrm:salary:${id}`;
  * tracked for deletes + name→id resolution used by leave/promotion writes. */
 const empNumToBackendId = new Map<number, string>();
 
+export function employeeBackendId(uiId: number): string | undefined {
+  return empNumToBackendId.get(uiId);
+}
+
 function mapEmployee(d: any): HrmEmployee {
   const backendId = String(d._id);
   const num = numericId(backendId);

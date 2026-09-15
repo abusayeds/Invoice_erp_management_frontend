@@ -1,30 +1,24 @@
 /**
  * File: src/pages/hrm/attendance/Attendances.tsx
- * Attendance Report — employee × calendar-day grid matching the ERPGO
- * reference (references/hrm/attendence/attendence/*.png) in the Qayd blue
- * theme: legend banner, expandable Employee/Month/Year filter panel, emoji
- * status cells (click → Edit Attendance modal), per-employee monthly total.
- * Cell states are generated deterministically (attendanceCell); manual edits
- * persist in meta row `hrm:attendanceEdits`.
+ * Attendance Report — employees × calendar-day grid from GET /hrm/attendances/grid.
+ * Create/edit persist via POST/PUT /hrm/attendances (no local/Dexie data).
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
+import { attendanceApi } from "@/services/hrm";
 import {
-  useEmployees,
-  attendanceCell,
-  monthWorkingDays,
-  useAttendanceEdits,
-  saveAttendanceEdits,
-  type AttendanceCell,
-  type HrmEmployee,
-} from "@/lib/db/hrm";
-import { Avatar, Field, inputCls, HrmBreadcrumb, SearchSelect } from "../hrmShared";
+  Avatar,
+  Field,
+  inputCls,
+  HrmBreadcrumb,
+  IdSearchSelect,
+  CreatePlusButton,
+} from "../hrmShared";
 import {
   Search,
   Filter,
-  Plus,
   ChevronDown,
   ChevronUp,
   X,
@@ -39,174 +33,204 @@ import {
   Clock,
 } from "lucide-react";
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
-/* ── one grid cell ─────────────────────────────────────────────── */
+type GridEmp = {
+  _id: string;
+  employee_user_id: string;
+  name: string;
+  email: string;
+  employee_code: string;
+};
 
-function CellIcon({ cell }: { cell: AttendanceCell }) {
-  const mods = (
-    <span className="flex items-center justify-center gap-0.5 mt-0.5">
-      {cell.late && <AlarmClock className="w-2.5 h-2.5 text-orange-500" />}
-      {cell.early && <ArrowLeftToLine className="w-2.5 h-2.5 text-red-400" />}
-      {cell.overtime && <Clock className="w-2.5 h-2.5 text-blue-500" />}
-    </span>
-  );
+type GridCell = {
+  _id: string;
+  clock_in: string;
+  clock_out: string;
+  status: string;
+  notes: string;
+  total_hour: number;
+};
+
+type CellView = {
+  status: "present" | "absent" | "half" | "leave" | "dayoff" | "future" | "holiday";
+  late?: boolean;
+  early?: boolean;
+  overtime?: boolean;
+  record?: GridCell;
+};
+
+function CellIcon({ cell }: { cell: CellView }) {
   switch (cell.status) {
     case "present":
       return (
         <span className="flex flex-col items-center">
           <Check className="w-4 h-4 text-green-500" strokeWidth={3} />
-          {mods}
+          <span className="flex items-center justify-center gap-0.5 mt-0.5">
+            {cell.late && <AlarmClock className="w-2.5 h-2.5 text-orange-500" />}
+            {cell.early && <ArrowLeftToLine className="w-2.5 h-2.5 text-red-400" />}
+            {cell.overtime && <Clock className="w-2.5 h-2.5 text-blue-500" />}
+          </span>
         </span>
       );
     case "absent":
       return <X className="w-4 h-4 text-red-500 mx-auto" strokeWidth={3} />;
     case "half":
-      return (
-        <span className="flex flex-col items-center">
-          <span className="text-[11px] font-bold text-yellow-500 leading-4">½</span>
-          {mods}
-        </span>
-      );
+      return <span className="text-[11px] font-bold text-yellow-500 leading-4">½</span>;
     case "leave":
       return <Flag className="w-4 h-4 text-red-500 mx-auto" fill="currentColor" />;
+    case "holiday":
+      return <Star className="w-4 h-4 text-yellow-500 mx-auto" fill="currentColor" />;
     case "dayoff":
       return <Ban className="w-4 h-4 text-gray-300 mx-auto" />;
     case "future":
       return <Minus className="w-4 h-4 text-gray-300 mx-auto" />;
+    default:
+      return <Loader className="w-4 h-4 text-gray-300 mx-auto" />;
   }
 }
 
-/* ── Create Attendance modal (reference: hrm:crerate attendence) ── */
+function resolveCell(
+  emp: GridEmp,
+  year: number,
+  month: number,
+  day: number,
+  cells: Record<string, GridCell>,
+): CellView {
+  const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const key = `${emp.employee_user_id}:${dateStr}`;
+  const rec = cells[key];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cellDate = new Date(year, month - 1, day);
+  const dow = cellDate.getDay();
 
-type AttendanceEditRec = { clockIn: string; clockOut: string; notes: string };
+  if (cellDate > today) return { status: "future" };
+  if (dow === 0 || dow === 6) return { status: "dayoff", record: rec };
 
-const CreateAttendanceModal: React.FC<{
-  employees: HrmEmployee[];
-  edits: Record<string, AttendanceEditRec>;
-  onClose: () => void;
-}> = ({ employees, edits, onClose }) => {
-  const [employee, setEmployee] = useState("");
-  const [date, setDate] = useState("");
-  const [clockIn, setClockIn] = useState("");
-  const [clockOut, setClockOut] = useState("");
-  const [notes, setNotes] = useState("");
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-
-  const create = async () => {
-    const emp = employees.find((e) => e.name === employee);
-    if (!emp) {
-      showToast("Please select an employee", "error");
-      return;
-    }
-    if (!date) {
-      showToast("Please select a date", "error");
-      return;
-    }
-    if (!clockIn) {
-      showToast("Clock in time is required", "error");
-      return;
-    }
-    await saveAttendanceEdits({ ...edits, [`${emp.id}:${date}`]: { clockIn, clockOut, notes } });
-    showToast("Attendance created successfully", "success");
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4" onMouseDown={onClose}>
-      <div onMouseDown={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-        <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Create Attendance</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
-        </div>
-        <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-          <Field label="Employee" required>
-            <SearchSelect value={employee} onChange={setEmployee} options={employees.map((e) => e.name)} placeholder="Select Employee" />
-          </Field>
-          <Field label="Date" required>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Clock In Time" required>
-            <input type="time" value={clockIn} onChange={(e) => setClockIn(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Clock Out Time">
-            <input type="time" value={clockOut} onChange={(e) => setClockOut(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Notes" className="md:col-span-2">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Enter Notes" className={inputCls} />
-          </Field>
-        </div>
-        <div className="px-6 pb-5 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm">
-            Cancel
-          </button>
-          <button onClick={create} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
-            Create
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ── page ──────────────────────────────────────────────────────── */
+  if (rec) {
+    const s = String(rec.status || "present").toLowerCase();
+    if (s.includes("half")) return { status: "half", record: rec };
+    if (s.includes("leave")) return { status: "leave", record: rec };
+    if (s.includes("absent")) return { status: "absent", record: rec };
+    if (s.includes("holiday")) return { status: "holiday", record: rec };
+    return { status: "present", record: rec };
+  }
+  return { status: "absent" };
+}
 
 export const Attendances: React.FC = () => {
   const navigate = useNavigate();
-  const employees = useEmployees();
-  useEffect(() => {
-  }, [employees]);
-  const edits = useAttendanceEdits();
-
+  const now = new Date();
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [employeeFilter, setEmployeeFilter] = useState("All Employees");
-  const [month, setMonth] = useState(7); // July
-  const [year, setYear] = useState(2025);
-  const [applied, setApplied] = useState({ employee: "All Employees", month: 7, year: 2025 });
-  const [editCell, setEditCell] = useState<{ emp: HrmEmployee; date: string } | null>(null);
-  const [draft, setDraft] = useState({ clockIn: "", clockOut: "", notes: "" });
+  const [employeeFilter, setEmployeeFilter] = useState("");
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [applied, setApplied] = useState({ employee: "", month: now.getMonth() + 1, year: now.getFullYear() });
+  const [employees, setEmployees] = useState<GridEmp[]>([]);
+  const [cells, setCells] = useState<Record<string, GridCell>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [perPage, setPerPage] = useState(10);
+  const [page, setPage] = useState(1);
+
   const [createOpen, setCreateOpen] = useState(false);
+  const [editCell, setEditCell] = useState<{ emp: GridEmp; date: string; record?: GridCell } | null>(null);
+  const [draft, setDraft] = useState({ clockIn: "", clockOut: "", notes: "", status: "present" });
+  const [createDraft, setCreateDraft] = useState({
+    employeeId: "",
+    date: "",
+    clockIn: "",
+    clockOut: "",
+    notes: "",
+  });
 
-  const list = employees || [];
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await attendanceApi.grid({
+        year: applied.year,
+        month: applied.month,
+        employee_id: applied.employee || undefined,
+      });
+      setEmployees(data.employees || []);
+      setCells((data.cells as Record<string, GridCell>) || {});
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't load attendance grid", "error");
+      setEmployees([]);
+      setCells({});
+    } finally {
+      setLoading(false);
+    }
+  }, [applied]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
   const daysInMonth = new Date(applied.year, applied.month, 0).getDate();
-  const workDays = monthWorkingDays(applied.year, applied.month);
+  const workDays = useMemo(() => {
+    let n = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(applied.year, applied.month - 1, d).getDay();
+      if (dow !== 0 && dow !== 6) n += 1;
+    }
+    return n;
+  }, [applied.year, applied.month, daysInMonth]);
 
-  const visible = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return list.filter(
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return employees.filter(
       (e) =>
-        (applied.employee === "All Employees" || e.name === applied.employee) &&
-        e.name.toLowerCase().includes(q),
+        (!applied.employee || e.employee_user_id === applied.employee) &&
+        (!q || e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)),
     );
-  }, [list, searchQuery, applied]);
+  }, [employees, searchQuery, applied.employee]);
 
-  const totalFor = (emp: HrmEmployee) => {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const visible = filtered.slice((page - 1) * perPage, page * perPage);
+
+  const totalFor = (emp: GridEmp) => {
     let t = 0;
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${applied.year}-${String(applied.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      const c: AttendanceCell = (edits || {})[`${emp.id}:${dateStr}`]
-        ? { status: "present" }
-        : attendanceCell(emp.id, applied.year, applied.month, d);
+      const c = resolveCell(emp, applied.year, applied.month, d, cells);
       if (c.status === "present") t += 1;
       else if (c.status === "half") t += 0.5;
     }
     return t;
   };
 
-  const openEdit = (emp: HrmEmployee, day: number) => {
+  const empOptions = useMemo(
+    () => employees.map((e) => ({ id: e.employee_user_id, name: e.name || e.email || "Employee" })),
+    [employees],
+  );
+
+  const openEdit = (emp: GridEmp, day: number) => {
     const date = `${applied.year}-${String(applied.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const existing = (edits || {})[`${emp.id}:${date}`];
-    setDraft(existing || { clockIn: "06:00", clockOut: "14:00", notes: "Demo attendance record" });
-    setEditCell({ emp, date });
+    const view = resolveCell(emp, applied.year, applied.month, day, cells);
+    if (view.status === "dayoff" || view.status === "future") return;
+    setDraft({
+      clockIn: view.record?.clock_in || "09:00",
+      clockOut: view.record?.clock_out || "17:00",
+      notes: view.record?.notes || "",
+      status: view.record?.status || "present",
+    });
+    setEditCell({ emp, date, record: view.record });
   };
 
   const submitEdit = async () => {
@@ -215,12 +239,63 @@ export const Attendances: React.FC = () => {
       showToast("Clock in time is required", "error");
       return;
     }
-    await saveAttendanceEdits({
-      ...(edits || {}),
-      [`${editCell.emp.id}:${editCell.date}`]: { ...draft },
-    });
-    showToast("Attendance updated successfully", "success");
-    setEditCell(null);
+    setSaving(true);
+    try {
+      const body = {
+        employee_id: editCell.emp.employee_user_id,
+        date: editCell.date,
+        clock_in: draft.clockIn,
+        clock_out: draft.clockOut || undefined,
+        notes: draft.notes,
+        status: draft.status || "present",
+      };
+      if (editCell.record?._id) {
+        await attendanceApi.updateManual(editCell.record._id, body);
+      } else {
+        await attendanceApi.createManual(body);
+      }
+      showToast("Attendance updated successfully", "success");
+      setEditCell(null);
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't save attendance", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitCreate = async () => {
+    if (!createDraft.employeeId) {
+      showToast("Please select an employee", "error");
+      return;
+    }
+    if (!createDraft.date) {
+      showToast("Please select a date", "error");
+      return;
+    }
+    if (!createDraft.clockIn) {
+      showToast("Clock in time is required", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      await attendanceApi.createManual({
+        employee_id: createDraft.employeeId,
+        date: createDraft.date,
+        clock_in: createDraft.clockIn,
+        clock_out: createDraft.clockOut || undefined,
+        notes: createDraft.notes,
+        status: "present",
+      });
+      showToast("Attendance created successfully", "success");
+      setCreateOpen(false);
+      setCreateDraft({ employeeId: "", date: "", clockIn: "", clockOut: "", notes: "" });
+      await reload();
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't create attendance", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const legend: [React.ReactNode, string][] = [
@@ -231,17 +306,19 @@ export const Attendances: React.FC = () => {
     [<Star key="ho" className="w-3.5 h-3.5 text-yellow-500" fill="currentColor" />, "Holiday"],
     [<Ban key="d" className="w-3.5 h-3.5 text-gray-400" />, "Day Off"],
     [<Minus key="f" className="w-3.5 h-3.5 text-gray-400" />, "Future"],
-    [<Loader key="pe" className="w-3.5 h-3.5 text-gray-400" />, "Pending"],
-    [<AlarmClock key="la" className="w-3.5 h-3.5 text-orange-500" />, "Late"],
-    [<ArrowLeftToLine key="e" className="w-3.5 h-3.5 text-red-400" />, "Early"],
-    [<Clock key="o" className="w-3.5 h-3.5 text-blue-500" />, "Overtime"],
   ];
 
   return (
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Attendances" onNavigate={navigate} />
 
-      {/* toolbar */}
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">Manage Attendances</h2>
+          <CreatePlusButton title="Create Attendance" onClick={() => setCreateOpen(true)} />
+        </div>
+      </div>
+
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -249,44 +326,60 @@ export const Attendances: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by employee name or date..."
+                placeholder="Search by employee name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full sm:w-80 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md"
               />
             </div>
-            <button onClick={() => showToast("Search applied", "info")} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
+            <button
+              onClick={() => setPage(1)}
+              className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+            >
               Search
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <button onClick={() => setFiltersOpen(!filtersOpen)} className="relative flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50">
-                <Filter className="w-4 h-4 text-gray-500" />
-                <span>Filters</span>
-                {filtersOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[10px] rounded-full flex items-center justify-center">2</span>
-              </button>
-            </div>
-            <button
-              onClick={() => setCreateOpen(true)}
-              title="Create Attendance"
-              className="w-9 h-9 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            <select
+              value={perPage}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value));
+                setPage(1);
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
             >
-              <Plus className="w-5 h-5" />
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={25}>25 per page</option>
+            </select>
+            <button
+              onClick={() => setFiltersOpen(!filtersOpen)}
+              className="relative flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50"
+            >
+              <Filter className="w-4 h-4 text-gray-500" />
+              <span>Filters</span>
+              {filtersOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
             </button>
           </div>
         </div>
 
-        {/* expanded filter panel */}
         {filtersOpen && (
           <div className="mt-4 flex flex-wrap items-end gap-4">
             <div className="w-full sm:w-64">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Employee</label>
-              <select value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className={`${inputCls} bg-white`}>
-                <option>All Employees</option>
-                {list.map((e) => (
-                  <option key={e.id}>{e.name}</option>
+              <select
+                value={employeeFilter}
+                onChange={(e) => setEmployeeFilter(e.target.value)}
+                className={`keep-box ua-field ${inputCls} bg-white`}
+              >
+                <option value="">All Employees</option>
+                {empOptions.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -294,22 +387,26 @@ export const Attendances: React.FC = () => {
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Month</label>
               <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={`${inputCls} bg-white`}>
                 {MONTHS.map((m, i) => (
-                  <option key={m} value={i + 1}>{m}</option>
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="w-full sm:w-36">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Year</label>
               <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={`${inputCls} bg-white`}>
-                {[2024, 2025, 2026].map((y) => (
-                  <option key={y} value={y}>{y}</option>
+                {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
                 ))}
               </select>
             </div>
             <button
               onClick={() => {
                 setApplied({ employee: employeeFilter, month, year });
-                showToast("Filters applied", "success");
+                setPage(1);
               }}
               className="px-5 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 font-medium"
             >
@@ -317,10 +414,11 @@ export const Attendances: React.FC = () => {
             </button>
             <button
               onClick={() => {
-                setEmployeeFilter("All Employees");
-                setMonth(7);
-                setYear(2025);
-                setApplied({ employee: "All Employees", month: 7, year: 2025 });
+                setEmployeeFilter("");
+                setMonth(now.getMonth() + 1);
+                setYear(now.getFullYear());
+                setApplied({ employee: "", month: now.getMonth() + 1, year: now.getFullYear() });
+                setPage(1);
               }}
               className="px-5 py-2 border border-gray-300 text-sm rounded-md hover:bg-gray-50 text-gray-700"
             >
@@ -330,10 +428,10 @@ export const Attendances: React.FC = () => {
         )}
       </div>
 
-      {/* legend banner */}
       <div className="bg-blue-50/70 border-b border-blue-100 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-bold text-blue-700 tracking-wide uppercase">
           Attendance Report: {MONTHS[applied.month - 1]} {applied.year}
+          {loading ? " · Loading…" : ""}
         </span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {legend.map(([icon, label]) => (
@@ -344,7 +442,6 @@ export const Attendances: React.FC = () => {
         </div>
       </div>
 
-      {/* grid */}
       <div className="flex-1 overflow-auto">
         <table className="text-sm border-collapse w-full">
           <thead className="sticky top-0 z-20">
@@ -367,22 +464,18 @@ export const Attendances: React.FC = () => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
             {visible.map((emp) => (
-              <tr key={emp.id} className="hover:bg-gray-50/60">
+              <tr key={emp.employee_user_id} className="hover:bg-gray-50/60">
                 <td className="sticky left-0 z-10 bg-white px-4 py-2.5 border-r border-gray-100">
                   <div className="flex items-center gap-2.5">
-                    <Avatar name={emp.name} size={8} />
+                    <Avatar name={emp.name || "?"} size={8} />
                     <div className="min-w-0">
                       <div className="font-semibold text-gray-900 text-[13px] truncate">{emp.name}</div>
-                      <div className="text-[11px] text-gray-400 truncate">{emp.designation}</div>
+                      <div className="text-[11px] text-gray-400 truncate">{emp.employee_code || emp.email}</div>
                     </div>
                   </div>
                 </td>
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
-                  const dateStr = `${applied.year}-${String(applied.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-                  // a created/edited record marks the day Present in the grid
-                  const cell: AttendanceCell = (edits || {})[`${emp.id}:${dateStr}`]
-                    ? { status: "present" }
-                    : attendanceCell(emp.id, applied.year, applied.month, d);
+                  const cell = resolveCell(emp, applied.year, applied.month, d, cells);
                   const dow = new Date(applied.year, applied.month - 1, d).getDay();
                   const weekend = dow === 0 || dow === 6;
                   const clickable = cell.status !== "dayoff" && cell.status !== "future";
@@ -403,29 +496,111 @@ export const Attendances: React.FC = () => {
                 </td>
               </tr>
             ))}
-            {visible.length === 0 && (
+            {!loading && visible.length === 0 && (
               <tr>
-                <td colSpan={daysInMonth + 2} className="px-4 py-12 text-center text-gray-500">No employees found.</td>
+                <td colSpan={daysInMonth + 2} className="px-4 py-12 text-center text-gray-500">
+                  No employees found.
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* footer */}
       <div className="bg-white border-t border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between text-sm">
-        <span className="text-gray-500">Showing 1 to {visible.length} of {visible.length} results</span>
+        <span className="text-gray-500">
+          Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of{" "}
+          {filtered.length} results
+        </span>
         <div className="flex items-center gap-1">
-          <button disabled className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 opacity-40">‹ Previous</button>
-          <button className="w-8 h-8 rounded-md bg-blue-600 text-white">1</button>
-          <button disabled className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 opacity-40">Next ›</button>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40"
+          >
+            ‹ Previous
+          </button>
+          <span className="px-2 text-gray-600">
+            {page}/{totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40"
+          >
+            Next ›
+          </button>
         </div>
       </div>
 
-      {/* create attendance modal */}
-      {createOpen && <CreateAttendanceModal employees={list} edits={edits || {}} onClose={() => setCreateOpen(false)} />}
+      {createOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4" onMouseDown={() => setCreateOpen(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+            <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Create Attendance</h3>
+              <button onClick={() => setCreateOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+              <Field label="Employee" required>
+                <IdSearchSelect
+                  value={createDraft.employeeId}
+                  onChange={(id) => setCreateDraft({ ...createDraft, employeeId: id })}
+                  options={empOptions}
+                  placeholder="Select Employee"
+                />
+              </Field>
+              <Field label="Date" required>
+                <input
+                  type="date"
+                  value={createDraft.date}
+                  onChange={(e) => setCreateDraft({ ...createDraft, date: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Clock In Time" required>
+                <input
+                  type="time"
+                  value={createDraft.clockIn}
+                  onChange={(e) => setCreateDraft({ ...createDraft, clockIn: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Clock Out Time">
+                <input
+                  type="time"
+                  value={createDraft.clockOut}
+                  onChange={(e) => setCreateDraft({ ...createDraft, clockOut: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Notes" className="md:col-span-2">
+                <textarea
+                  value={createDraft.notes}
+                  onChange={(e) => setCreateDraft({ ...createDraft, notes: e.target.value })}
+                  rows={3}
+                  placeholder="Enter Notes"
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+            <div className="px-6 pb-5 flex justify-end gap-3">
+              <button onClick={() => setCreateOpen(false)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={() => void submitCreate()}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+              >
+                {saving ? "Saving…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* edit attendance modal */}
       {editCell && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
@@ -448,6 +623,18 @@ export const Attendances: React.FC = () => {
               <Field label="Clock Out Time">
                 <input type="time" value={draft.clockOut} onChange={(e) => setDraft({ ...draft, clockOut: e.target.value })} className={inputCls} />
               </Field>
+              <Field label="Status">
+                <select
+                  value={draft.status}
+                  onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                  className={`keep-box ua-field ${inputCls} bg-white`}
+                >
+                  <option value="present">Present</option>
+                  <option value="absent">Absent</option>
+                  <option value="half">Half Day</option>
+                  <option value="leave">On Leave</option>
+                </select>
+              </Field>
               <Field label="Notes" className="md:col-span-2">
                 <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={3} className={inputCls} />
               </Field>
@@ -456,8 +643,12 @@ export const Attendances: React.FC = () => {
               <button onClick={() => setEditCell(null)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm">
                 Cancel
               </button>
-              <button onClick={submitEdit} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
-                Update
+              <button
+                onClick={() => void submitEdit()}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+              >
+                {saving ? "Saving…" : "Update"}
               </button>
             </div>
           </div>
@@ -466,3 +657,5 @@ export const Attendances: React.FC = () => {
     </div>
   );
 };
+
+export default Attendances;

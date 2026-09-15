@@ -7,7 +7,7 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
-import { apiLabel } from "./hrmShared";
+import { apiLabel, CreatePlusButton, employeeOption } from "./hrmShared";
 import {
   Search,
   Plus,
@@ -237,13 +237,7 @@ export const Awards: React.FC = () => {
   // fallback list renders instead of invisible options.
   const empQuery = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
   const empOptions = useMemo(
-    () =>
-      (empQuery.data ?? [])
-        .map((e: any) => ({
-          id: String(e.id ?? e._id ?? ""),
-          name: apiLabel(e, ["employee_user_id", "user_id", "name", "employee_name", "full_name", "first_name"]),
-        }))
-        .filter((o) => o.id && o.name),
+    () => (empQuery.data ?? []).map(employeeOption).filter((o) => o.id && o.name),
     [empQuery.data],
   );
 
@@ -518,17 +512,11 @@ export const Awards: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
               <option value="">Select Employee</option>
-              {empOptions.length > 0
-                ? empOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : employees.map((emp) => (
-                    <option key={emp} value={emp}>
-                      {emp}
-                    </option>
-                  ))}
+              {empOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -543,20 +531,14 @@ export const Awards: React.FC = () => {
                   awardType: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+              className="keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
               <option value="">Select Award Type</option>
-              {atOptions.length > 0
-                ? atOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.name}
-                    </option>
-                  ))
-                : awardTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
+              {atOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -796,15 +778,10 @@ export const Awards: React.FC = () => {
           <span className="text-gray-900 font-medium">Awards</span>
         </div>
       </div>
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Awards</h2>
-          <button
-            onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <CreatePlusButton onClick={openCreateModal} title="Create award" />
         </div>
       </div>
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">

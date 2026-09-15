@@ -1,27 +1,32 @@
 /**
  * File: src/pages/hrm/Promotions.tsx
- * Manage Promotions — matches the ERPGO reference
- * (references/hrm/promotions/*.png) in the Qayd blue theme, including the
- * Career Progression timeline in the details modal.
- * Promotions persist in meta row `hrm:promotions`.
+ * Manage Promotions — fully API-backed (no local/Dexie / hardcoded masters).
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
+import { useResourceData } from "@/hooks/useResourceData";
 import {
-  usePromotions,
-  savePromotions,
-  useEmployees,
-  HRM_BRANCHES,
-  HRM_DEPARTMENTS,
-  HRM_DESIGNATIONS,
-  type Promotion,
-} from "@/lib/db/hrm";
-import { Field, inputCls, SearchSelect, Chip, HrmBreadcrumb } from "./hrmShared";
+  promotionHooks,
+  employeeHooks,
+  branchHooks,
+  departmentHooks,
+  designationHooks,
+  hrmStatusActions,
+} from "@/services/hrm";
+import {
+  Field,
+  inputCls,
+  IdSearchSelect,
+  Chip,
+  HrmBreadcrumb,
+  CreatePlusButton,
+  apiLabel,
+  employeeOption,
+} from "./hrmShared";
 import {
   Search,
-  Plus,
   Filter,
   ChevronDown,
   Eye,
@@ -36,25 +41,125 @@ import {
   Briefcase,
 } from "lucide-react";
 
+interface PromotionRow {
+  id: string;
+  employee: string;
+  employeeId: string;
+  prevBranch: string;
+  prevDepartment: string;
+  prevDesignation: string;
+  branch: string;
+  branchId: string;
+  department: string;
+  departmentId: string;
+  designation: string;
+  designationId: string;
+  effectiveDate: string;
+  status: string;
+  approvedBy: string;
+  reason: string;
+  document: string;
+}
+
 const emptyDraft = () => ({
   id: "",
-  employee: "",
-  branch: "",
-  department: "",
-  designation: "",
+  employeeId: "",
+  branchId: "",
+  departmentId: "",
+  designationId: "",
   effectiveDate: "",
   reason: "",
   document: "",
 });
 
+function refName(v: any, keys: string[]): string {
+  if (!v) return "";
+  if (typeof v === "object") return apiLabel(v, keys) || "";
+  return "";
+}
+
+function mapFromApi(p: any): PromotionRow {
+  return {
+    id: String(p.id ?? p._id ?? ""),
+    employee: refName(p.employee_id, ["name"]) || apiLabel(p, ["employee"]) || "—",
+    employeeId:
+      typeof p.employee_id === "object"
+        ? String(p.employee_id?._id ?? p.employee_id?.id ?? "")
+        : String(p.employee_id ?? ""),
+    prevBranch: refName(p.previous_branch_id, ["branch_name", "name"]) || "—",
+    prevDepartment: refName(p.previous_department_id, ["department_name", "name"]) || "—",
+    prevDesignation: refName(p.previous_designation_id, ["designation_name", "name"]) || "—",
+    branch: refName(p.current_branch_id, ["branch_name", "name"]) || "—",
+    branchId:
+      typeof p.current_branch_id === "object"
+        ? String(p.current_branch_id?._id ?? "")
+        : String(p.current_branch_id ?? ""),
+    department: refName(p.current_department_id, ["department_name", "name"]) || "—",
+    departmentId:
+      typeof p.current_department_id === "object"
+        ? String(p.current_department_id?._id ?? "")
+        : String(p.current_department_id ?? ""),
+    designation: refName(p.current_designation_id, ["designation_name", "name"]) || "—",
+    designationId:
+      typeof p.current_designation_id === "object"
+        ? String(p.current_designation_id?._id ?? "")
+        : String(p.current_designation_id ?? ""),
+    effectiveDate: String(p.effective_date ?? "").slice(0, 10),
+    status: p.status || "Pending",
+    approvedBy: refName(p.approved_by, ["name"]) || p.approved_by || "",
+    reason: p.reason || "",
+    document: p.document || "",
+  };
+}
+
 export const Promotions: React.FC = () => {
   const navigate = useNavigate();
-  const promotions = usePromotions();
-  const employees = useEmployees();
-  useEffect(() => {
-  }, [promotions]);
-  useEffect(() => {
-  }, [employees]);
+  const { items: raw, create, update, remove } = useResourceData(promotionHooks, {
+    seed: [],
+    params: { page: 1, limit: 100 },
+  });
+  const items = useMemo(() => raw.map(mapFromApi), [raw]);
+
+  const empQ = employeeHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
+  const branchQ = branchHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
+  const deptQ = departmentHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
+  const desigQ = designationHooks.useList({ page: 1, limit: 100 }, { retry: 0 });
+
+  const empOptions = useMemo(
+    () => (empQ.data ?? []).map(employeeOption).filter((o) => o.id && o.name),
+    [empQ.data],
+  );
+  const branchOptions = useMemo(
+    () =>
+      (branchQ.data ?? [])
+        .map((b: any) => ({
+          id: String(b.id ?? b._id),
+          name: apiLabel(b, ["branch_name", "name"]) || "Branch",
+        }))
+        .filter((o) => o.id && o.name),
+    [branchQ.data],
+  );
+  const deptOptions = useMemo(() => {
+    const all = (deptQ.data ?? []).map((d: any) => ({
+      id: String(d.id ?? d._id),
+      name: apiLabel(d, ["department_name", "name"]) || "Department",
+      branchId:
+        typeof d.branch_id === "object" ? String(d.branch_id?._id ?? "") : String(d.branch_id ?? ""),
+    }));
+    return all.filter((o) => o.id && o.name);
+  }, [deptQ.data]);
+  const desigOptions = useMemo(() => {
+    return (desigQ.data ?? [])
+      .map((d: any) => ({
+        id: String(d.id ?? d._id),
+        name: apiLabel(d, ["designation_name", "name"]) || "Designation",
+        departmentId:
+          typeof d.department_id === "object"
+            ? String(d.department_id?._id ?? "")
+            : String(d.department_id ?? ""),
+      }))
+      .filter((o) => o.id && o.name);
+  }, [desigQ.data]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -63,87 +168,98 @@ export const Promotions: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
-  const [viewPromotion, setViewPromotion] = useState<Promotion | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null);
-
-  const list = promotions || [];
+  const [viewPromotion, setViewPromotion] = useState<PromotionRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PromotionRow | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return list.filter(
+    return items.filter(
       (p) =>
         (statusFilter === "All" || p.status === statusFilter) &&
         (p.employee.toLowerCase().includes(q) || p.designation.toLowerCase().includes(q)),
     );
-  }, [list, searchQuery, statusFilter]);
+  }, [items, searchQuery, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
+  const deptsForBranch = deptOptions.filter((d) => !draft.branchId || !d.branchId || d.branchId === draft.branchId);
+  const desigsForDept = desigOptions.filter(
+    (d) => !draft.departmentId || !d.departmentId || d.departmentId === draft.departmentId,
+  );
+
   const submit = async () => {
-    if (!draft.employee || !draft.branch || !draft.department || !draft.designation || !draft.effectiveDate) {
+    if (!draft.employeeId || !draft.branchId || !draft.departmentId || !draft.designationId || !draft.effectiveDate) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    if (modal === "edit") {
-      await savePromotions(list.map((p) => (p.id === draft.id ? { ...p, ...draft } : p)));
-      showToast("Promotion updated successfully", "success");
-    } else {
-      const emp = (employees || []).find((e) => e.name === draft.employee);
-      const rec: Promotion = {
-        ...draft,
-        id: "pr" + Math.random().toString(36).slice(2, 8),
-        prevBranch: emp?.branch || "—",
-        prevDepartment: emp?.department || "—",
-        prevDesignation: emp?.designation || "—",
-        status: "Pending",
+    setSaving(true);
+    try {
+      const payload = {
+        employee_id: draft.employeeId,
+        current_branch_id: draft.branchId,
+        current_department_id: draft.departmentId,
+        current_designation_id: draft.designationId,
+        effective_date: draft.effectiveDate,
         reason: draft.reason || "Promotion request",
       };
-      await savePromotions([rec, ...list]);
-      showToast("Promotion created successfully", "success");
+      if (modal === "edit" && draft.id) {
+        await update(draft.id, payload);
+        showToast("Promotion updated successfully", "success");
+      } else {
+        await create(payload);
+        showToast("Promotion created successfully", "success");
+      }
+      setModal(null);
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't save promotion", "error");
+    } finally {
+      setSaving(false);
     }
-    setModal(null);
   };
 
-  const approve = async (p: Promotion) => {
+  const approve = async (p: PromotionRow) => {
     if (p.status === "Approved") {
       showToast("Promotion already approved", "info");
       return;
     }
-    await savePromotions(
-      list.map((r) => (r.id === p.id ? { ...r, status: "Approved", approvedBy: "Company" } : r)),
-    );
-    showToast("Promotion approved", "success");
+    try {
+      await hrmStatusActions.promotion(p.id, "Approved");
+      showToast("Promotion approved", "success");
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't approve promotion", "error");
+    }
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await savePromotions(list.filter((p) => p.id !== deleteTarget.id));
-    showToast("Promotion deleted successfully", "success");
-    setDeleteTarget(null);
+    try {
+      await remove(deleteTarget.id);
+      showToast("Promotion deleted successfully", "success");
+      setDeleteTarget(null);
+    } catch (err: any) {
+      showToast(err?.message || "Couldn't delete promotion", "error");
+    }
   };
 
   return (
     <div className="module-page-shell overflow-hidden flex flex-col p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: "HRM" }]} current="Promotions" onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Manage Promotions</h2>
-          <button
+          <CreatePlusButton
+            title="Create promotion"
             onClick={() => {
               setDraft(emptyDraft());
               setModal("create");
             }}
-            title="Create promotion"
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          />
         </div>
       </div>
 
-      {/* toolbar */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -160,7 +276,7 @@ export const Promotions: React.FC = () => {
                 className="w-full sm:w-80 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md"
               />
             </div>
-            <button onClick={() => showToast("Search applied", "info")} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
+            <button onClick={() => setPage(1)} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
               Search
             </button>
           </div>
@@ -178,7 +294,10 @@ export const Promotions: React.FC = () => {
               <option value={25}>25 per page</option>
             </select>
             <div className="relative">
-              <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50"
+              >
                 <Filter className="w-4 h-4 text-gray-500" />
                 <span>Filters</span>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
@@ -206,14 +325,15 @@ export const Promotions: React.FC = () => {
         </div>
       </div>
 
-      {/* table */}
       <div className="flex-1 overflow-auto">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[1050px]">
             <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
               <tr>
                 {["Employee", "Previous Branch", "Current Branch", "Current Designation", "Effective Date", "Status", "Approved By", "Actions"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -225,23 +345,38 @@ export const Promotions: React.FC = () => {
                   <td className="px-4 py-3.5 text-gray-600">{p.branch}</td>
                   <td className="px-4 py-3.5 text-gray-600">{p.designation}</td>
                   <td className="px-4 py-3.5 text-gray-600">{p.effectiveDate}</td>
-                  <td className="px-4 py-3.5"><Chip label={p.status} /></td>
+                  <td className="px-4 py-3.5">
+                    <Chip label={p.status} />
+                  </td>
                   <td className="px-4 py-3.5 text-gray-600">{p.approvedBy || "-"}</td>
                   <td className="px-4 py-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1.5">
                       {p.status === "Pending" ? (
-                        <button onClick={() => approve(p)} className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-purple-50" title="Approve">
+                        <button
+                          onClick={() => void approve(p)}
+                          className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-purple-50"
+                          title="Approve"
+                        >
                           <Play className="w-4 h-4" />
                         </button>
                       ) : (
-                        <span className="w-7 h-7" /> /* fixed slot keeps action columns aligned */
+                        <span className="w-7 h-7" />
                       )}
                       <button onClick={() => setViewPromotion(p)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="View">
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => {
-                          setDraft({ id: p.id, employee: p.employee, branch: p.branch, department: p.department, designation: p.designation, effectiveDate: p.effectiveDate, reason: p.reason, document: p.document || "" });
+                          setDraft({
+                            id: p.id,
+                            employeeId: p.employeeId,
+                            branchId: p.branchId,
+                            departmentId: p.departmentId,
+                            designationId: p.designationId,
+                            effectiveDate: p.effectiveDate,
+                            reason: p.reason,
+                            document: p.document || "",
+                          });
                           setModal("edit");
                         }}
                         className="p-1.5 text-gray-400 hover:text-green-600 rounded hover:bg-green-50"
@@ -258,7 +393,9 @@ export const Promotions: React.FC = () => {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">No promotions found.</td>
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                    No promotions found.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -266,27 +403,40 @@ export const Promotions: React.FC = () => {
         </div>
       </div>
 
-      {/* footer */}
       <div className="bg-white border-t border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between text-sm">
         <span className="text-gray-500">
-          Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of {filtered.length} results
+          Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of{" "}
+          {filtered.length} results
         </span>
         <div className="flex items-center gap-1">
-          <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50">
+          <button
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+          >
             ‹ Previous
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-md ${p === page ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50 border border-gray-300"}`}>
-              {p}
-            </button>
-          ))}
-          <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50">
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .slice(0, 8)
+            .map((p) => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={`w-8 h-8 rounded-md ${p === page ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50 border border-gray-300"}`}
+              >
+                {p}
+              </button>
+            ))}
+          <button
+            disabled={page === totalPages}
+            onClick={() => setPage(page + 1)}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+          >
             Next ›
           </button>
         </div>
       </div>
 
-      {/* create / edit modal */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -298,47 +448,56 @@ export const Promotions: React.FC = () => {
             </div>
             <div className="px-6 py-5 space-y-4">
               <Field label="Employee" required>
-                <SearchSelect
-                  value={draft.employee}
-                  onChange={(v) => setDraft({ ...draft, employee: v })}
-                  options={(employees || []).map((e) => e.name)}
+                <IdSearchSelect
+                  value={draft.employeeId}
+                  onChange={(v) => setDraft({ ...draft, employeeId: v })}
+                  options={empOptions}
                   placeholder="Select Employee"
                 />
               </Field>
               <Field label="Current Branch" required>
-                <SearchSelect
-                  value={draft.branch}
-                  onChange={(v) => setDraft({ ...draft, branch: v, department: "", designation: "" })}
-                  options={HRM_BRANCHES}
+                <IdSearchSelect
+                  value={draft.branchId}
+                  onChange={(v) => setDraft({ ...draft, branchId: v, departmentId: "", designationId: "" })}
+                  options={branchOptions}
                   placeholder="Select Current Branch"
                 />
               </Field>
               <Field label="Current Department" required>
-                <SearchSelect
-                  value={draft.department}
-                  onChange={(v) => setDraft({ ...draft, department: v, designation: "" })}
-                  options={HRM_DEPARTMENTS}
+                <IdSearchSelect
+                  value={draft.departmentId}
+                  onChange={(v) => setDraft({ ...draft, departmentId: v, designationId: "" })}
+                  options={deptsForBranch}
                   placeholder="Select Current Department"
-                  disabled={!draft.branch}
-                  disabledPlaceholder="Select Branch first"
+                  disabled={!draft.branchId}
                 />
               </Field>
               <Field label="Current Designation" required>
-                <SearchSelect
-                  value={draft.designation}
-                  onChange={(v) => setDraft({ ...draft, designation: v })}
-                  options={HRM_DESIGNATIONS}
+                <IdSearchSelect
+                  value={draft.designationId}
+                  onChange={(v) => setDraft({ ...draft, designationId: v })}
+                  options={desigsForDept}
                   placeholder="Select Current Designation"
-                  disabled={!draft.department}
-                  disabledPlaceholder="Select Department first"
+                  disabled={!draft.departmentId}
                 />
               </Field>
               <Field label="Effective Date" required>
-                <input type="date" value={draft.effectiveDate} onChange={(e) => setDraft({ ...draft, effectiveDate: e.target.value })} className={inputCls} />
+                <input
+                  type="date"
+                  value={draft.effectiveDate}
+                  onChange={(e) => setDraft({ ...draft, effectiveDate: e.target.value })}
+                  className={inputCls}
+                />
               </Field>
               <Field label="Reason">
                 <div className="flex gap-2">
-                  <textarea value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Enter Reason" rows={3} className={`flex-1 ${inputCls}`} />
+                  <textarea
+                    value={draft.reason}
+                    onChange={(e) => setDraft({ ...draft, reason: e.target.value })}
+                    placeholder="Enter Reason"
+                    rows={3}
+                    className={`flex-1 ${inputCls}`}
+                  />
                   <button
                     type="button"
                     title="AI assist"
@@ -363,15 +522,18 @@ export const Promotions: React.FC = () => {
               <button onClick={() => setModal(null)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm">
                 Cancel
               </button>
-              <button onClick={submit} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
-                {modal === "edit" ? "Update" : "Create"}
+              <button
+                onClick={() => void submit()}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+              >
+                {saving ? "Saving…" : modal === "edit" ? "Update" : "Create"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* details modal — career progression */}
       {viewPromotion && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -388,7 +550,6 @@ export const Promotions: React.FC = () => {
               </div>
             </div>
             <div className="px-6 py-5 space-y-5">
-              {/* employee card */}
               <div className="bg-gray-50 border border-gray-100 rounded-lg px-5 py-4 flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center">
                   <UserRound className="w-5 h-5 text-blue-600" />
@@ -399,12 +560,10 @@ export const Promotions: React.FC = () => {
                 </div>
               </div>
 
-              {/* career progression timeline */}
               <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-5 py-6">
                 <h4 className="text-center text-base font-bold text-gray-900 mb-6">Career Progression</h4>
                 <div className="relative">
                   <div className="absolute left-1/2 top-2 bottom-2 w-px bg-blue-200 -translate-x-1/2" />
-                  {/* previous */}
                   <div className="relative flex items-center mb-8">
                     <div className="w-1/2 pr-8">
                       <div className="bg-white rounded-lg shadow-sm border-l-4 border-red-400 px-4 py-3 text-right">
@@ -418,7 +577,6 @@ export const Promotions: React.FC = () => {
                       <Briefcase className="w-4 h-4 text-white" />
                     </div>
                   </div>
-                  {/* current */}
                   <div className="relative flex items-center justify-end">
                     <div className="w-1/2 pl-8">
                       <div className="bg-white rounded-lg shadow-sm border-l-4 border-green-500 px-4 py-3">
@@ -435,7 +593,6 @@ export const Promotions: React.FC = () => {
                 </div>
               </div>
 
-              {/* promotion details */}
               <div className="border border-gray-200 rounded-xl px-5 py-4">
                 <h4 className="text-base font-semibold text-gray-900 mb-3">Promotion Details</h4>
                 <div className="bg-blue-50/70 border border-blue-100 rounded-lg px-4 py-3 flex items-center gap-3 mb-4">
@@ -461,7 +618,6 @@ export const Promotions: React.FC = () => {
         </div>
       )}
 
-      {/* delete confirm */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
@@ -474,8 +630,12 @@ export const Promotions: React.FC = () => {
                 This will permanently remove the promotion of <span className="font-medium text-gray-700">{deleteTarget.employee}</span>.
               </p>
               <div className="flex gap-3">
-                <button onClick={confirmDelete} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
-                <button onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+                <button onClick={() => void confirmDelete()} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                  Delete
+                </button>
+                <button onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -484,3 +644,5 @@ export const Promotions: React.FC = () => {
     </div>
   );
 };
+
+export default Promotions;

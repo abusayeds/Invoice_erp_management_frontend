@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Plus, Search } from "lucide-react";
 
 /* ── initials avatar ───────────────────────────────────────────── */
 
@@ -199,7 +199,7 @@ export function HrmBreadcrumb({
   onNavigate: (to: string) => void;
 }) {
   return (
-    <div className="module-title-bar px-4 sm:px-6">
+    <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-8">
       <div className="flex items-center gap-2 text-sm text-gray-500">
         {trail.map((t) => (
           <React.Fragment key={t.label}>
@@ -249,4 +249,135 @@ export function apiLabel(rec: any, keys: string[]): string {
     if (s && !/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
   }
   return "";
+}
+
+/** Extract User `_id` from an HRM employee profile (workflow refs use User ids). */
+export function employeeUserId(rec: any): string {
+  const u = rec?.employee_user_id ?? rec?.user_id;
+  if (u && typeof u === "object") return String(u._id ?? u.id ?? "");
+  if (u) return String(u);
+  return String(rec?.id ?? rec?._id ?? "");
+}
+
+export function employeeOption(rec: any): { id: string; name: string } {
+  return {
+    id: employeeUserId(rec),
+    name:
+      apiLabel(rec, ["employee_user_id", "user_id", "name", "employee_name", "full_name"]) ||
+      "Employee",
+  };
+}
+
+/** Orange create (+) matching header / ListCreateFab — spaced from the right edge. */
+export function CreatePlusButton({
+  onClick,
+  title = "Create",
+  className = "",
+}: {
+  onClick: () => void;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`w-9 h-9 flex-shrink-0 mr-2 sm:mr-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm ${className}`}
+    >
+      <Plus className="w-5 h-5" strokeWidth={2.2} />
+    </button>
+  );
+}
+
+/** Searchable select that stores `id` but displays `name`. */
+export function IdSearchSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  options: { id: string; name: string }[];
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.id === value);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const filtered = options.filter((o) =>
+    o.name.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          setOpen(!open);
+          setQuery("");
+        }}
+        className={`keep-box ua-field w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm text-left ${
+          disabled
+            ? "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
+            : open
+              ? "border-blue-500 ring-2 ring-blue-500/20 bg-white"
+              : "border-gray-300 bg-white hover:border-gray-400"
+        }`}
+      >
+        <span className={selected ? "text-gray-900" : "text-gray-400"}>
+          {selected?.name || placeholder}
+        </span>
+        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+      </button>
+      {open && !disabled && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 overflow-hidden">
+          <div className="relative border-b border-gray-100">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search..."
+              className="w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => {
+                  onChange(o.id);
+                  setOpen(false);
+                }}
+                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
+                  o.id === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                }`}
+              >
+                {o.name}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="px-4 py-3 text-sm text-gray-400">No results</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

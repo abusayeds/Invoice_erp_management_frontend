@@ -3,29 +3,21 @@
  * Employee Salary Details — matches the ERPGO reference
  * (references/hrm/set salary/set salary detail page.png + add allowance /
  * deduction / loan / overtime modals) in the Qayd blue theme.
- * Salary components persist per employee in meta row `hrm:salary:<id>`.
+ * Salary components load and persist via HRM payroll APIs.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { money } from "@/lib/db";
+import { useEmployees, employeeBackendId } from "@/lib/db/hrm";
 import {
-  useEmployees,
-  saveEmployees,
-  useSalary,
-  saveSalary,
-  defaultSalaryFor,
-  newUid,
-  ALLOWANCE_TYPES,
-  DEDUCTION_TYPES,
-  LOAN_TYPES,
-  type SalaryData,
-  type SalaryComponent,
-  type SalaryLoan,
-  type SalaryOvertime,
-} from "@/lib/db/hrm";
-import { Avatar, Chip, Field, inputCls, SearchSelect, HrmBreadcrumb } from "../hrmShared";
+  payrollApi,
+  allowanceTypeHooks,
+  deductionTypeHooks,
+  loanTypeHooks,
+} from "@/services/hrm";
+import { Avatar, Chip, Field, inputCls, IdSearchSelect, HrmBreadcrumb, apiLabel } from "../hrmShared";
 import {
   ArrowLeft,
   DollarSign,
@@ -36,6 +28,177 @@ import {
   X,
   Pencil,
 } from "lucide-react";
+
+const LIST_PARAMS = { page: 1, limit: 100 };
+
+type AmountKind = "Fixed" | "Percentage";
+
+interface SalaryComponentRow {
+  id: string;
+  name: string;
+  type: AmountKind | string;
+  amount: number;
+  typeId: string;
+}
+
+interface SalaryLoanRow {
+  id: string;
+  title: string;
+  loanType: string;
+  loanTypeId: string;
+  type: AmountKind | string;
+  amount: number;
+  startDate: string;
+  endDate: string;
+  reason: string;
+}
+
+interface SalaryOvertimeRow {
+  id: string;
+  title: string;
+  days: number;
+  hours: number;
+  rate: number;
+  startDate: string;
+  endDate: string;
+  status: string;
+  notes: string;
+}
+
+interface SalaryView {
+  employee: {
+    name: string;
+    employeeId: string;
+    branch: string;
+    department: string;
+    designation: string;
+    basicSalary: number;
+  };
+  allowances: SalaryComponentRow[];
+  deductions: SalaryComponentRow[];
+  loans: SalaryLoanRow[];
+  overtimes: SalaryOvertimeRow[];
+}
+
+function errMsg(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e && (e as { message?: string }).message) {
+    return String((e as { message: string }).message);
+  }
+  return "Request failed";
+}
+
+function hday(d: unknown): string {
+  if (!d) return "";
+  if (typeof d === "string") return d.slice(0, 10);
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
+function refId(v: unknown): string {
+  if (!v) return "";
+  if (typeof v === "object" && v !== null && "_id" in v) return String((v as { _id: unknown })._id);
+  if (typeof v === "object" && v !== null && "id" in v) return String((v as { id: unknown }).id);
+  return String(v);
+}
+
+function refName(v: unknown, keys: string[]): string {
+  if (!v) return "";
+  if (typeof v === "object") return apiLabel(v, keys) || "";
+  return "";
+}
+
+function capitalizeAmountType(t: unknown): AmountKind | string {
+  const s = String(t ?? "").toLowerCase();
+  if (s === "percentage") return "Percentage";
+  if (s === "fixed") return "Fixed";
+  return String(t ?? "");
+}
+
+function apiAmountType(ui: string): "fixed" | "percentage" {
+  return ui === "Percentage" ? "percentage" : "fixed";
+}
+
+function overtimeStatusLabel(s: unknown): string {
+  const v = String(s ?? "active").toLowerCase();
+  return v === "expired" ? "Inactive" : "Active";
+}
+
+function mapSalaryResponse(raw: Record<string, unknown>): SalaryView {
+  const emp = (raw.employee ?? raw) as Record<string, unknown>;
+  const mapComponent = (
+    rows: unknown[],
+    typeKey: "allowance_type_id" | "deduction_type_id",
+  ): SalaryComponentRow[] =>
+    rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      const typeRef = r[typeKey];
+      return {
+        id: String(r._id ?? r.id),
+        name: refName(typeRef, ["name"]) || apiLabel(r, ["name"]),
+        type: capitalizeAmountType(r.type),
+        amount: Number(r.amount) || 0,
+        typeId: refId(typeRef),
+      };
+    });
+
+  const loans = ((raw.loans as unknown[]) || []).map((row) => {
+    const l = row as Record<string, unknown>;
+    const typeRef = l.loan_type_id;
+    return {
+      id: String(l._id ?? l.id),
+      title: String(l.title ?? ""),
+      loanType: refName(typeRef, ["name"]) || apiLabel(l, ["name"]),
+      loanTypeId: refId(typeRef),
+      type: capitalizeAmountType(l.type),
+      amount: Number(l.amount) || 0,
+      startDate: hday(l.start_date),
+      endDate: hday(l.end_date),
+      reason: String(l.reason ?? ""),
+    };
+  });
+
+  const overtimes = ((raw.overtimes as unknown[]) || []).map((row) => {
+    const o = row as Record<string, unknown>;
+    return {
+      id: String(o._id ?? o.id),
+      title: String(o.title ?? ""),
+      days: Number(o.total_days ?? o.days) || 1,
+      hours: Number(o.hours) || 0,
+      rate: Number(o.rate) || 0,
+      startDate: hday(o.start_date),
+      endDate: hday(o.end_date),
+      status: overtimeStatusLabel(o.status),
+      notes: String(o.notes ?? ""),
+    };
+  });
+
+  return {
+    employee: {
+      name: apiLabel(emp, ["employee_user_id", "name"]) || "",
+      employeeId: String(emp.employee_id ?? ""),
+      branch: refName(emp.branch_id, ["branch_name", "name"]),
+      department: refName(emp.department_id, ["department_name", "name"]),
+      designation: refName(emp.designation_id, ["designation_name", "name"]),
+      basicSalary: Number(emp.basic_salary) || 0,
+    },
+    allowances: mapComponent((raw.allowances as unknown[]) || [], "allowance_type_id"),
+    deductions: mapComponent((raw.deductions as unknown[]) || [], "deduction_type_id"),
+    loans,
+    overtimes,
+  };
+}
+
+function typeSelectOptions(items: unknown[] | undefined, labelKeys: string[]) {
+  return (items ?? [])
+    .map((t) => {
+      const rec = t as Record<string, unknown>;
+      return {
+        id: String(rec._id ?? rec.id),
+        name: apiLabel(rec, labelKeys) || "—",
+      };
+    })
+    .filter((o) => o.id);
+}
 
 /* ── small building blocks ─────────────────────────────────────── */
 
@@ -112,39 +275,116 @@ const fmtAmount = (c: { type: string; amount: number }) =>
 
 /* ── page ──────────────────────────────────────────────────────── */
 
-const SetSalaryDetail: React.FC = () => {
+export const SetSalaryDetail: React.FC = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
-  const empId = Number(id);
+  const { id: routeId } = useParams();
 
-  const employees = useEmployees();
-  useEffect(() => {
-  }, [employees]);
-  const employee = (employees || []).find((e) => e.id === empId);
+  useEmployees();
 
-  const salary = useSalary(Number.isFinite(empId) ? empId : null);
+  const profileId = useMemo(() => {
+    if (!routeId) return undefined;
+    if (/^\d+$/.test(routeId)) {
+      return employeeBackendId(Number(routeId));
+    }
+    return routeId;
+  }, [routeId]);
+
+  const [view, setView] = useState<SalaryView | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const allowanceTypesQ = allowanceTypeHooks.useList(LIST_PARAMS, { retry: 0 });
+  const deductionTypesQ = deductionTypeHooks.useList(LIST_PARAMS, { retry: 0 });
+  const loanTypesQ = loanTypeHooks.useList(LIST_PARAMS, { retry: 0 });
+
+  const allowanceTypeOptions = useMemo(
+    () => typeSelectOptions(allowanceTypesQ.data, ["name", "allowance_type", "type_name"]),
+    [allowanceTypesQ.data],
+  );
+  const deductionTypeOptions = useMemo(
+    () => typeSelectOptions(deductionTypesQ.data, ["name", "deduction_type", "type_name"]),
+    [deductionTypesQ.data],
+  );
+  const loanTypeOptions = useMemo(
+    () => typeSelectOptions(loanTypesQ.data, ["name", "loan_type", "type_name"]),
+    [loanTypesQ.data],
+  );
+
+  const loadSalary = useCallback(async () => {
+    if (!profileId) {
+      setView(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const raw = await payrollApi.getSalary(profileId);
+      setView(mapSalaryResponse(raw as Record<string, unknown>));
+    } catch (e) {
+      setView(null);
+      showToast(errMsg(e), "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [profileId]);
+
   useEffect(() => {
-    if (salary === null && Number.isFinite(empId)) saveSalary(empId, defaultSalaryFor(empId));
-  }, [salary, empId]);
+    void loadSalary();
+  }, [loadSalary]);
 
   type ModalState =
-    | { kind: "allowance" | "deduction"; item?: SalaryComponent }
-    | { kind: "loan"; item?: SalaryLoan }
-    | { kind: "overtime"; item?: SalaryOvertime }
-    | { kind: "viewLoan"; item: SalaryLoan }
-    | { kind: "viewOvertime"; item: SalaryOvertime }
+    | { kind: "allowance" | "deduction"; item?: SalaryComponentRow }
+    | { kind: "loan"; item?: SalaryLoanRow }
+    | { kind: "overtime"; item?: SalaryOvertimeRow }
+    | { kind: "viewLoan"; item: SalaryLoanRow }
+    | { kind: "viewOvertime"; item: SalaryOvertimeRow }
     | { kind: "basicSalary" }
     | null;
   const [modal, setModal] = useState<ModalState>(null);
 
-  // draft fields shared across the small modals
-  const [draft, setDraft] = useState<any>({});
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
+
   const openModal = (m: Exclude<ModalState, null>) => {
-    setDraft("item" in m && m.item ? { ...m.item } : m.kind === "basicSalary" ? { amount: employee?.basicSalary ?? 0 } : { type: "" });
+    if ("item" in m && m.item) {
+      if (m.kind === "allowance" || m.kind === "deduction") {
+        const item = m.item;
+        setDraft({ id: item.id, typeId: item.typeId, type: item.type, amount: item.amount });
+      } else if (m.kind === "loan") {
+        const item = m.item;
+        setDraft({
+          id: item.id,
+          title: item.title,
+          loanTypeId: item.loanTypeId,
+          type: item.type,
+          amount: item.amount,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          reason: item.reason,
+        });
+      } else if (m.kind === "overtime") {
+        const item = m.item;
+        setDraft({
+          id: item.id,
+          title: item.title,
+          days: item.days,
+          hours: item.hours,
+          rate: item.rate,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          status: item.status,
+          notes: item.notes,
+        });
+      } else {
+        setDraft({ ...m.item });
+      }
+    } else if (m.kind === "basicSalary") {
+      setDraft({ amount: view?.employee.basicSalary ?? 0 });
+    } else {
+      setDraft({ typeId: "", type: "", amount: "" });
+    }
     setModal(m);
   };
 
-  if (!employee) {
+  if (!profileId) {
     return (
       <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3 text-gray-500">
         <p>Employee not found.</p>
@@ -155,63 +395,125 @@ const SetSalaryDetail: React.FC = () => {
     );
   }
 
-  const data: SalaryData = salary || defaultSalaryFor(empId);
-  const save = (patch: Partial<SalaryData>) => saveSalary(empId, { ...data, ...patch });
+  if (loading && !view) {
+    return (
+      <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3 text-gray-500">
+        <p>Loading salary details…</p>
+      </div>
+    );
+  }
+
+  if (!view) {
+    return (
+      <div className="flex-1 bg-[#FAFBFC] flex flex-col items-center justify-center gap-3 text-gray-500">
+        <p>Could not load employee salary.</p>
+        <button onClick={() => navigate("/hrm/payslip/set-salary")} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm">
+          Back to Set Salary
+        </button>
+      </div>
+    );
+  }
+
+  const { employee, allowances, deductions, loans, overtimes } = view;
 
   /* ── submit handlers ── */
 
   const submitComponent = async (kind: "allowance" | "deduction") => {
-    if (!draft.name || !draft.type || !(Number(draft.amount) > 0)) {
+    if (!draft.typeId || !draft.type || !(Number(draft.amount) > 0)) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    const listKey = kind === "allowance" ? "allowances" : "deductions";
-    const rows = data[listKey] as SalaryComponent[];
-    const item: SalaryComponent = { id: draft.id || newUid(), name: draft.name, type: draft.type, amount: Number(draft.amount) };
-    await save({ [listKey]: draft.id ? rows.map((r) => (r.id === item.id ? item : r)) : [...rows, item] } as any);
-    showToast(`${kind === "allowance" ? "Allowance" : "Deduction"} ${draft.id ? "updated" : "created"} successfully`, "success");
-    setModal(null);
+    const body =
+      kind === "allowance"
+        ? {
+            allowance_type_id: draft.typeId,
+            type: apiAmountType(String(draft.type)),
+            amount: Number(draft.amount),
+          }
+        : {
+            deduction_type_id: draft.typeId,
+            type: apiAmountType(String(draft.type)),
+            amount: Number(draft.amount),
+          };
+
+    try {
+      if (draft.id) {
+        if (kind === "allowance") await payrollApi.editAllowance(String(draft.id), body);
+        else await payrollApi.editDeduction(String(draft.id), body);
+      } else {
+        if (kind === "allowance") await payrollApi.addAllowance(profileId, body);
+        else await payrollApi.addDeduction(profileId, body);
+      }
+      await loadSalary();
+      showToast(`${kind === "allowance" ? "Allowance" : "Deduction"} ${draft.id ? "updated" : "created"} successfully`, "success");
+      setModal(null);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
   };
 
   const submitLoan = async () => {
-    if (!draft.title || !draft.loanType || !draft.type || !(Number(draft.amount) > 0) || !draft.startDate || !draft.endDate) {
+    if (
+      !draft.title ||
+      !draft.loanTypeId ||
+      !draft.type ||
+      !(Number(draft.amount) > 0) ||
+      !draft.startDate ||
+      !draft.endDate
+    ) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    const item: SalaryLoan = {
-      id: draft.id || newUid(),
+    const body = {
       title: draft.title,
-      loanType: draft.loanType,
-      type: draft.type,
+      loan_type_id: draft.loanTypeId,
+      type: apiAmountType(String(draft.type)),
       amount: Number(draft.amount),
-      startDate: draft.startDate,
-      endDate: draft.endDate,
+      start_date: draft.startDate,
+      end_date: draft.endDate,
       reason: draft.reason || "",
     };
-    await save({ loans: draft.id ? data.loans.map((r) => (r.id === item.id ? item : r)) : [...data.loans, item] });
-    showToast(`Loan ${draft.id ? "updated" : "created"} successfully`, "success");
-    setModal(null);
+    try {
+      if (draft.id) await payrollApi.editLoan(String(draft.id), body);
+      else await payrollApi.addLoan(profileId, body);
+      await loadSalary();
+      showToast(`Loan ${draft.id ? "updated" : "created"} successfully`, "success");
+      setModal(null);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
   };
 
   const submitOvertime = async () => {
-    if (!draft.title || !(Number(draft.days) > 0) || !(Number(draft.hours) > 0) || !(Number(draft.rate) > 0) || !draft.startDate || !draft.endDate) {
+    if (
+      !draft.title ||
+      !(Number(draft.days) > 0) ||
+      !(Number(draft.hours) > 0) ||
+      !(Number(draft.rate) > 0) ||
+      !draft.startDate ||
+      !draft.endDate
+    ) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    const item: SalaryOvertime = {
-      id: draft.id || newUid(),
+    const body = {
       title: draft.title,
-      days: Number(draft.days),
+      total_days: Number(draft.days),
       hours: Number(draft.hours),
       rate: Number(draft.rate),
-      startDate: draft.startDate,
-      endDate: draft.endDate,
-      status: draft.status || "Active",
+      start_date: draft.startDate,
+      end_date: draft.endDate,
       notes: draft.notes || "",
     };
-    await save({ overtimes: draft.id ? data.overtimes.map((r) => (r.id === item.id ? item : r)) : [...data.overtimes, item] });
-    showToast(`Overtime ${draft.id ? "updated" : "created"} successfully`, "success");
-    setModal(null);
+    try {
+      if (draft.id) await payrollApi.editOvertime(String(draft.id), body);
+      else await payrollApi.addOvertime(profileId, body);
+      await loadSalary();
+      showToast(`Overtime ${draft.id ? "updated" : "created"} successfully`, "success");
+      setModal(null);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
   };
 
   const submitBasicSalary = async () => {
@@ -220,14 +522,27 @@ const SetSalaryDetail: React.FC = () => {
       showToast("Enter a valid salary amount", "error");
       return;
     }
-    await saveEmployees((employees || []).map((e) => (e.id === empId ? { ...e, basicSalary: amount } : e)));
-    showToast("Basic salary updated", "success");
-    setModal(null);
+    try {
+      await payrollApi.updateSalary(profileId, { basic_salary: amount });
+      await loadSalary();
+      showToast("Basic salary updated", "success");
+      setModal(null);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
   };
 
-  const removeRow = async (listKey: keyof SalaryData, rowId: string) => {
-    await save({ [listKey]: (data[listKey] as { id: string }[]).filter((r) => r.id !== rowId) } as any);
-    showToast("Deleted successfully", "success");
+  const removeRow = async (kind: "allowances" | "deductions" | "loans" | "overtimes", rowId: string) => {
+    try {
+      if (kind === "allowances") await payrollApi.deleteAllowance(rowId);
+      else if (kind === "deductions") await payrollApi.deleteDeduction(profileId, rowId);
+      else if (kind === "loans") await payrollApi.deleteLoan(profileId, rowId);
+      else await payrollApi.deleteOvertime(profileId, rowId);
+      await loadSalary();
+      showToast("Deleted successfully", "success");
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
   };
 
   const actionBtns = (onView: (() => void) | null, onEdit: () => void, onDelete: () => void) => (
@@ -298,7 +613,7 @@ const SetSalaryDetail: React.FC = () => {
             ).map(([k, v]) => (
               <div key={k} className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
                 <p className="text-xs text-gray-500 mb-1">{k}</p>
-                <p className="text-sm font-semibold text-gray-900">{v}</p>
+                <p className="text-sm font-semibold text-gray-900">{v || "—"}</p>
               </div>
             ))}
           </div>
@@ -317,7 +632,7 @@ const SetSalaryDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {data.allowances.map((a) => (
+                {allowances.map((a) => (
                   <tr key={a.id}>
                     <td className={`${td} text-gray-900`}>{a.name}</td>
                     <td className={`${td} text-gray-600`}>{a.type}</td>
@@ -325,7 +640,7 @@ const SetSalaryDetail: React.FC = () => {
                     <td className={td}>{actionBtns(null, () => openModal({ kind: "allowance", item: a }), () => removeRow("allowances", a.id))}</td>
                   </tr>
                 ))}
-                {data.allowances.length === 0 && (
+                {allowances.length === 0 && (
                   <tr><td colSpan={4} className="px-5 py-8 text-center text-sm text-gray-400">No allowances yet.</td></tr>
                 )}
               </tbody>
@@ -343,7 +658,7 @@ const SetSalaryDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {data.deductions.map((d) => (
+                {deductions.map((d) => (
                   <tr key={d.id}>
                     <td className={`${td} text-gray-900`}>{d.name}</td>
                     <td className={`${td} text-gray-600`}>{d.type}</td>
@@ -351,7 +666,7 @@ const SetSalaryDetail: React.FC = () => {
                     <td className={td}>{actionBtns(null, () => openModal({ kind: "deduction", item: d }), () => removeRow("deductions", d.id))}</td>
                   </tr>
                 ))}
-                {data.deductions.length === 0 && (
+                {deductions.length === 0 && (
                   <tr><td colSpan={4} className="px-5 py-8 text-center text-sm text-gray-400">No deductions yet.</td></tr>
                 )}
               </tbody>
@@ -370,16 +685,16 @@ const SetSalaryDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {data.loans.map((l) => (
+                {loans.map((l) => (
                   <tr key={l.id}>
-                    <td className={`${td} text-gray-900`}>{l.loanType}</td>
+                    <td className={`${td} text-gray-900`}>{l.loanType || "—"}</td>
                     <td className={`${td} text-gray-900`}>{fmtAmount(l)}</td>
-                    <td className={`${td} text-gray-600`}>{l.startDate}</td>
-                    <td className={`${td} text-gray-600`}>{l.endDate}</td>
+                    <td className={`${td} text-gray-600`}>{l.startDate || "—"}</td>
+                    <td className={`${td} text-gray-600`}>{l.endDate || "—"}</td>
                     <td className={td}>{actionBtns(() => setModal({ kind: "viewLoan", item: l }), () => openModal({ kind: "loan", item: l }), () => removeRow("loans", l.id))}</td>
                   </tr>
                 ))}
-                {data.loans.length === 0 && (
+                {loans.length === 0 && (
                   <tr><td colSpan={5} className="px-5 py-8 text-center text-sm text-gray-400">No loans yet.</td></tr>
                 )}
               </tbody>
@@ -399,7 +714,7 @@ const SetSalaryDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {data.overtimes.map((o) => (
+                {overtimes.map((o) => (
                   <tr key={o.id}>
                     <td className={`${td} text-gray-900`}>{o.title}</td>
                     <td className={`${td} text-gray-600`}>{o.days}</td>
@@ -409,7 +724,7 @@ const SetSalaryDetail: React.FC = () => {
                     <td className={td}>{actionBtns(() => setModal({ kind: "viewOvertime", item: o }), () => openModal({ kind: "overtime", item: o }), () => removeRow("overtimes", o.id))}</td>
                   </tr>
                 ))}
-                {data.overtimes.length === 0 && (
+                {overtimes.length === 0 && (
                   <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-400">No overtimes yet.</td></tr>
                 )}
               </tbody>
@@ -436,15 +751,15 @@ const SetSalaryDetail: React.FC = () => {
           submitLabel={modal.item ? "Update" : "Create"}
         >
           <Field label={modal.kind === "allowance" ? "Allowance Type" : "Deduction Type"} required>
-            <SearchSelect
-              value={draft.name || ""}
-              onChange={(v) => setDraft({ ...draft, name: v })}
-              options={modal.kind === "allowance" ? ALLOWANCE_TYPES : DEDUCTION_TYPES}
+            <IdSearchSelect
+              value={String(draft.typeId || "")}
+              onChange={(v) => setDraft({ ...draft, typeId: v })}
+              options={modal.kind === "allowance" ? allowanceTypeOptions : deductionTypeOptions}
               placeholder={`Select ${modal.kind} type`}
             />
           </Field>
           <Field label="Type" required>
-            <select value={draft.type || ""} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
               <option value="">Select type</option>
               <option>Fixed</option>
               <option>Percentage</option>
@@ -459,13 +774,18 @@ const SetSalaryDetail: React.FC = () => {
       {modal?.kind === "loan" && (
         <ModalShell title={modal.item ? "Edit Loan" : "Add Loan"} onClose={() => setModal(null)} onSubmit={submitLoan} submitLabel={modal.item ? "Update" : "Create"}>
           <Field label="Title" required>
-            <input value={draft.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Enter loan title" className={inputCls} />
+            <input value={String(draft.title || "")} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Enter loan title" className={inputCls} />
           </Field>
           <Field label="Loan Type" required>
-            <SearchSelect value={draft.loanType || ""} onChange={(v) => setDraft({ ...draft, loanType: v })} options={LOAN_TYPES} placeholder="Select loan type" />
+            <IdSearchSelect
+              value={String(draft.loanTypeId || "")}
+              onChange={(v) => setDraft({ ...draft, loanTypeId: v })}
+              options={loanTypeOptions}
+              placeholder="Select loan type"
+            />
           </Field>
           <Field label="Type" required>
-            <select value={draft.type || ""} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
               <option value="">Select type</option>
               <option>Fixed</option>
               <option>Percentage</option>
@@ -475,13 +795,13 @@ const SetSalaryDetail: React.FC = () => {
             <input type="number" min={0} value={draft.amount ?? ""} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
           </Field>
           <Field label="Start Date" required>
-            <input type="date" value={draft.startDate || ""} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+            <input type="date" value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
           </Field>
           <Field label="End Date" required>
-            <input type="date" value={draft.endDate || ""} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+            <input type="date" value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
           </Field>
           <Field label="Reason">
-            <textarea value={draft.reason || ""} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Enter reason for loan" rows={3} className={inputCls} />
+            <textarea value={String(draft.reason || "")} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Enter reason for loan" rows={3} className={inputCls} />
           </Field>
         </ModalShell>
       )}
@@ -489,7 +809,7 @@ const SetSalaryDetail: React.FC = () => {
       {modal?.kind === "overtime" && (
         <ModalShell title={modal.item ? "Edit Overtime" : "Add Overtime"} onClose={() => setModal(null)} onSubmit={submitOvertime} submitLabel={modal.item ? "Update" : "Create"}>
           <Field label="Title" required>
-            <input value={draft.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Enter overtime title" className={inputCls} />
+            <input value={String(draft.title || "")} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Enter overtime title" className={inputCls} />
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Total Days" required>
@@ -504,20 +824,20 @@ const SetSalaryDetail: React.FC = () => {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Start Date" required>
-              <input type="date" value={draft.startDate || ""} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+              <input type="date" value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="End Date" required>
-              <input type="date" value={draft.endDate || ""} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+              <input type="date" value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
             </Field>
           </div>
           <Field label="Status" required>
-            <select value={draft.status || "Active"} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.status || "Active")} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className={`${inputCls} bg-white`}>
               <option>Active</option>
               <option>Inactive</option>
             </select>
           </Field>
           <Field label="Notes">
-            <textarea value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Enter notes for overtime" rows={3} className={inputCls} />
+            <textarea value={String(draft.notes || "")} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Enter notes for overtime" rows={3} className={inputCls} />
           </Field>
         </ModalShell>
       )}
@@ -538,8 +858,8 @@ const SetSalaryDetail: React.FC = () => {
                   ["Loan Type", modal.item.loanType],
                   ["Type", modal.item.type],
                   ["Amount", fmtAmount(modal.item)],
-                  ["Start Date", modal.item.startDate],
-                  ["End Date", modal.item.endDate],
+                  ["Start Date", modal.item.startDate || "—"],
+                  ["End Date", modal.item.endDate || "—"],
                   ["Reason", modal.item.reason || "—"],
                 ] as const
               ).map(([k, v]) => (
@@ -569,8 +889,8 @@ const SetSalaryDetail: React.FC = () => {
                   ["Total Days", String(modal.item.days)],
                   ["Hours", modal.item.hours.toFixed(2)],
                   ["Rate", money(modal.item.rate)],
-                  ["Start Date", modal.item.startDate],
-                  ["End Date", modal.item.endDate],
+                  ["Start Date", modal.item.startDate || "—"],
+                  ["End Date", modal.item.endDate || "—"],
                   ["Status", modal.item.status],
                   ["Notes", modal.item.notes || "—"],
                 ] as const

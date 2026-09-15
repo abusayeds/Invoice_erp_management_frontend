@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { money } from "@/lib/db";
-import { useEmployees } from "@/lib/db/hrm";
+import { useEmployees, employeeBackendId } from "@/lib/db/hrm";
 import { HrmBreadcrumb } from "../hrmShared";
 import { Search, Filter, ChevronDown, ArrowUpDown, Eye } from "lucide-react";
 
@@ -170,7 +170,7 @@ export const SetSalary: React.FC = () => {
                 <tr
                   key={emp.id}
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => navigate(`/hrm/payslip/set-salary/${emp.id}`)}
+                  onClick={() => navigate(`/hrm/payslip/set-salary/${employeeBackendId(emp.id) || emp.id}`)}
                 >
                   <td className="px-4 py-3">
                     <span className="text-blue-600 font-medium hover:underline">{emp.employeeId}</span>
@@ -182,7 +182,7 @@ export const SetSalary: React.FC = () => {
                   <td className="px-4 py-3 text-gray-900 font-medium">{money(emp.basicSalary)}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => navigate(`/hrm/payslip/set-salary/${emp.id}`)}
+                      onClick={() => navigate(`/hrm/payslip/set-salary/${employeeBackendId(emp.id) || emp.id}`)}
                       className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
                       title="View salary"
                     >

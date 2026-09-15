@@ -171,6 +171,34 @@ export const attendancesService = makeResource<Attendance>({ list: `${BASE}/atte
 export const attendanceHooks = createResourceHooks("hrm-attendances", attendancesService);
 
 export const attendanceApi = {
+  grid: (params: { year: number; month: number; employee_id?: string }) =>
+    getOne<{
+      year: number;
+      month: number;
+      days_in_month: number;
+      employees: {
+        _id: string;
+        employee_user_id: string;
+        name: string;
+        email: string;
+        employee_code: string;
+      }[];
+      cells: Record<
+        string,
+        {
+          _id: string;
+          clock_in: string;
+          clock_out: string;
+          status: string;
+          notes: string;
+          total_hour: number;
+        }
+      >;
+    }>(`${BASE}/attendances/grid`, params as any),
+  createManual: (body: Record<string, unknown>) =>
+    postJson(`${BASE}/attendances`, body),
+  updateManual: (id: string, body: Record<string, unknown>) =>
+    putJson(`${BASE}/attendances/${id}`, body),
   clockStatus: () => getOne(`${BASE}/attendances/clock-status`),
   clockInOut: () => postJson(`${BASE}/attendances/clock-in-out`),
   history: (body: { from_date: string; to_date: string }) => postJson(`${BASE}/attendances/history`, body),
