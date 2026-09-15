@@ -376,7 +376,7 @@ export const PdfDocPreview: React.FC<{
       {s.contactSign ? (
         <div style={{ textAlign: "center", alignSelf: "flex-end", order: s.contactSignAlignment === "Right" ? 2 : 0 }}>
           <div style={{ height: SIGN_W[s.signatureSize] * 0.4 }} />
-          <div style={{ borderTop: `1px solid ${bc}`, fontSize: fontPx - 2, paddingTop: 3 }}>Contact Signature</div>
+          <div style={{ borderTop: `1px solid ${bc}`, fontSize: fontPx - 2, paddingTop: 3 }}>Customer Signature</div>
         </div>
       ) : <span />}
     </div>

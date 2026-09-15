@@ -12,11 +12,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCcw, ChevronDown, X, Pencil, Check } from "lucide-react";
 import {
+  getAppSettings, saveAppSettings, resetAppSettings, syncAppSettingsFromBackend,
+  getExchangeRates, saveExchangeRates, ExchangeRate,
   SECTION_DEFAULTS, DOC_TYPES, MODULE_NAMES, DocSettings,
-  getAppSettings, saveAppSettings, getExchangeRates, saveExchangeRates, ExchangeRate,
 } from "@/lib/db/appSettings";
 import { applyTheme } from "@/lib/theme";
 import { showToast } from "@/utils/toast";
+import { ApiError } from "@/lib/api/ApiError";
 
 const TABS = [
   "General", "Modules", "Currency & Format", "Printer", "Whatsapp",
@@ -196,12 +198,20 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
   const [waTemplateOpen, setWaTemplateOpen] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const [saving, setSaving] = useState(false);
+
   // Appearance the modal opened with — used to revert the live theme preview on Cancel.
   const persistedAppearance = useRef("Dark");
   useEffect(() => {
     (async () => {
-      const entries = await Promise.all(ALL_SECTIONS.map(async (s) => [s, await getAppSettings(s)] as const));
-      const map = Object.fromEntries(entries);
+      const synced = await syncAppSettingsFromBackend(true);
+      const map: Record<string, any> = {};
+      if (synced) {
+        for (const s of ALL_SECTIONS) map[s] = synced[s] ?? (await getAppSettings(s));
+      } else {
+        const entries = await Promise.all(ALL_SECTIONS.map(async (s) => [s, await getAppSettings(s)] as const));
+        Object.assign(map, Object.fromEntries(entries));
+      }
       persistedAppearance.current = map.general?.appearance || "Dark";
       setDrafts(map);
     })();
@@ -222,16 +232,35 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
   const patch = (p: any) => setDraft({ ...draft, ...p });
 
   const save = async () => {
-    if (!drafts) return;
-    await Promise.all(Object.entries(drafts).map(([s, v]) => saveAppSettings(s, v)));
-    persistedAppearance.current = drafts.general?.appearance || "Dark"; // keep preview, don't revert
-    showToast("Settings saved", "success");
-    onClose();
+    if (!drafts || saving) return;
+    setSaving(true);
+    try {
+      await Promise.all(Object.entries(drafts).map(([s, v]) => saveAppSettings(s, v)));
+      persistedAppearance.current = drafts.general?.appearance || "Dark";
+      showToast("Settings saved", "success");
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.message ? err.message : "Couldn't save settings.";
+      showToast(msg, "error");
+    } finally {
+      setSaving(false);
+    }
   };
-  /* Reset only the current tab's draft back to its defaults. */
-  const resetCurrent = () => {
-    setDraft(clone(SECTION_DEFAULTS[section] ?? {}));
-    showToast(`${tab} settings reset to defaults`, "info");
+  /* Reset only the current tab — backend seed + local draft. */
+  const resetCurrent = async () => {
+    try {
+      await resetAppSettings(section);
+      const next = await getAppSettings(section);
+      setDraft(clone(next));
+      if (section === "general" && next?.appearance) applyTheme(next.appearance);
+      showToast(`${tab} settings reset to defaults`, "info");
+    } catch (err) {
+      setDraft(clone(SECTION_DEFAULTS[section] ?? {}));
+      const msg =
+        err instanceof ApiError && err.message ? err.message : `${tab} reset locally (offline)`;
+      showToast(msg, "info");
+    }
   };
 
   const visibleTabs = TABS.filter((t) => !search.trim() || t.toLowerCase().includes(search.toLowerCase()));
@@ -336,9 +365,11 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
               <input ref={searchRef} autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search settings" className="w-44 px-3 py-1.5 text-sm bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" />
             )}
             <button title="Search" onClick={() => { setSearchOpen((o) => !o); setSearch(""); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Search className="w-4 h-4" /></button>
-            <button title="Reset" onClick={resetCurrent} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
+            <button title="Reset" onClick={() => void resetCurrent()} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
             <button onClick={cancel} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={save} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+            <button onClick={() => void save()} disabled={saving || !drafts} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60">
+              {saving ? "Saving…" : "Save"}
+            </button>
           </div>
         </div>
         {/* body */}

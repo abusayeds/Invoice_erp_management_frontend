@@ -27,12 +27,14 @@ import {
   STANDARD_PDF_SETTINGS,
   getPdfSettings,
   savePdfSettings,
+  resetPdfSettings,
   type PdfDocType,
   type PdfSettings,
   type PrintMode,
 } from "@/lib/db/pdfSettings";
 import { PdfDocPreview } from "@/lib/db/PdfDocPreview";
 import { showToast } from "@/utils/toast";
+import { ApiError } from "@/lib/api/ApiError";
 
 /* ── small controls ────────────────────────────────────────────── */
 const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
@@ -225,11 +227,11 @@ const SECTIONS: SectionDef[] = [
   {
     title: "Signature", modes: ["normal", "thermal"],
     rows: [
-      { kind: "select", key: "companySign", label: "Company Sign", options: ["Company", "None"] },
+      { kind: "select", key: "companySign", label: "Company Signature", options: ["Company", "None"] },
       { kind: "select", key: "companySignAlignment", label: "Company Signature Alignment", options: ["Left", "Right"], modes: ["normal"] },
-      { kind: "select", key: "contactSignAlignment", label: "Contact Signature Alignment", options: ["Left", "Right"], modes: ["normal"] },
+      { kind: "toggle", key: "contactSign", label: "Customer Signature" },
+      { kind: "select", key: "contactSignAlignment", label: "Customer Signature Alignment", options: ["Left", "Right"], modes: ["normal"] },
       { kind: "select", key: "signatureSize", label: "Signature Size", options: ["Small", "Medium", "Large"], modes: ["normal"] },
-      { kind: "toggle", key: "contactSign", label: "Contact Sign", modes: ["thermal"] },
     ],
   },
   {
@@ -303,6 +305,8 @@ export const PdfPrintSettingsModal: React.FC<{
   const [query, setQuery] = useState("");
   const [bigPreview, setBigPreview] = useState(false);
 
+  const [saving, setSaving] = useState(false);
+
   const isAll = docChoice === "All";
   const docType: PdfDocType = (PDF_DOC_TYPES.find((d) => d.label === docChoice)?.key || "invoice") as PdfDocType;
 
@@ -322,14 +326,50 @@ export const PdfPrintSettingsModal: React.FC<{
   const set = (k: keyof PdfSettings, v: any) => setDraft((d) => ({ ...d, [k]: v }));
 
   const save = async () => {
-    if (isAll) {
-      await Promise.all(PDF_DOC_TYPES.map((d) => savePdfSettings(d.key, mode, draft)));
-    } else {
-      await savePdfSettings(docType, mode, draft);
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (isAll) {
+        await Promise.all(PDF_DOC_TYPES.map((d) => savePdfSettings(d.key, mode, draft)));
+      } else {
+        await savePdfSettings(docType, mode, draft);
+      }
+      setSaved(draft);
+      showToast("PDF & Print settings saved", "success");
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.message
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Couldn't save PDF settings.";
+      showToast(msg, "error");
+    } finally {
+      setSaving(false);
     }
-    setSaved(draft);
-    showToast("PDF & Print settings saved", "success");
-    onClose();
+  };
+
+  const resetToServerDefaults = async () => {
+    try {
+      if (isAll) {
+        const results = await Promise.all(PDF_DOC_TYPES.map((d) => resetPdfSettings(d.key, mode)));
+        const next = results[0] || { ...DEFAULT_PDF_SETTINGS };
+        setDraft(next);
+        setSaved(next);
+      } else {
+        const next = await resetPdfSettings(docType, mode);
+        setDraft(next);
+        setSaved(next);
+      }
+      showToast("PDF settings reset to defaults", "info");
+    } catch (err) {
+      setDraft({ ...DEFAULT_PDF_SETTINGS });
+      showToast(
+        err instanceof ApiError && err.message ? err.message : "Reset locally",
+        "info",
+      );
+    }
   };
 
   const sections = useMemo(() => {
@@ -352,7 +392,7 @@ export const PdfPrintSettingsModal: React.FC<{
   useEffect(() => { if (query.trim()) setOpenSections(new Set(sections.map((s) => s.title))); }, [query, sections]);
 
   const toolbar: { icon: React.ElementType; label: string; onClick: () => void }[] = [
-    { icon: RotateCcw, label: "Reset", onClick: () => setDraft(saved) },
+    { icon: RotateCcw, label: "Reset", onClick: () => void resetToServerDefaults() },
     { icon: Eye, label: "Preview", onClick: () => setBigPreview(true) },
     ...(mode === "normal"
       ? [
@@ -386,7 +426,9 @@ export const PdfPrintSettingsModal: React.FC<{
               <button onClick={() => setSearchOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Search className="w-4 h-4" /></button>
             )}
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={save} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">Save</button>
+            <button onClick={() => void save()} disabled={saving} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-60">
+              {saving ? "Saving…" : "Save"}
+            </button>
           </div>
         </div>
 

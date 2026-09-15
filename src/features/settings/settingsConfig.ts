@@ -69,17 +69,6 @@ export const SETTINGS_APP_SECTIONS = [
   "Product",
 ] as const;
 
-export const SETTINGS_PROMO_TITLES = [
-  "50% OFF First Month Plan",
-  "20% OFF Annual Subscription",
-  "Free Trial for 14 Days",
-  "Refer a Friend and Get $10",
-  "Buy One Get One Free",
-  "30% OFF on Select Items",
-  "Exclusive Member Discounts",
-  "Limited Time: 10% OFF All Orders",
-];
-
 export function settingsLabel(id: SettingsSectionId): string {
   return SETTINGS_NAV_ITEMS.find((n) => n.id === id)?.label ?? "Settings";
 }

@@ -5,13 +5,13 @@
 import React from "react";
 import { showToast } from "@/utils/toast";
 import {
-  Search,
   RefreshCw,
   Download,
   Upload,
 } from "lucide-react";
-import { SETTINGS_PROMO_TITLES, type SettingsSectionId } from "./settingsConfig";
+import { type SettingsSectionId } from "./settingsConfig";
 import { CategoriesSettingsPanel } from "./CategoriesSettingsPanel";
+import { EditTitlesSettingsPanel } from "./EditTitlesSettingsPanel";
 
 const Toggle: React.FC<{ defaultChecked?: boolean }> = ({ defaultChecked }) => (
   <label className="relative inline-flex items-center cursor-pointer">
@@ -51,32 +51,7 @@ export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
   }
 
   if (section === "edit-titles") {
-    return (
-      <div>
-        <PanelHeader title="Edit Titles" description="Promotional headlines shown on documents">
-          <button type="button" onClick={() => showToast("Searching...", "info")} className="p-2 hover:bg-gray-100 rounded">
-            <Search className="w-5 h-5 text-gray-600" />
-          </button>
-          <button type="button" onClick={() => showToast("Refreshing...", "info")} className="p-2 hover:bg-gray-100 rounded">
-            <RefreshCw className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            type="button"
-            onClick={() => showToast("Titles saved!", "success")}
-            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-md hover:bg-gray-800"
-          >
-            Save
-          </button>
-        </PanelHeader>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {SETTINGS_PROMO_TITLES.map((title) => (
-            <div key={title} className="p-3 border border-gray-200 rounded text-sm text-gray-700 hover:bg-gray-50">
-              {title}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return <EditTitlesSettingsPanel />;
   }
 
   if (section === "email-templates") {

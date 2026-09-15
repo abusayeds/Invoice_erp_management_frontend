@@ -1,16 +1,21 @@
 /**
  * File: src/lib/db/pdfSettings.ts
- * PDF & Print settings model — persisted per document-type + print-mode in the
- * demo datastore (Dexie `meta` table), so every preview / download / print in
- * the app reads the same saved configuration and updates live.
- *
- *   const s = usePdfSettings("invoice", "normal");   // live, defaults merged
- *   await savePdfSettings("invoice", "normal", s);
- *   await resetPdfSettings("invoice", "normal");     // back to defaults
+ * PDF & Print settings — backend `/setting/pdf/:pdfType` is source of truth
+ * for Normal print mode. Thermal stays Dexie-local (API has no print-mode).
+ * Dexie also caches Normal so liveQuery / offline still work.
  */
 
+import React from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
+import {
+  UI_DOC_TO_API,
+  apiDocToUi,
+  applyUiToApiDoc,
+  fetchPdfSetting,
+  patchPdfSetting,
+  resetPdfSettingApi,
+} from "@/services/pdfSettingsApi";
 
 /* ── document types (order matches the reference dropdown) ─────── */
 export const PDF_DOC_TYPES = [
@@ -231,8 +236,29 @@ export const STANDARD_PDF_SETTINGS: PdfSettings = {
 
 const metaKey = (docType: PdfDocType, mode: PrintMode) => `pdf:${docType}:${mode}`;
 
-/* ── read / write ──────────────────────────────────────────────── */
-export async function getPdfSettings(docType: PdfDocType, mode: PrintMode): Promise<PdfSettings> {
+/** UI-only fields not on the backend schema — preserve from local cache. */
+const LOCAL_ONLY_KEYS: (keyof PdfSettings)[] = [
+  "paper",
+  "compactMode",
+  "pageNumber",
+  "paymentHistory",
+  "payNowAlignment",
+  "paymentMethodsAlignment",
+  "paymentMethods",
+  "paymentNote",
+  "paymentNumber",
+];
+
+function pickLocalOnly(s: Partial<PdfSettings> | undefined): Partial<PdfSettings> {
+  const out: Partial<PdfSettings> = {};
+  if (!s) return out;
+  for (const k of LOCAL_ONLY_KEYS) {
+    if (s[k] !== undefined) (out as any)[k] = s[k];
+  }
+  return out;
+}
+
+async function readLocal(docType: PdfDocType, mode: PrintMode): Promise<PdfSettings> {
   try {
     const row = await db.meta.get(metaKey(docType, mode));
     return { ...DEFAULT_PDF_SETTINGS, ...(row?.value || {}) };
@@ -241,17 +267,74 @@ export async function getPdfSettings(docType: PdfDocType, mode: PrintMode): Prom
   }
 }
 
-export async function savePdfSettings(docType: PdfDocType, mode: PrintMode, s: PdfSettings): Promise<void> {
-  await db.meta.put({ key: metaKey(docType, mode), value: s });
+async function writeLocal(docType: PdfDocType, mode: PrintMode, s: PdfSettings): Promise<void> {
+  try {
+    await db.meta.put({ key: metaKey(docType, mode), value: s });
+  } catch {
+    /* ignore */
+  }
 }
 
-export async function resetPdfSettings(docType: PdfDocType, mode: PrintMode): Promise<void> {
-  await db.meta.delete(metaKey(docType, mode));
+/* ── read / write (backend for Normal; Thermal = local only) ───── */
+export async function getPdfSettings(docType: PdfDocType, mode: PrintMode): Promise<PdfSettings> {
+  const local = await readLocal(docType, mode);
+  if (mode === "thermal") return local;
+
+  const apiType = UI_DOC_TO_API[docType];
+  const apiDoc = await fetchPdfSetting(apiType);
+  if (!apiDoc) return local;
+
+  const mapped = apiDocToUi(apiDoc, DEFAULT_PDF_SETTINGS, pickLocalOnly(local));
+  await writeLocal(docType, mode, mapped);
+  return mapped;
 }
 
-/** Live settings for one doc type + mode (re-renders on save). */
+export async function savePdfSettings(
+  docType: PdfDocType,
+  mode: PrintMode,
+  s: PdfSettings,
+): Promise<void> {
+  await writeLocal(docType, mode, s);
+  if (mode === "thermal") return;
+
+  const apiType = UI_DOC_TO_API[docType];
+  const existing = await fetchPdfSetting(apiType);
+  if (!existing) {
+    throw new Error("PDF setting not found on server for this document type.");
+  }
+  const payload = applyUiToApiDoc(s, existing);
+  await patchPdfSetting(apiType, payload);
+}
+
+export async function resetPdfSettings(
+  docType: PdfDocType,
+  mode: PrintMode,
+): Promise<PdfSettings> {
+  if (mode === "thermal") {
+    try {
+      await db.meta.delete(metaKey(docType, mode));
+    } catch {
+      /* ignore */
+    }
+    return { ...DEFAULT_PDF_SETTINGS };
+  }
+
+  const apiType = UI_DOC_TO_API[docType];
+  const resetDoc = await resetPdfSettingApi(apiType);
+  const localOnly = pickLocalOnly(await readLocal(docType, mode));
+  const mapped = resetDoc
+    ? apiDocToUi(resetDoc, DEFAULT_PDF_SETTINGS, localOnly)
+    : { ...DEFAULT_PDF_SETTINGS, ...localOnly };
+  await writeLocal(docType, mode, mapped);
+  return mapped;
+}
+
+/** Live settings (Dexie). Refreshes from backend on mount for Normal mode. */
 export function usePdfSettings(docType: PdfDocType, mode: PrintMode): PdfSettings {
   const row = useLiveQuery(() => db.meta.get(metaKey(docType, mode)), [docType, mode]);
+  React.useEffect(() => {
+    void getPdfSettings(docType, mode);
+  }, [docType, mode]);
   return { ...DEFAULT_PDF_SETTINGS, ...(row?.value || {}) };
 }
 

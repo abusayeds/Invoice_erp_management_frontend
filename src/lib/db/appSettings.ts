@@ -1,13 +1,22 @@
 /**
  * File: src/lib/db/appSettings.ts
- * App Settings persistence — one Dexie `meta` row per settings section.
- * Each of the 9 document types gets its OWN row (`app:doc:<key>`) cloned
- * from DOC_DEFAULTS, so changing e.g. Invoice's "Inline Discount" can never
- * leak into Estimate's. Mirrors the pdfSettings.ts pattern (meta + liveQuery).
+ * App Settings persistence — backend `/setting/app` is source of truth,
+ * Dexie `meta` is a local cache for liveQuery (Sidebar modules, etc.).
  */
 
+import React from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
+import { api } from "@/lib/api/client";
+import {
+  UI_SECTION_TO_API,
+  apiDocToUiSections,
+  fetchAppSettingDocument,
+  invalidateAppSettingsCache,
+  patchAppSetting,
+  resetAppSettingType,
+  uiSectionToApiPayload,
+} from "@/services/appSettingsApi";
 
 /* ── per-document settings (identical shape for all 9 doc types) ── */
 export interface DocSettings {
@@ -144,11 +153,19 @@ export const DEFAULT_EXCHANGE_RATES: ExchangeRate[] = [
   { name: "Japanese Yen", symbol: "¥", code: "JPY", rate: 155.8 },
 ];
 
-/* ── read / write ──────────────────────────────────────────────── */
+/* ── read / write (backend + Dexie cache) ───────────────────────── */
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 const metaKey = (section: string) => `app:${section}`;
 
-export async function getAppSettings(section: string): Promise<any> {
+async function cacheSection(section: string, value: any): Promise<void> {
+  try {
+    await db.meta.put({ key: metaKey(section), value });
+  } catch {
+    /* Dexie unavailable */
+  }
+}
+
+async function readLocal(section: string): Promise<any> {
   try {
     const row = await db.meta.get(metaKey(section));
     return { ...clone(SECTION_DEFAULTS[section] ?? {}), ...(row?.value || {}) };
@@ -157,17 +174,79 @@ export async function getAppSettings(section: string): Promise<any> {
   }
 }
 
+/** Pull full settings doc from backend and cache every UI section. */
+export async function syncAppSettingsFromBackend(force = false): Promise<Record<string, any> | null> {
+  const doc = await fetchAppSettingDocument(force);
+  if (!doc) return null;
+  const mapped = apiDocToUiSections(doc, SECTION_DEFAULTS);
+  await Promise.all(
+    Object.entries(mapped).map(([section, value]) => cacheSection(section, value)),
+  );
+  return mapped;
+}
+
+export async function getAppSettings(section: string): Promise<any> {
+  try {
+    const mapped = await syncAppSettingsFromBackend(false);
+    if (mapped && mapped[section] != null) return mapped[section];
+  } catch {
+    /* try per-type / local */
+  }
+
+  const apiType = UI_SECTION_TO_API[section];
+  if (apiType) {
+    try {
+      const raw = await api.get(`/setting/app`, { params: { type: apiType } });
+      if (raw != null) {
+        const one = apiDocToUiSections({ [apiType]: raw }, SECTION_DEFAULTS);
+        const value = one[section] ?? clone(SECTION_DEFAULTS[section] ?? {});
+        await cacheSection(section, value);
+        return value;
+      }
+    } catch {
+      /* fall through to local */
+    }
+  }
+  return readLocal(section);
+}
+
 export async function saveAppSettings(section: string, value: any): Promise<void> {
-  await db.meta.put({ key: metaKey(section), value });
+  await cacheSection(section, value);
+  const payload = uiSectionToApiPayload(section, value);
+  if (!payload) return;
+  await patchAppSetting(payload);
 }
 
 export async function resetAppSettings(section: string): Promise<void> {
-  await db.meta.delete(metaKey(section));
+  const apiType = UI_SECTION_TO_API[section];
+  try {
+    if (apiType) await resetAppSettingType(apiType);
+    else invalidateAppSettingsCache();
+  } catch {
+    /* still clear local cache */
+  }
+  try {
+    await db.meta.delete(metaKey(section));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const doc = await fetchAppSettingDocument(true);
+    if (doc) {
+      const mapped = apiDocToUiSections(doc, SECTION_DEFAULTS);
+      if (mapped[section]) await cacheSection(section, mapped[section]);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
-/** Live settings for one section (re-renders on save). */
+/** Live settings for one section (Dexie). Refreshes from backend on mount. */
 export function useAppSettings(section: string): any {
   const row = useLiveQuery(() => db.meta.get(metaKey(section)), [section]);
+  React.useEffect(() => {
+    void getAppSettings(section);
+  }, [section]);
   return { ...clone(SECTION_DEFAULTS[section] ?? {}), ...(row?.value || {}) };
 }
 

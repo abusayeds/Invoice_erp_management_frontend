@@ -646,7 +646,9 @@ export const Companies: React.FC = () => {
       {showTaxesModal && <TaxesModal onClose={() => setShowTaxesModal(false)} />}
       {showBankDetailsModal && <BankDetailsModal onClose={() => setShowBankDetailsModal(false)} />}
       {showNotesModal && <NotesModal onClose={() => setShowNotesModal(false)} />}
-      {showSignatureModal && <SignatureModal onClose={() => setShowSignatureModal(false)} />}
+      {showSignatureModal && (
+        <SignatureModal heading="Company Signature" onClose={() => setShowSignatureModal(false)} />
+      )}
       {showTeamModal && (
         <TeamModal onClose={() => setShowTeamModal(false)} companyEmail={selectedCompany?.email} />
       )}

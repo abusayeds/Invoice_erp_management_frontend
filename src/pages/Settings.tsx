@@ -46,7 +46,7 @@ export const SettingsPage: React.FC = () => {
       <ResizableListPanel>
         <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
           <h2 className="text-base font-semibold text-gray-900 tracking-tight">Settings</h2>
-        </div>
+      </div>
 
         <div className="flex-1 overflow-y-auto">
           {SETTINGS_NAV_ITEMS.map(({ id, label, icon: Icon }) => {
@@ -97,7 +97,7 @@ export const SettingsPage: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
+      </div>
       </section>
     </div>
   );
