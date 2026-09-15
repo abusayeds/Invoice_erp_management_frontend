@@ -1,4 +1,5 @@
 /** Vendor payments (Payment Made) — backend pagination via /account/vendor-payments/all */
+import { api } from "@/lib/api/client";
 import { fetchPaginatedList } from "./paginatedList";
 import type { TPartyPagination } from "./customerTypes";
 
@@ -9,6 +10,7 @@ export type VendorPaymentListRow = {
   note: string;
   amount: number;
   dateLabel: string;
+  paymentDateIso?: string;
   method: string;
   billNo: string;
   status: string;
@@ -42,6 +44,7 @@ const mapVendorPayment = (doc: any): VendorPaymentListRow => {
     note: text(doc.notes) || "No Notes",
     amount: num(doc.payment_amount ?? doc.total ?? doc.amount),
     dateLabel: formatDate(doc.payment_date || doc.date || doc.createdAt),
+    paymentDateIso: text(doc.payment_date || doc.date || doc.createdAt) || undefined,
     method: methods[0] ? String(methods[0]) : "Cash",
     billNo: billRef.startsWith("#") || billRef === "—" ? billRef : `#${billRef}`,
     status: text(doc.status) || "pending",
@@ -55,6 +58,7 @@ export async function fetchVendorPayments(params: {
   sort?: string;
   status?: string;
   isDeleted?: boolean;
+  bill_id?: string;
 }): Promise<{ rows: VendorPaymentListRow[]; pagination: TPartyPagination }> {
   const { rows, pagination } = await fetchPaginatedList<any>("/account/vendor-payments/all", {
     page: params.page,
@@ -63,6 +67,39 @@ export async function fetchVendorPayments(params: {
     sort: params.sort,
     status: params.status && params.status !== "All" ? params.status : undefined,
     isDeleted: params.isDeleted ? "true" : undefined,
+    bill_id: params.bill_id || undefined,
   });
   return { rows: rows.map(mapVendorPayment), pagination };
+}
+
+export type RecordVendorPaymentPayload = {
+  vendor_id: string;
+  payment_amount: number;
+  payment_date: string;
+  payment_method?: string[];
+  notes?: string;
+  reference_number?: string;
+  bank_account_id?: string;
+};
+
+export async function recordVendorPayment(
+  payload: RecordVendorPaymentPayload,
+): Promise<{ _id: string; payment_number?: string }> {
+  const res = await api.raw.post("/account/vendor-payments/record", payload);
+  return (res.data?.data ?? res.data) as { _id: string; payment_number?: string };
+}
+
+export async function createVendorPayment(payload: {
+  vendor_id: string;
+  payment_amount: number;
+  payment_date: string;
+  payment_method?: string[];
+  notes?: string;
+  reference_number?: string;
+  bank_account_id?: string;
+  allocations: { invoice_id: string; allocated_amount: number }[];
+  debit_notes?: unknown[];
+}): Promise<{ _id: string }> {
+  const res = await api.raw.post("/account/vendor-payments/create", payload);
+  return (res.data?.data ?? res.data) as { _id: string };
 }

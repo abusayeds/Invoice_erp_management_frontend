@@ -15,10 +15,11 @@ import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview, PdfPreviewModal } from "@/lib/db";
 import { buildListSortParam } from "@/lib/listSort";
 import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
 import { showToast } from "@/utils/toast";
+import { RecordPaymentReceivedForm, type PaymentReceivedPrefill } from "@/components/payments/RecordPaymentReceivedForm";
 import {
   Search,
   Plus,
@@ -315,12 +316,30 @@ export const PaymentReceived: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as {
+    selectedId?: number | string;
+    openCreate?: boolean;
+    customerId?: string;
+    customerName?: string;
+    invoiceId?: string;
+    invoiceNumber?: string;
+    dueAmount?: number;
+    currency?: string;
+  } | null) ?? null;
   const navSelectedId = navState?.selectedId;
+  const [createPrefill, setCreatePrefill] = useState<PaymentReceivedPrefill | undefined>(undefined);
   const [selectedId, setSelectedId] = useState<string>(navSelectedId != null ? String(navSelectedId) : "");
   useEffect(() => { if (navSelectedId != null) setSelectedId(String(navSelectedId)); }, [navSelectedId]);
   useEffect(() => {
     if (navState?.openCreate) {
+      setCreatePrefill({
+        customerId: navState.customerId,
+        customerName: navState.customerName,
+        invoiceId: navState.invoiceId,
+        invoiceNumber: navState.invoiceNumber,
+        dueAmount: navState.dueAmount,
+        currency: navState.currency,
+      });
       setCreateOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     }
@@ -422,7 +441,7 @@ export const PaymentReceived: React.FC = () => {
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Payment" hideCreate={selectMode}>
+            <ResizableListPanel onCreate={() => { setCreatePrefill(undefined); setCreateOpen(true); }} createTitle="Create Payment" hideCreate={selectMode}>
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
@@ -534,7 +553,17 @@ export const PaymentReceived: React.FC = () => {
 
       {/* ════════ RIGHT PANEL ════════ */}
       {createOpen ? (
-        <RecordPaymentForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortDir("Descending"); setSortBy("Payment date"); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] }); }} />
+        <RecordPaymentReceivedForm
+          prefill={createPrefill}
+          onClose={() => { setCreateOpen(false); setCreatePrefill(undefined); }}
+          onSaved={(id) => {
+            setSortDir("Descending");
+            setSortBy("Payment date");
+            setSelectedId(String(id));
+            setCreatePrefill(undefined);
+            void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] });
+          }}
+        />
       ) : editOpen ? (
         <RecordPaymentForm key={selectedId} record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(String(id)); void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] }); }} />
       ) : selectMode ? (

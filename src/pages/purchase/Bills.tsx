@@ -63,6 +63,7 @@ type Status = "Draft" | "Sent" | "Paid" | "Partially Paid" | "Overdue";
 
 interface Bill {
   id: number;
+  backendId?: string;
   name: string;
   number: string;
   note: string;
@@ -351,9 +352,9 @@ export const Bills: React.FC = () => {
   // Opened from an activity link / Header (+) → pre-select or open create.
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
   const navSelectedId = navState?.selectedId;
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 7);
+  const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 7);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
   const [sortBy, setSortBy] = useState("Bill date");
   const [sortDir, setSortDir] = useState("Descending");
@@ -362,7 +363,7 @@ export const Bills: React.FC = () => {
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "payment" | "pdfSettings">(null);
+  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
   const [createMode, setCreateMode] = useState(!!navState?.openCreate);
   useEffect(() => {
     if (navState?.openCreate) {
@@ -404,6 +405,7 @@ export const Bills: React.FC = () => {
       const linked = dbBills.find((b) => String(b._id) === row._id) || dbBills.find((b) => String(b.number).replace(/^#/, "") === row.number);
       return {
         id: linked?.id ?? (index + 1),
+        backendId: row._id,
         name: row.vendorName,
         number: row.number.startsWith("#") ? row.number : `#${row.number}`,
         note: linked?.notes || "—",
@@ -435,8 +437,12 @@ export const Bills: React.FC = () => {
     return list;
   }, [bills, sortBy, sortDir, statusFilter, vendorFilter, search]);
 
-  const selected = bills.find((i) => i.id === selectedId) || bills[0];
-  const selectedDb: any = dbBills.find((d) => d.id === (selected?.id ?? selectedId)) || {};
+  const selected =
+    bills.find((i) => i.id === selectedId || i.backendId === selectedId) || bills[0];
+  const selectedDb: any =
+    dbBills.find((d) => String(d._id) === String(selected?.backendId || selectedId)) ||
+    dbBills.find((d) => d.id === (selected?.id ?? selectedId)) ||
+    {};
   const selectedVendor: any = dbVendors.find((v) => v.id === selectedDb.vendorId) || {};
 
   /* Append an event to the bill's activity log. */
@@ -444,19 +450,23 @@ export const Bills: React.FC = () => {
     const rec = dbBills.find((d) => d.id === selectedDb.id);
     await repo.update("bills", selectedDb.id, { activity: [...(rec?.activity || []), { kind, text, ts: Date.now(), dateLabel: nowLabel() }] });
   };
-  /** $ Add Payment — records a payments-made row and settles the bill. */
-  const addPayment = async (amount: number, method: string, notes: string) => {
-    const n = await nextNumber("paymentsMade");
-    await repo.add("paymentsMade", { number: "#" + n, vendorId: selectedDb.vendorId, billId: selectedDb.id, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), ts: Date.now(), amount: +amount.toFixed(2), method, notes });
-    const newDue = Math.max(0, +((selectedDb.amountDue || 0) - amount).toFixed(2));
-    await repo.update("bills", selectedDb.id, {
-      amountDue: newDue,
-      amountPaid: +((selectedDb.amountPaid || 0) + amount).toFixed(2),
-      status: newDue <= 0 ? "Paid" : "Partially Paid",
+  /** $ Add Payment — open Payment Made form with vendor + bill prefilled. */
+  const openBillPayment = () => {
+    const row = (backendBills?.rows ?? []).find((r) => {
+      const linked = dbBills.find((b) => String(b._id) === r._id);
+      return linked?.id === selectedId || r.number.replace(/^#/, "") === selected?.number?.replace(/^#/, "");
     });
-    await logActivity("status", `Payment #${n} created to bill ${selectedDb.number?.replace("#", "")}.`);
-    showToast("Payment added", "success");
-    setModal(null);
+    const vendorId = row?.vendorId || "";
+    navigate("/purchase/payment-made", {
+      state: {
+        openCreate: true,
+        vendorId,
+        vendorName: selected?.name || row?.vendorName,
+        billId: row?._id,
+        billNumber: selected?.number || row?.number,
+        dueAmount: row?.dueAmount ?? selectedDb.amountDue ?? 0,
+      },
+    });
   };
   /** Create a debit note from this bill (⋮ Debit Note / Duplicate ▸ As Debit Note). */
   const createDebitNote = async () => {
@@ -521,7 +531,7 @@ export const Bills: React.FC = () => {
     { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") },
     { icon: Pencil, title: "Edit", onClick: () => selectedDb?.id && setEditRecord(selectedDb) },
     { icon: PenTool, title: "Vendor Signature", onClick: () => setSigOpen(true) },
-    { icon: DollarSign, title: "Add Payment", onClick: () => setModal("payment") },
+    { icon: DollarSign, title: "Add Payment", onClick: openBillPayment },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
     { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Bill ${selectedDb.number} printed.`); setModal("preview"); } },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
@@ -797,7 +807,6 @@ export const Bills: React.FC = () => {
       {modal === "settings" && <AppSettingsModal initialTab="Bill" onClose={() => setModal(null)} />}
       {modal === "preview" && (() => { const d: any = dbBills.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="bill" recordId={d.id} title={`Bill `} onClose={() => setModal(null)} />; })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} bill={selected} />}
-      {modal === "payment" && <PaymentModal onClose={() => setModal(null)} bill={selected} due={selectedDb.amountDue || 0} onSave={addPayment} />}
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="bill" />
       )}

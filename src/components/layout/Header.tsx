@@ -7,9 +7,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { repo } from "@/lib/db";
 import {
-  Search,
   Plus,
   Play,
   Pause,
@@ -35,10 +33,10 @@ import {
   Wrench,
   FolderOpen,
   Clock,
-  Files,
   Scan,
 } from "lucide-react";
 import { SettingsDropdown } from "@/pages/SettingsDropdown";
+import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import useAuth from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
@@ -46,42 +44,6 @@ import { toArray } from "@/services/_http";
 interface HeaderProps {
   onMenuClick: () => void;
 }
-
-/* ── Global search sources (Dexie collections mirror the backend) ── */
-type SearchHit = { type: string; label: string; sub?: string; path: string };
-const SEARCH_SOURCES: {
-  c: string; t: string; path: string | ((r: any) => string);
-  label: (r: any) => string; keys: (r: any) => (string | undefined)[];
-}[] = [
-  { c: "customers", t: "Customer", path: "/sales/customers",
-    label: (r) => r.businessProfile?.companyName || r.name || r.contact || "Customer",
-    keys: (r) => [r.name, r.email, r.phone, r.contact, r.businessProfile?.companyName] },
-  { c: "vendors", t: "Vendor", path: "/purchase/vendors",
-    label: (r) => r.name || r.contact || "Vendor",
-    keys: (r) => [r.name, r.email, r.contact] },
-  { c: "products", t: "Product", path: "/items/product",
-    label: (r) => r.name, keys: (r) => [r.name, r.sku] },
-  { c: "services", t: "Service", path: "/items/services",
-    label: (r) => r.name, keys: (r) => [r.name] },
-  { c: "invoices", t: "Invoice", path: "/sales/sales-invoice",
-    label: (r) => r.number || `Invoice ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "estimates", t: "Estimate", path: "/sales/estimates",
-    label: (r) => r.number || `Estimate ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "proformas", t: "Proforma", path: "/sales/proforma-invoices",
-    label: (r) => r.number || `Proforma ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "salesReceipts", t: "Sales Receipt", path: "/sales/sales-receipts",
-    label: (r) => r.number || `Receipt ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "creditNotes", t: "Credit Note", path: "/sales/credit-notes",
-    label: (r) => r.number || `Credit Note ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "bills", t: "Bill", path: "/purchase/bills",
-    label: (r) => r.number || `Bill ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "purchaseOrders", t: "Purchase Order", path: "/purchase/purchase-orders",
-    label: (r) => r.number || `PO ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "debitNotes", t: "Debit Note", path: "/purchase/debit-notes",
-    label: (r) => r.number || `Debit Note ${r.id}`, keys: (r) => [r.number, r.name] },
-  { c: "projects", t: "Project", path: (r) => `/project/projects/${r.id}`,
-    label: (r) => r.name, keys: (r) => [r.name, r.description] },
-];
 
 /* ── Create mega-menu (columns mirror the reference) ─────────────── */
 const createGroups: {
@@ -161,42 +123,11 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [notifications, setNotifications] = useState(sampleNotifications);
   const [announcements, setAnnouncements] = useState(sampleAnnouncements);
   const [notifTab, setNotifTab] = useState<"notifications" | "announcements">("notifications");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
 
   const createRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
   const appsRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // Global search: debounced query across the Dexie collections (which mirror
-  // the backend). Matches by name/number/email; results navigate to the item.
-  useEffect(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) { setSearchResults([]); return; }
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const hits: SearchHit[] = [];
-      for (const src of SEARCH_SOURCES) {
-        let rows: any[] = [];
-        try { rows = await repo.getAll(src.c as any); } catch { rows = []; }
-        let perType = 0;
-        for (const r of rows) {
-          const hay = src.keys(r).filter(Boolean).join(" ").toLowerCase();
-          if (hay.includes(q)) {
-            hits.push({ type: src.t, label: String(src.label(r) || "—"),
-              path: typeof src.path === "function" ? src.path(r) : src.path });
-            if (++perType >= 5) break;
-          }
-        }
-      }
-      if (!cancelled) setSearchResults(hits.slice(0, 40));
-    }, 180);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [searchQuery]);
-
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -238,7 +169,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
       if (userRef.current && !userRef.current.contains(e.target as Node)) setShowUserMenu(false);
       if (appsRef.current && !appsRef.current.contains(e.target as Node)) setShowApps(false);
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -246,16 +176,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const unreadCount = notifications.filter((n) => n.unread).length;
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
-
-  const goToHit = (h: SearchHit) => {
-    navigate(h.path);
-    setSearchQuery("");
-    setShowSearch(false);
-  };
-  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && searchResults.length > 0) goToHit(searchResults[0]);
-    if (e.key === "Escape") setShowSearch(false);
-  };
 
   const appShortcuts = [
     { label: "Dashboard", path: "/" },
@@ -282,38 +202,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
       {/* Search + orange (+) — dropdown anchors to the search input's left edge */}
       <div className="relative flex items-center gap-2 flex-shrink min-w-0 w-full max-w-[450px]" ref={createRef}>
-        <div className="relative flex-1 min-w-0" ref={searchRef}>
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search contact, invoice, estimate..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); }}
-            onFocus={() => setShowSearch(true)}
-            onKeyDown={handleSearch}
-            className="w-full pl-9 pr-4 py-2.5 text-sm bg-gray-100 border border-gray-200 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-300 focus:bg-white"
-          />
-          {showSearch && searchQuery.trim() && (
-            <div className="absolute left-0 top-11 w-[min(92vw,460px)] max-h-[70vh] overflow-auto custom-scrollbar bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1">
-              {searchResults.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-gray-500 text-center">
-                  No results for "{searchQuery.trim()}"
-                </div>
-              ) : (
-                searchResults.map((h, i) => (
-                  <button
-                    key={i}
-                    onClick={() => goToHit(h)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    <span className="text-sm text-gray-800 truncate">{h.label}</span>
-                    <span className="text-[11px] text-gray-400 flex-shrink-0 whitespace-nowrap">{h.type}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        <GlobalSearch />
 
         {/* Orange create (+) */}
         <button
@@ -322,7 +211,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             setShowNotifications(false);
             setShowUserMenu(false);
             setShowApps(false);
-            setShowSearch(false);
           }}
           className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center transition-colors shadow-sm"
           title="Create new"

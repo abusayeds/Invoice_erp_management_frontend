@@ -19,7 +19,9 @@ import { buildListSortParam } from "@/lib/listSort";
 import { fetchVendorPayments, type VendorPaymentListRow } from "@/services/vendorPaymentsApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { useCollection, DocPreview, PdfPreviewModal } from "@/lib/db";
+import { RecordPaymentMadeForm, type PaymentMadePrefill } from "@/components/payments/RecordPaymentMadeForm";
+import { showToast } from "@/utils/toast";
 import {
   Search,
   Plus,
@@ -53,6 +55,9 @@ interface Payment {
   method: string;
   billNo: string;
 }
+
+const fmtMoney = (n: number) =>
+  `$${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const mapPaymentRow = (row: VendorPaymentListRow): Payment => ({
   id: row._id,
@@ -286,59 +291,6 @@ const EmailModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p 
 );
 
 /* ── Component ──────────────────────────────────────────────────── */
-/* ── Record Payment Made modal (pays a live bill → updates it) ── */
-const madeMethods = ["Cash", "Stripe", "PayPal", "Bank Transfer", "Master Card", "Cheque"];
-const RecordPaymentMadeModal: React.FC<{ onClose: () => void; onSaved: (id: number) => void }> = ({ onClose, onSaved }) => {
-  const bills = useCollection<any>("bills");
-  const vendors = useCollection<any>("vendors", "name");
-  const unpaid = useMemo(() => bills.filter((b) => (b.amountDue || 0) > 0).sort((a, b) => b.id - a.id), [bills]);
-  const [billId, setBillId] = useState<number | "">("");
-  const bill = bills.find((b) => b.id === billId);
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("Cash");
-  const [date, setDate] = useState("Jun 22, 2026");
-  useEffect(() => { if (bill) setAmount(String(bill.amountDue)); }, [billId]);
-  const vname = (id: number) => vendors.find((v) => v.id === id)?.name || "—";
-  const save = async () => {
-    if (!bill) return;
-    const amt = parseMoney(amount);
-    const n = await nextNumber("paymentsMade");
-    const id = await repo.add("paymentsMade", { number: "#" + n, vendorId: bill.vendorId, billId: bill.id, date, ts: Date.now(), amount: amt, method, notes: "" });
-    const paid = (bill.amountPaid || 0) + amt;
-    const due = Math.max(0, (bill.amountDue || 0) - amt);
-    await repo.update("bills", bill.id, { amountPaid: +paid.toFixed(2), amountDue: +due.toFixed(2), status: due <= 0 ? "Paid" : "Partially Paid" });
-    onSaved(id); onClose();
-  };
-  const fc = "w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
-  return (
-    <Overlay onClose={onClose}>
-      <div className="w-full max-w-lg my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className="text-base font-semibold text-gray-900">Record Payment</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={save} disabled={!bill} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">Save</button>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-xs text-gray-500">Bill *</label>
-            <select value={billId} onChange={(e) => setBillId(e.target.value ? Number(e.target.value) : "")} className={fc}>
-              <option value="">Select an unpaid bill</option>
-              {unpaid.map((b) => <option key={b.id} value={b.id}>{b.number} · {vname(b.vendorId)} · {fmtMoney(b.amountDue)} due</option>)}
-            </select>
-          </div>
-          {bill && <div className="text-sm text-gray-600">Vendor: <span className="font-semibold text-gray-900">{vname(bill.vendorId)}</span> · Outstanding: <span className="font-semibold text-gray-900">{fmtMoney(bill.amountDue)}</span></div>}
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500">Amount</label><input value={amount} onChange={(e) => setAmount(e.target.value)} className={fc} /></div>
-            <div><label className="text-xs text-gray-500">Payment date</label><input value={date} onChange={(e) => setDate(e.target.value)} className={fc} /></div>
-          </div>
-          <div><label className="text-xs text-gray-500">Payment Type</label><select value={method} onChange={(e) => setMethod(e.target.value)} className={fc}>{madeMethods.map((m) => <option key={m}>{m}</option>)}</select></div>
-        </div>
-      </div>
-    </Overlay>
-  );
-};
 
 export const PaymentMade: React.FC = () => {
   const queryClient = useQueryClient();
@@ -346,10 +298,26 @@ export const PaymentMade: React.FC = () => {
   const dbVendors = useCollection<any>("vendors", "name");
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  const navState = (location.state as {
+    selectedId?: number | string;
+    openCreate?: boolean;
+    vendorId?: string;
+    vendorName?: string;
+    billId?: string;
+    billNumber?: string;
+    dueAmount?: number;
+  } | null) ?? null;
+  const [createPrefill, setCreatePrefill] = useState<PaymentMadePrefill | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   useEffect(() => {
     if (navState?.openCreate) {
+      setCreatePrefill({
+        vendorId: navState.vendorId,
+        vendorName: navState.vendorName,
+        billId: navState.billId,
+        billNumber: navState.billNumber,
+        dueAmount: navState.dueAmount,
+      });
       setCreateOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     }
@@ -435,7 +403,11 @@ export const PaymentMade: React.FC = () => {
   return (
     <div className="module-workspace">
       {/* ════════ LIST PANEL ════════ */}
-      <ResizableListPanel onCreate={() => setCreateOpen(true)} createTitle="Create Payment" hideCreate={selectMode}>
+      <ResizableListPanel
+        onCreate={() => { setCreatePrefill(undefined); setCreateOpen(true); }}
+        createTitle="Create Payment"
+        hideCreate={selectMode}
+      >
         {selectMode ? (
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
@@ -513,7 +485,7 @@ export const PaymentMade: React.FC = () => {
             const active = !selectMode && p.id === selectedId;
             const isChecked = checked.has(p.id);
             return (
-              <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : setSelectedId(p.id))}
+              <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : (setSelectedId(p.id), setCreateOpen(false)))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
@@ -544,7 +516,17 @@ export const PaymentMade: React.FC = () => {
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
-      {selectMode ? (
+      {createOpen ? (
+        <RecordPaymentMadeForm
+          prefill={createPrefill}
+          onClose={() => { setCreateOpen(false); setCreatePrefill(undefined); }}
+          onSaved={(id) => {
+            setSelectedId(String(id));
+            setCreatePrefill(undefined);
+            void queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
+          }}
+        />
+      ) : selectMode ? (
         <section className="module-empty-panel">
           <div className="text-center">
             <h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} {checked.size === 1 ? "Payment" : "Payments"} Selected</h2>
@@ -623,15 +605,6 @@ export const PaymentMade: React.FC = () => {
         return <PdfPreviewModal docType="paymentMade" recordId={d.id} title="Payment Made " onClose={() => setModal(null)} />;
       })()}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} p={selected} />}
-      {createOpen && (
-        <RecordPaymentMadeModal
-          onClose={() => setCreateOpen(false)}
-          onSaved={(id) => {
-            setSelectedId(String(id));
-            void queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
-          }}
-        />
-      )}
     </div>
   );
 };
