@@ -19,6 +19,7 @@ import {
 import { applyTheme } from "@/lib/theme";
 import { showToast } from "@/utils/toast";
 import { ApiError } from "@/lib/api/ApiError";
+import { buildTimezoneOptions } from "@/services/notificationSettingsApi";
 
 const TABS = [
   "General", "Modules", "Currency & Format", "Printer", "Whatsapp",
@@ -49,10 +50,10 @@ const Row: React.FC<{ label: React.ReactNode; children: React.ReactNode }> = ({ 
     {children}
   </div>
 );
-const selectCls = "text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const selectCls = "ua-field keep-box text-sm px-2 py-1.5 focus:outline-none";
 const Select: React.FC<{ value: string; options: string[]; onChange: (v: string) => void; width?: string }> = ({ value, options, onChange, width = "min-w-[140px]" }) => (
   <select value={value} onChange={(e) => onChange(e.target.value)} className={`${selectCls} ${width}`}>
-    {options.map((o) => <option key={o}>{o}</option>)}
+    {options.map((o) => <option key={o} value={o}>{o}</option>)}
   </select>
 );
 const Accordion: React.FC<{ title: string; open: boolean; onToggle: () => void; children: React.ReactNode }> = ({ title, open, onToggle, children }) => (
@@ -304,7 +305,7 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
               <Row label="Decimal Places"><Select value={draft.decimalPlaces} options={["0", "1", "2", "3", "4"]} onChange={(v) => patch({ decimalPlaces: v })} width="min-w-[80px]" /></Row>
               <Row label="Date/Number Format"><Select value={draft.dateFormat} options={["English (United States)", "English (United Kingdom)", "French", "German", "Spanish", "Arabic"]} onChange={(v) => patch({ dateFormat: v })} width="min-w-[200px]" /></Row>
               <Row label="Language"><Select value={draft.language} options={["English", "French", "German", "Spanish", "Arabic", "Bengali"]} onChange={(v) => patch({ language: v })} /></Row>
-              <Row label="Timezone"><Select value={draft.timezone} options={["(GMT-8:00) Pacific Time (US & Canada)", "(GMT-7:00) America/Los_Angeles", "(GMT-5:00) Eastern Time (US & Canada)", "(GMT+0:00) UTC", "(GMT+1:00) London", "(GMT+5:30) Kolkata", "(GMT+6:00) Dhaka"]} onChange={(v) => patch({ timezone: v })} width="min-w-[240px]" /></Row>
+              <Row label="Timezone"><Select value={draft.timezone} options={buildTimezoneOptions()} onChange={(v) => patch({ timezone: v })} width="min-w-[260px]" /></Row>
             </div>
             {/* preview strip (reference bottom bar) */}
             <div className="flex items-center justify-between px-4 py-3 mt-4 text-xs text-gray-600 border-t border-gray-200">

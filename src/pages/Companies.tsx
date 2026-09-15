@@ -11,6 +11,7 @@ import { BankDetailsModal } from "../components/modals/BankDetailsModal";
 import { NotesModal } from "../components/modals/NotesModal";
 import { SignatureModal } from "../components/modals/SignatureModal";
 import { TeamModal } from "../components/modals/TeamModal";
+import { EmailTemplatesModal } from "../components/modals/EmailTemplatesModal";
 import { showToast } from "@/utils/toast";
 import {
   fetchPrimaryCompanySignature,
@@ -564,6 +565,7 @@ export const Companies: React.FC = () => {
   const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showEmailTemplatesModal, setShowEmailTemplatesModal] = useState(false);
   const [companySignature, setCompanySignature] = useState<CompanySignature | null>(null);
   const [showTeamModal, setShowTeamModal] = useState(false);
 
@@ -683,6 +685,7 @@ export const Companies: React.FC = () => {
     else if (card.title === "Taxes") setShowTaxesModal(true);
     else if (card.title === "Bank Details") setShowBankDetailsModal(true);
     else if (card.title === "Notes") setShowNotesModal(true);
+    else if (card.title === "Email Templates") setShowEmailTemplatesModal(true);
     else if (card.title === "Signature") openCompanySignature();
     else if (card.title === "Team") setShowTeamModal(true);
     else setSettingsModal({ open: true, tab: card.tab });
@@ -702,6 +705,9 @@ export const Companies: React.FC = () => {
       {showTaxesModal && <TaxesModal onClose={() => setShowTaxesModal(false)} />}
       {showBankDetailsModal && <BankDetailsModal onClose={() => setShowBankDetailsModal(false)} />}
       {showNotesModal && <NotesModal onClose={() => setShowNotesModal(false)} />}
+      {showEmailTemplatesModal && (
+        <EmailTemplatesModal onClose={() => setShowEmailTemplatesModal(false)} />
+      )}
       {showSignatureModal && (
         <SignatureModal
           heading="Company Signature"

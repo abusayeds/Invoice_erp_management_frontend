@@ -25,9 +25,8 @@ const WEB_TO_PDF_TYPE: Partial<Record<PdfDocType, string>> = {
   paymentReceived: "Payment_Received",
   paymentMade: "Payment_Made",
   statement: "Statement",
-  // The packing slip / delivery note reuse their source document's PDF.
-  packingSlip: "Invoice",
-  deliveryNote: "Delivery_Challan",
+  packingSlip: "Packing_Slip",
+  deliveryNote: "Delivery_Note",
 };
 
 export function backendPdfType(docType: PdfDocType): string | undefined {

@@ -15,6 +15,7 @@ import {
   Download,
   Upload,
   Globe,
+  Keyboard,
 } from "lucide-react";
 
 export type SettingsSectionId =
@@ -26,6 +27,7 @@ export type SettingsSectionId =
   | "notifications"
   | "barcode"
   | "product-library"
+  | "keyboard-shortcuts"
   | "import"
   | "export"
   | "language";
@@ -34,6 +36,8 @@ export type SettingsNavItem = {
   id: SettingsSectionId;
   label: string;
   icon: LucideIcon;
+  /** Shows chevron; opens flyout submenu in gear dropdown */
+  hasSubmenu?: boolean;
 };
 
 export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
@@ -45,9 +49,10 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   { id: "notifications", label: "Notification Settings", icon: Bell },
   { id: "barcode", label: "Generate Barcode", icon: ScanLine },
   { id: "product-library", label: "Product Library", icon: Package },
-  { id: "import", label: "Import Data", icon: Download },
-  { id: "export", label: "Export Data", icon: Upload },
-  { id: "language", label: "Language", icon: Globe },
+  { id: "keyboard-shortcuts", label: "Keyboard Shortcuts", icon: Keyboard },
+  { id: "import", label: "Import Data", icon: Upload, hasSubmenu: true },
+  { id: "export", label: "Export Data", icon: Download, hasSubmenu: true },
+  { id: "language", label: "Language", icon: Globe, hasSubmenu: true },
 ];
 
 export const SETTINGS_APP_SECTIONS = [
@@ -67,6 +72,16 @@ export const SETTINGS_APP_SECTIONS = [
   "Debit Note",
   "Expense",
   "Product",
+] as const;
+
+export const LANGUAGE_OPTIONS = [
+  { code: "en", name: "English", native: "English" },
+  { code: "ar", name: "Arabic", native: "العربية" },
+  { code: "es", name: "Spanish", native: "Español" },
+  { code: "fr", name: "French", native: "Français" },
+  { code: "de", name: "German", native: "Deutsch" },
+  { code: "hi", name: "Hindi", native: "हिन्दी" },
+  { code: "bn", name: "Bengali", native: "বাংলা" },
 ] as const;
 
 export function settingsLabel(id: SettingsSectionId): string {
