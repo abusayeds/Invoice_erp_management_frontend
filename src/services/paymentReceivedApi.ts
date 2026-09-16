@@ -168,6 +168,7 @@ export interface CreateInvoicePaymentPayload {
   amount: number;
   notes?: string;
   internal_notes?: string;
+  attachments?: string;
   type: "invoice";
 }
 
@@ -195,6 +196,7 @@ export interface UpdateInvoicePaymentPayload {
   amount?: number;
   notes?: string;
   internal_notes?: string;
+  attachments?: string;
   type?: "invoice";
 }
 

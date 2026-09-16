@@ -17,6 +17,7 @@ import { SignatureBlock } from "@/components/ui/SignatureBlock";
 import { useCollection, repo, nextNumber, money as fmtMoney, PdfPreviewModal } from "@/lib/db";
 import { api } from "@/lib/api/client";
 import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { buildListSortParam } from "@/lib/listSort";
@@ -45,8 +46,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   X,
   Trash2,
   MessageCircle,
@@ -864,13 +863,22 @@ export const ProformaInvoices: React.FC = () => {
                 <label className="text-xs text-gray-500">Notes</label>
                 <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.notes) || selectedDb.notes || "—"}</div>
               </div>
-              <div>
-                <label className="text-xs text-gray-500">Attachment</label>
-                <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                  <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                  <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                </div>
-              </div>
+              <DocAttachmentField
+                compact
+                value={selectedDoc?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""}
+                onChange={async (path) => {
+                  const id = String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "");
+                  if (!id) {
+                    showToast("Save the document first", "error");
+                    throw new Error("missing id");
+                  }
+                  await updateProformaInvoice(id, { Attachment: path });
+                  await queryClient.invalidateQueries({ queryKey: ["proforma-backend-detail", id] });
+                  await queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] });
+                  if (selectedDb?.id) await repo.update("proformas", selectedDb.id, { Attachment: path });
+                  showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                }}
+              />
               <div className="border border-gray-200 rounded-md overflow-hidden self-start">
                 <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.sub_total ?? selectedDb.subTotal))}</span></div>
                 <div className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>Total Qty</span><span>{lines.reduce((sum, item) => sum + item.qty, 0).toFixed(2)}</span></div>

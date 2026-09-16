@@ -4,8 +4,10 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Eye, FileText, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
+import { Calendar, Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { useCollection, repo } from "@/lib/db";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { updateBill } from "@/services/billsApi";
 import {
@@ -150,6 +152,7 @@ type UnifiedPayment = {
   method: string;
   notes: string;
   internalNotes: string;
+  attachment: string;
 };
 
 export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
@@ -163,6 +166,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   onSaved,
 }) => {
   const queryClient = useQueryClient();
+  const localPaymentsMade = useCollection<any>("paymentsMade");
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [showForm, setShowForm] = useState(true);
   const [paymentSerial, setPaymentSerial] = useState("");
@@ -172,6 +176,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   const [lineAmounts, setLineAmounts] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [attachment, setAttachment] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorOpen, setVendorOpen] = useState(false);
@@ -272,9 +277,29 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
         method: payment.method || "Cash",
         notes: payment.note === "No Notes" ? "" : payment.note,
         internalNotes: "",
+        attachment:
+          text(
+            localPaymentsMade.find((p) => String(p._id) === payment._id)?.Attachment ||
+              localPaymentsMade.find((p) => String(p._id) === payment._id)?.attachments,
+          ) || "",
       }))
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [bill, paymentsData?.rows]);
+  }, [bill, localPaymentsMade, paymentsData?.rows]);
+
+  const persistBillPaymentAttachment = async (path: string) => {
+    if (!selectedPayment) {
+      showToast("Save the document first", "error");
+      throw new Error("missing payment");
+    }
+    const local = localPaymentsMade.find((p) => String(p._id) === selectedPayment.id);
+    if (local?.id) {
+      await repo.update("paymentsMade", local.id, { Attachment: path, attachments: path });
+      showToast(path ? "Attachment saved" : "Attachment removed", "success");
+      return;
+    }
+    showToast("Save the payment locally to attach files", "info");
+    throw new Error("no local payment");
+  };
 
   const vendorSearch = useQuery({
     queryKey: ["bill-payment-vendors", vendorQuery],
@@ -750,23 +775,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                           className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
                         />
                       </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Attachment</label>
-                        <div className="mt-1 grid grid-cols-1 rounded-md border border-gray-200 divide-y divide-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                          <button type="button" className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                              <Upload className="h-4 w-4" />
-                            </span>
-                            <span className="text-xs text-gray-600">Upload from Computer</span>
-                          </button>
-                          <button type="button" className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                              <FileText className="h-4 w-4" />
-                            </span>
-                            <span className="text-xs text-gray-600">Upload from Document</span>
-                          </button>
-                        </div>
-                      </div>
+                      <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
                     </div>
                   </div>
                 </div>
@@ -894,22 +903,11 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="px-5 py-4">
-                    <div className="mb-2 text-sm font-semibold text-gray-900">Attachment</div>
-                    <div className="grid grid-cols-2 rounded-md border border-gray-200 divide-x divide-gray-200">
-                      <button type="button" className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                          <Upload className="h-4 w-4" />
-                        </span>
-                        <span className="text-xs text-gray-600">Upload from Computer</span>
-                      </button>
-                      <button type="button" className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                          <FileText className="h-4 w-4" />
-                        </span>
-                        <span className="text-xs text-gray-600">Upload from Document</span>
-                      </button>
-                    </div>
+                  <div className="px-5 py-4 max-w-md">
+                    <DocAttachmentField
+                      value={selectedPayment.attachment || ""}
+                      onChange={persistBillPaymentAttachment}
+                    />
                   </div>
                 </div>
               ) : (

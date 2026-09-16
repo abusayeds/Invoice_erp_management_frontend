@@ -23,7 +23,9 @@ import { buildListSortParam } from "@/lib/listSort";
 import { fetchPurchaseReturns, type PurchaseReturnListRow } from "@/services/purchaseReturnsApi";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
-import { useCollection, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
+import { useCollection, repo, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
+import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import {
   Search,
   Plus,
@@ -39,8 +41,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -340,6 +340,7 @@ const CreateReturn: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   }, []);
   const matches = vendorList.filter((v) => v.toLowerCase().includes(vendorQuery.toLowerCase()));
   const rows = [{ no: 1, name: "", desc: "Description" }, { no: 2, name: "Service", desc: "Description" }];
+  const [attachment, setAttachment] = useState("");
 
   return (
     <section className="module-detail-panel custom-scrollbar">
@@ -432,11 +433,7 @@ const CreateReturn: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div className="space-y-4">
             <div><label className="text-xs text-gray-500">Notes</label><textarea defaultValue="Mollit fugiat elit" className="mt-1 w-full h-20 border border-gray-200 rounded-md p-3 text-sm text-gray-700 outline-none resize-none" /></div>
             <div>
-              <label className="text-xs text-gray-500">Attachment</label>
-              <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-              </div>
+              <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
             </div>
           </div>
           <div className="border border-gray-200 rounded-md overflow-hidden self-start">
@@ -507,6 +504,8 @@ export const PurchaseReturns: React.FC = () => {
 
   const filtered = returns;
   const selected = returns.find((i) => i.id === selectedId) || returns[0];
+  const selectedDb: any =
+    dbReturns.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {};
 
   useEffect(() => {
     if (returns.length > 0 && !returns.some((p) => p.id === selectedId)) {
@@ -729,11 +728,18 @@ export const PurchaseReturns: React.FC = () => {
                   <div className="mt-1 h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{selected.reason || "—"}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Attachment</label>
-                  <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                  </div>
+                  <DocAttachmentField
+                    compact
+                    value={selectedDb?.Attachment || selectedDb?.attachments || ""}
+                    onChange={async (path) => {
+                      if (!selectedDb?.id) {
+                        showToast("Save the document first", "error");
+                        throw new Error("missing id");
+                      }
+                      await repo.update("purchaseReturns", selectedDb.id, { Attachment: path });
+                      showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                    }}
+                  />
                 </div>
               </div>
               <div>

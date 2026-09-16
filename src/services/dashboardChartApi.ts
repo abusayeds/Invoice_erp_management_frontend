@@ -125,10 +125,10 @@ const donutFromSeries = (series: ChartSeries[], points: ChartPoint[]): DonutSlic
 const bucketKeyForDate = (d: Date, unit: ChartTimeUnit): { key: string; label: string } => {
   if (unit === "Days") {
     const key = d.toISOString().slice(0, 10);
-    return {
-      key,
-      label: d.toLocaleString("en-US", { month: "short", day: "numeric" }),
-    };
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    return { key, label: `${dd}/${mm}/${yy}` };
   }
   if (unit === "Weeks") {
     const start = new Date(d);

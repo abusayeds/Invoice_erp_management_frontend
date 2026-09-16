@@ -105,6 +105,8 @@ export async function createVendorPayment(payload: {
   notes?: string;
   reference_number?: string;
   bank_account_id?: string;
+  attachment?: string;
+  attachments?: string;
   allocations: { invoice_id: string; allocated_amount: number }[];
   debit_notes?: unknown[];
 }): Promise<{ _id: string }> {

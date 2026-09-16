@@ -13,6 +13,7 @@ import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { api } from "@/lib/api/client";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { buildListSortParam } from "@/lib/listSort";
@@ -20,7 +21,7 @@ import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { deleteDeliveryChallan, hardDeleteDeliveryChallan, hardDeleteDeliveryChallans, restoreDeliveryChallans, fetchDeliveryChallan, fetchDeliveryChallans, updateDeliveryChallan, type BackendDeliveryChallanDoc } from "@/services/deliveryChallansApi";
-import { Search, Plus, ChevronDown, ChevronRight, Check, Settings, SlidersHorizontal, Pencil, PenTool, Eye, Printer, Mail, MoreVertical, Upload, FileText, Trash2, MessageCircle, CircleChevronUp, CircleChevronDown, RotateCcw } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronRight, Check, Settings, SlidersHorizontal, Pencil, PenTool, Eye, Printer, Mail, MoreVertical, Trash2, MessageCircle, CircleChevronUp, CircleChevronDown, RotateCcw } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
 
 /* ── Types & data ──────────────────────────────────────────────── */
@@ -633,11 +634,22 @@ export const DeliveryChallan: React.FC = () => {
                   <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.terms_and_conditions) || selectedDb.terms || "—"}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Attachment</label>
-                  <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                  </div>
+                  <DocAttachmentField
+                    compact
+                    value={selectedDoc?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""}
+                    onChange={async (path) => {
+                      const id = String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "");
+                      if (!id) {
+                        showToast("Save the document first", "error");
+                        throw new Error("missing id");
+                      }
+                      await updateDeliveryChallan(id, { Attachment: path });
+                      await queryClient.invalidateQueries({ queryKey: ["delivery-challan", id] });
+                      await queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
+                      if (selectedDb?.id) await repo.update("deliveryChallans", selectedDb.id, { Attachment: path });
+                      showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                    }}
+                  />
                 </div>
               </div>
               <div>

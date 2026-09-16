@@ -4,7 +4,8 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Check, FileText, Upload, X } from "lucide-react";
+import { Calendar, Check, X } from "lucide-react";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { fetchBills, updateBill, type BillListRow } from "@/services/billsApi";
 import { createVendorPayment } from "@/services/vendorPaymentsApi";
@@ -124,6 +125,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
   const [date, setDate] = useState(todayInput());
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [attachment, setAttachment] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -280,6 +282,8 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
         payment_method: [method],
         notes: notes || undefined,
         reference_number: serial,
+        attachment: attachment || undefined,
+        attachments: attachment || undefined,
         allocations: allocations.map(({ bill, parsedAmount }) => ({
           invoice_id: bill._id,
           allocated_amount: parsedAmount,
@@ -528,23 +532,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
               className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm outline-none resize-none"
             />
           </div>
-          <div>
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button type="button" className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Upload className="w-4 h-4" />
-                </span>
-                <span className="text-xs text-gray-600">Upload from Computer</span>
-              </button>
-              <button type="button" className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </span>
-                <span className="text-xs text-gray-600">Upload from Document</span>
-              </button>
-            </div>
-          </div>
+          <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
         </div>
       </div>
     </section>

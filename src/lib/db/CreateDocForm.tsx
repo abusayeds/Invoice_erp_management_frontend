@@ -7,7 +7,8 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Upload, FileText, Check } from "lucide-react";
+import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Check } from "lucide-react";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { useCollection } from "./hooks";
 import { repo, nextNumber } from "./repo";
 import { money } from "./format";
@@ -106,6 +107,7 @@ export const CreateDocForm: React.FC<{
   const [subTitle, setSubTitle] = useState(record?.subTitle ?? "");
   const [shippingMethod, setShippingMethod] = useState(record?.shippingMethod ?? "");
   const [payType, setPayType] = useState(record?.paymentType ?? "");
+  const [attachment, setAttachment] = useState(record?.Attachment || record?.attachments || "");
 
   /* ── Address expander (reference: Billing / Shipping, Same as Billing, Update to customer) ── */
   const emptyAddr = { street1: "", street2: "", city: "", state: "", zip: "", country: "" };
@@ -177,6 +179,8 @@ export const CreateDocForm: React.FC<{
       total: +total.toFixed(2), notes, terms,
       subTitle, shippingMethod, inlineDiscount: +inlineDiscount.toFixed(2),
       ...(paymentType ? { paymentType: payType } : {}),
+      Attachment: attachment,
+      attachments: attachment,
     };
     let id: number;
     if (isEdit) {
@@ -385,13 +389,7 @@ export const CreateDocForm: React.FC<{
           </div>
           <div className="space-y-4">
             <div><label className="text-xs text-gray-500">Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 w-full h-20 border border-gray-200 rounded-md p-3 text-sm text-gray-700 outline-none resize-none" /></div>
-            <div>
-              <label className="text-xs text-gray-500">Attachment</label>
-              <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-              </div>
-            </div>
+            <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
           </div>
           <div className="border border-gray-200 rounded-md overflow-hidden self-start">
             <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{money(subTotal)}</span></div>

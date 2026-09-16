@@ -20,7 +20,8 @@ import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
-import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
+import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, updatePaymentReceived, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { showToast } from "@/utils/toast";
 import { RecordPaymentReceivedForm, type PaymentReceivedPrefill } from "@/components/payments/RecordPaymentReceivedForm";
 import {
@@ -34,8 +35,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -208,6 +207,7 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | 
   const [method, setMethod] = useState(record?.method || "Cash");
   const [date, setDate] = useState(record?.date || "Jun 22, 2026");
   const [notes, setNotes] = useState(record?.notes ?? "");
+  const [attachment, setAttachment] = useState(record?.Attachment || record?.attachments || "");
   // auto-fill the amount to the invoice's due only when CREATING (edit keeps the payment's amount)
   useEffect(() => { if (inv && !isEdit) setAmount(String(inv.amountDue)); }, [invoiceId]);
   const custName = (id: number) => customers.find((c) => c.id === id)?.name || "—";
@@ -223,13 +223,16 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | 
       const due = Math.max(0, dueReversed - amt);
       const paid = paidReversed + amt;
       await repo.update("invoices", inv.id, { amountPaid: +paid.toFixed(2), amountDue: +due.toFixed(2), status: due <= 0 ? "Paid" : "Partially Paid" });
-      await repo.update("paymentsReceived", record.id, { amount: amt, method, date, notes });
+      await repo.update("paymentsReceived", record.id, { amount: amt, method, date, notes, Attachment: attachment, attachments: attachment });
+      if (record._id) {
+        await updatePaymentReceived(String(record._id), { Attachment: attachment });
+      }
       onSaved(record.id);
       onClose();
       return;
     }
     const n = await nextNumber("paymentsReceived");
-    const id = await repo.add("paymentsReceived", { number: "#" + n, customerId: inv.customerId, invoiceId: inv.id, date, ts: Date.now(), amount: amt, method, notes });
+    const id = await repo.add("paymentsReceived", { number: "#" + n, customerId: inv.customerId, invoiceId: inv.id, date, ts: Date.now(), amount: amt, method, notes, Attachment: attachment, attachments: attachment });
     const paid = (inv.amountPaid || 0) + amt;
     const due = Math.max(0, (inv.amountDue || 0) - amt);
     await repo.update("invoices", inv.id, { amountPaid: +paid.toFixed(2), amountDue: +due.toFixed(2), status: due <= 0 ? "Paid" : "Partially Paid" });
@@ -272,13 +275,7 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | 
         </div>
         <div className="space-y-4">
           <div><label className="text-xs text-gray-500">Internal Notes</label><textarea placeholder="Internal Notes" className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm outline-none resize-none" /></div>
-          <div>
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-            </div>
-          </div>
+          <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
           {inv && <div className="text-sm text-gray-600 border border-gray-200 rounded-md p-3">Outstanding on {inv.number}: <span className="font-semibold text-gray-900">{fmtMoney(inv.amountDue)}</span></div>}
         </div>
       </div>
@@ -366,6 +363,7 @@ export const PaymentReceived: React.FC = () => {
   const filtered = payments;
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
   const dbPayments = useCollection<any>("paymentsReceived");
+  const selectedPayDoc = listData?.rows?.find((row) => row._id === selected?.backendId);
   const selectedDb: any = dbPayments.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {
     number: selected?.number,
     notes: selected?.note,
@@ -592,12 +590,23 @@ export const PaymentReceived: React.FC = () => {
             </div>
 
             {/* Attachment (full width) */}
-            <div className="px-5 py-4">
-              <div className="text-sm font-semibold text-gray-900 mb-2">Attachment</div>
-              <div className="grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                <button className="flex flex-col items-center gap-2 py-8 hover:bg-gray-50"><span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                <button className="flex flex-col items-center gap-2 py-8 hover:bg-gray-50"><span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-              </div>
+            <div className="px-5 py-4 max-w-md">
+              <DocAttachmentField
+                value={selectedPayDoc?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""}
+                onChange={async (path) => {
+                  const id = String(selected?.backendId || selectedDb?._id || "");
+                  if (!id) {
+                    showToast("Save the document first", "error");
+                    throw new Error("missing id");
+                  }
+                  await updatePaymentReceived(id, { Attachment: path });
+                  await queryClient.invalidateQueries({ queryKey: ["payment-received-list"] });
+                  if (selectedDb?.id) {
+                    await repo.update("paymentsReceived", selectedDb.id, { Attachment: path, attachments: path });
+                  }
+                  showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                }}
+              />
             </div>
           </div>
         </section>

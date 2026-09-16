@@ -32,6 +32,7 @@ import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import {
   fetchCreditNote,
   fetchCreditNotes,
@@ -53,8 +54,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -761,11 +760,20 @@ export const CreditNotes: React.FC = () => {
                   <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{selectedDb.terms || "—"}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Attachment</label>
-                  <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                  </div>
+                  <DocAttachmentField
+                    compact
+                    value={selectedBackend?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""}
+                    onChange={async (path) => {
+                      if (!selectedDb?.id) {
+                        showToast("Save the document first", "error");
+                        throw new Error("missing id");
+                      }
+                      await repo.update("creditNotes", selectedDb.id, { Attachment: path, attachments: path });
+                      await queryClient.invalidateQueries({ queryKey: ["credit-note", selected?.backendId] });
+                      await queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
+                      showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                    }}
+                  />
                 </div>
               </div>
               <div className="space-y-4">

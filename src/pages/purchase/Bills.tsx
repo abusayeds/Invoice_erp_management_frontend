@@ -15,14 +15,15 @@ import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdo
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
-import { fetchBills } from "@/services/billsApi";
+import { fetchBills, updateBill } from "@/services/billsApi";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { buildListSortParam } from "@/lib/listSort";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
@@ -49,8 +50,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -283,6 +282,7 @@ const EmailModal: React.FC<{ onClose: () => void; bill: Bill }> = ({ onClose, bi
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const Bills: React.FC = () => {
+  const queryClient = useQueryClient();
   const dbBills = useCollection<any>("bills");
   const dbVendors = useCollection<any>("vendors", "name");
 
@@ -737,11 +737,25 @@ export const Bills: React.FC = () => {
                   <div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{selectedDb.terms || "—"}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Attachment</label>
-                  <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                  </div>
+                  <DocAttachmentField
+                    compact
+                    value={selectedDb?.Attachment || selectedDb?.attachments || ""}
+                    onChange={async (path) => {
+                      const id = String(selected?.backendId || selectedDb?._id || "");
+                      if (!id && !selectedDb?.id) {
+                        showToast("Save the document first", "error");
+                        throw new Error("missing id");
+                      }
+                      if (id) {
+                        await updateBill(id, { Attachment: path, attachments: path });
+                        await queryClient.invalidateQueries({ queryKey: ["bills-backend-list"] });
+                      }
+                      if (selectedDb?.id) {
+                        await repo.update("bills", selectedDb.id, { Attachment: path, attachments: path });
+                      }
+                      showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                    }}
+                  />
                 </div>
               </div>
               <div>

@@ -26,6 +26,7 @@ import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { CreateSalesReceiptForm } from "./CreateSalesReceiptForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import {
   Search,
   Plus,
@@ -40,8 +41,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   X,
   Trash2,
   MessageCircle,
@@ -573,7 +572,7 @@ export const SalesReceipts: React.FC = () => {
               </table>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 px-5 py-5">
-              <div className="space-y-4"><div><label className="text-xs text-gray-500">Terms &amp; Conditions</label><div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.terms_and_conditions) || selectedDb.terms || "—"}</div></div><div><label className="text-xs text-gray-500">Attachment</label><div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200"><button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button><button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button></div></div></div>
+              <div className="space-y-4"><div><label className="text-xs text-gray-500">Terms &amp; Conditions</label><div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.terms_and_conditions) || selectedDb.terms || "—"}</div></div><DocAttachmentField compact value={selectedDoc?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""} onChange={async (path) => { const id = String(selectedDoc?._id || selected?.backendId || selectedDb?._id || ""); if (!id) { showToast("Save the document first", "error"); throw new Error("missing id"); } await api.raw.post(`/sales-receipt/edit/${id}`, { Attachment: path }); await queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-detail", id] }); await queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); if (selectedDb?.id) await repo.update("salesReceipts", selectedDb.id, { Attachment: path }); showToast(path ? "Attachment saved" : "Attachment removed", "success"); }} /></div>
               <div><label className="text-xs text-gray-500">Notes</label><div className="mt-1 min-h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.notes) || selectedDb.notes || "—"}</div></div>
               <div className="border border-gray-200 rounded-md overflow-hidden self-start"><div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.sub_total ?? selectedDb.subTotal))}</span></div>{(selectedDb.inlineDiscount || 0) > 0 && <div className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>Inline Discount</span><span>{fmtMoney(selectedDb.inlineDiscount)}</span></div>}{Object.entries(lines.reduce((acc: Record<number, number>, item) => { const rate = item.tax || 0; acc[rate] = (acc[rate] || 0) + item.amount; return acc; }, {})).map(([taxId, base]: [string, number]) => <div key={taxId} className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>{SR_TAX_NAME[Number(taxId)] || "Tax"} {Number(taxId)}% on {fmtMoney(base)}</span><span>{fmtMoney((base * Number(taxId)) / 100)}</span></div>)}<div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-200"><span className="font-semibold text-gray-900">Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.total ?? selectedDb.total))}</span></div></div>
             </div>

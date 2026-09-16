@@ -10,6 +10,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Ensure production builds always have a real backend origin for /files images
+  // even if the deploy host forgets to inject .env at build time.
+  envPrefix: "VITE_",
   server: {
     port: 8080,
 
@@ -31,7 +34,6 @@ export default defineConfig({
     },
   },
   build: {
-   
-    outDir: "dist", 
+    outDir: "dist",
   },
 });

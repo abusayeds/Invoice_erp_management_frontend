@@ -6,8 +6,6 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { RecentActivities } from "@/components/ui/RecentActivities";
 import {
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ListFilter,
   Info,
   Check,
@@ -223,10 +221,6 @@ export const Dashboard: React.FC = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const periodRef = useOutside<HTMLDivElement>(() => setPeriodOpen(false));
   const filterRef = useOutside<HTMLDivElement>(() => setFilterOpen(false));
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const pan = (d: -1 | 1) =>
-    scrollRef.current?.scrollBy({ left: d * 240, behavior: "smooth" });
 
   const shownCards = summaryCards.filter((c) => visible[c.key] !== false);
   const sideList = custMode === "Top Vendors" ? topVendors : topCustomers;
@@ -403,65 +397,74 @@ export const Dashboard: React.FC = () => {
               >
                 {chartType === "bar" ? <BarChart3 className="w-4 h-4" /> : <CircleDot className="w-4 h-4" />}
               </button>
-              <button
-                type="button"
-                onClick={() => pan(-1)}
-                className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 text-gray-600"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => pan(1)}
-                className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 text-gray-600"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
           </div>
-          <div className="p-4 h-[280px] overflow-x-auto custom-scrollbar" ref={scrollRef}>
+          <div className="p-3 h-[320px] overflow-hidden rounded-b-lg" style={{ background: "#1a212a" }}>
             {chartLoading ? (
-              <div className="flex h-full items-center justify-center text-gray-500">
+              <div className="flex h-full items-center justify-center text-gray-400">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
             ) : chartType === "bar" ? (
               (() => {
-                /** Fixed pillar width for Days / Weeks / Months / Quarters — same as Months look. */
-                const BAR_SIZE = 28;
-                const BAR_GAP = 4;
-                const CATEGORY_GAP = 22;
-                const barsPerCat = stackPayments ? 1 : Math.max(chartSeries.length, 1);
-                const categoryPitch =
-                  barsPerCat * BAR_SIZE + Math.max(barsPerCat - 1, 0) * BAR_GAP + CATEGORY_GAP;
-                const chartMinWidth = Math.max(720, chartPoints.length * categoryPitch + 80);
+                const n = Math.max(chartPoints.length, 1);
+                // Only series with data take bar slots (matches SS: empty Sales/Overdue hide).
+                const activeSeries = chartSeries.filter((s) =>
+                  chartPoints.some((p) => Number(p[s.key] ?? 0) > 0.0001),
+                );
+                const seriesDraw = activeSeries.length ? activeSeries : chartSeries;
+                const seriesN = stackPayments ? 1 : Math.max(seriesDraw.length, 1);
+                // Same pillar look as screenshot — shrink only when needed to fit all days.
+                const barSize = Math.max(4, Math.min(28, Math.floor(640 / (n * seriesN))));
                 return (
-                  <div style={{ width: chartMinWidth, height: "100%", minWidth: "100%" }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartPoints} barGap={BAR_GAP} barCategoryGap={CATEGORY_GAP}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2a333d" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "#1a212a",
-                            border: "1px solid #3a444f",
-                            borderRadius: 8,
-                            fontSize: 12,
-                          }}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={chartPoints}
+                      barGap={2}
+                      barCategoryGap={n > 24 ? "18%" : "28%"}
+                      margin={{ top: 12, right: 12, left: 4, bottom: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="0" vertical={false} stroke="#2f4a38" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 8, fill: "#9aa3ad" }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={0}
+                        minTickGap={0}
+                        height={28}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: "#9aa3ad" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={40}
+                        tickFormatter={(v) =>
+                          Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}K` : String(v)
+                        }
+                      />
+                      <Tooltip
+                        cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                        contentStyle={{
+                          background: "#1a212a",
+                          border: "1px solid #3a444f",
+                          borderRadius: 8,
+                          fontSize: 12,
+                          color: "#e5e7eb",
+                        }}
+                      />
+                      {seriesDraw.map((s) => (
+                        <Bar
+                          key={s.key}
+                          dataKey={s.key}
+                          name={s.label}
+                          stackId={stackPayments ? "pay" : undefined}
+                          fill={s.color}
+                          barSize={barSize}
+                          radius={[2, 2, 0, 0]}
                         />
-                        {chartSeries.map((s) => (
-                          <Bar
-                            key={s.key}
-                            dataKey={s.key}
-                            stackId={stackPayments ? "pay" : undefined}
-                            fill={s.color}
-                            barSize={BAR_SIZE}
-                            radius={[2, 2, 0, 0]}
-                          />
-                        ))}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
                 );
               })()
             ) : (

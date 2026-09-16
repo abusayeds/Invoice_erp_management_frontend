@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Eye, FileText, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
+import { Calendar, Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { showToast } from "@/utils/toast";
 import { useCollection } from "@/lib/db";
 import type { BackendInvoiceDoc } from "@/services/invoicesApi";
@@ -122,6 +123,7 @@ type UnifiedPayment = {
   method: string;
   notes: string;
   internalNotes: string;
+  attachment: string;
   source: "payment" | "paymentReceived";
 };
 
@@ -188,6 +190,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const [lineAmounts, setLineAmounts] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [attachment, setAttachment] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
@@ -322,6 +325,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       method: firstPaymentMethod(payment),
       notes: text(payment.notes),
       internalNotes: text(payment.internal_notes),
+      attachment: text(payment.Attachment),
       source: "paymentReceived" as const,
     }));
     const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc, index) => ({
@@ -335,6 +339,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       method: text(payment.payment_type) || "Cash",
       notes: text(payment.notes),
       internalNotes: text(payment.internal_notes),
+      attachment: text(payment.attachments),
       source: "payment" as const,
     }));
     const local = localPaymentsReceived
@@ -350,6 +355,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
         method: text(payment.method) || "Cash",
         notes: text(payment.notes),
         internalNotes: text(payment.internalNotes),
+        attachment: text(payment.Attachment || payment.attachments),
         source: "paymentReceived" as const,
       }));
     const merged = [...direct, ...received, ...local].sort((a, b) => b.timestamp - a.timestamp);
@@ -420,6 +426,21 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setAmount(selectedPayment.amount.toFixed(2));
     setNotes(selectedPayment.notes);
     setInternalNotes(selectedPayment.internalNotes);
+    setAttachment(selectedPayment.attachment || "");
+  };
+
+  const persistPaymentAttachment = async (path: string) => {
+    if (!selectedPayment) {
+      showToast("Save the document first", "error");
+      throw new Error("missing payment");
+    }
+    if (selectedPayment.source === "paymentReceived") {
+      await updatePaymentReceived(selectedPayment.id, { Attachment: path });
+    } else {
+      await updateInvoicePayment(selectedPayment.id, { attachments: path || undefined });
+    }
+    await refreshPayments();
+    showToast(path ? "Attachment saved" : "Attachment removed", "success");
   };
 
   const refreshPayments = async () => {
@@ -449,6 +470,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             payment_method: [method || "Cash"],
             notes,
             internal_notes: internalNotes,
+            Attachment: attachment || undefined,
             total: parsedAmount,
             sub_total: parsedAmount,
             product: [],
@@ -463,6 +485,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
           payment_method: [method || "Cash"],
           notes,
           internal_notes: internalNotes,
+          Attachment: attachment || undefined,
           product: [],
           service: [],
           sub_total: parsedAmount,
@@ -483,6 +506,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             payment_method: [method || "Cash"],
             notes,
             internal_notes: internalNotes,
+            Attachment: attachment || undefined,
             total: parsedAmount,
             sub_total: parsedAmount,
             product: [],
@@ -498,6 +522,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
           amount: parsedAmount,
           notes,
           internal_notes: internalNotes,
+          attachments: attachment || undefined,
           type: "invoice",
         });
       }
@@ -533,6 +558,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             amount: parsedAmount,
             notes,
             internal_notes: internalNotes,
+            attachments: attachment || undefined,
             type: "invoice",
           }),
         ),
@@ -883,23 +909,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                           className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
                         />
                       </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Attachment</label>
-                        <div className="mt-1 grid grid-cols-1 rounded-md border border-gray-200 divide-y divide-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                              <Upload className="h-4 w-4" />
-                            </span>
-                            <span className="text-xs text-gray-600">Upload from Computer</span>
-                          </button>
-                          <button className={`flex flex-col items-center gap-2 py-4 ${modalHover}`}>
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                              <FileText className="h-4 w-4" />
-                            </span>
-                            <span className="text-xs text-gray-600">Upload from Document</span>
-                          </button>
-                        </div>
-                      </div>
+                      <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
                     </div>
                   </div>
                 </div>
@@ -980,22 +990,11 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="px-5 py-4">
-                    <div className="mb-2 text-sm font-semibold text-gray-900">Attachment</div>
-                    <div className="grid grid-cols-2 rounded-md border border-gray-200 divide-x divide-gray-200">
-                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                          <Upload className="h-4 w-4" />
-                        </span>
-                        <span className="text-xs text-gray-600">Upload from Computer</span>
-                      </button>
-                      <button className={`flex flex-col items-center gap-2 py-8 ${modalHover}`}>
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                          <FileText className="h-4 w-4" />
-                        </span>
-                        <span className="text-xs text-gray-600">Upload from Document</span>
-                      </button>
-                    </div>
+                  <div className="px-5 py-4 max-w-md">
+                    <DocAttachmentField
+                      value={selectedPayment.attachment || ""}
+                      onChange={persistPaymentAttachment}
+                    />
                   </div>
                 </div>
               ) : (

@@ -22,7 +22,8 @@ import { buildListSortParam } from "@/lib/listSort";
 import { fetchVendorPayments, type VendorPaymentListRow } from "@/services/vendorPaymentsApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, DocPreview, PdfPreviewModal } from "@/lib/db";
+import { useCollection, repo, DocPreview, PdfPreviewModal } from "@/lib/db";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { RecordPaymentMadeForm, type PaymentMadePrefill } from "@/components/payments/RecordPaymentMadeForm";
 import { showToast } from "@/utils/toast";
 import {
@@ -36,8 +37,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -144,6 +143,7 @@ const BillsChooser: React.FC<{ onClose: () => void; onDone: () => void; vendor: 
 
 /* ── Edit Payment modal ────────────────────────────────────────── */
 const EditModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p }) => {
+  const [attachment, setAttachment] = useState("");
   const [billsOpen, setBillsOpen] = useState(false);
   return (
     <Overlay onClose={onClose}>
@@ -176,13 +176,7 @@ const EditModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p }
           </div>
           <div><label className="text-xs text-gray-500">Notes</label><textarea rows={2} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /></div>
           <div><label className="text-xs text-gray-500">Internal Notes</label><textarea rows={2} placeholder="Internal Notes" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /></div>
-          <div>
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-            </div>
-          </div>
+          <DocAttachmentField compact value={attachment} onChange={(path) => setAttachment(path)} />
           <div className="flex items-center justify-between border-t border-gray-200 pt-3">
             <span className="text-sm font-medium text-gray-800">Bills</span>
             <button onClick={() => setBillsOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Pencil className="w-4 h-4" /></button>
@@ -345,6 +339,8 @@ export const PaymentMade: React.FC = () => {
 
   const filtered = payments;
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
+  const selectedDb: any =
+    dbPayments.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {};
 
   useEffect(() => {
     if (payments.length > 0 && !payments.some((p) => p.id === selectedId)) {
@@ -560,12 +556,21 @@ export const PaymentMade: React.FC = () => {
             </div>
 
             {/* Attachment */}
-            <div className="px-5 py-4">
-              <div className="text-sm font-semibold text-gray-900 mb-2">Attachment</div>
-              <div className="grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                <button className="flex flex-col items-center gap-2 py-8 hover:bg-gray-50"><span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                <button className="flex flex-col items-center gap-2 py-8 hover:bg-gray-50"><span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-              </div>
+            <div className="px-5 py-4 max-w-md">
+              <DocAttachmentField
+                value={selectedDb?.Attachment || selectedDb?.attachments || ""}
+                onChange={async (path) => {
+                  const id = String(selected?.backendId || selectedDb?._id || "");
+                  if (!selectedDb?.id && !id) {
+                    showToast("Save the document first", "error");
+                    throw new Error("missing id");
+                  }
+                  if (selectedDb?.id) {
+                    await repo.update("paymentsMade", selectedDb.id, { Attachment: path, attachments: path });
+                  }
+                  showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                }}
+              />
             </div>
           </div>
         </section>

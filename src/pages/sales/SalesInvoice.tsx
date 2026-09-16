@@ -51,7 +51,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
   FileText,
   Download,
   X,
@@ -72,6 +71,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 
 /* ── Types & data ──────────────────────────────────────────────── */
 type Status = "Draft" | "Paid" | "Partial" | "Overdue";
@@ -1643,22 +1643,24 @@ export const SalesInvoice: React.FC = () => {
           </div>
 
           {/* Attachment */}
-          <div className="px-5 pb-6">
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 max-w-md border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50 transition-colors">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Upload className="w-4 h-4" />
-                </span>
-                <span className="text-xs text-gray-600">Upload from Computer</span>
-              </button>
-              <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50 transition-colors">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </span>
-                <span className="text-xs text-gray-600">Upload from Document</span>
-              </button>
-            </div>
+          <div className="px-5 pb-6 max-w-md">
+            <DocAttachmentField
+              value={selectedInvoiceDoc?.Attachment || selectedDb?.Attachment || selectedDb?.attachments || ""}
+              onChange={async (path) => {
+                const backendId = selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id;
+                if (!backendId) {
+                  showToast("Save the invoice first", "error");
+                  throw new Error("missing id");
+                }
+                await updateInvoice(String(backendId), { Attachment: path });
+                await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", String(backendId)] });
+                await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+                if (selectedDb?.id) {
+                  await repo.update("invoices", selectedDb.id, { Attachment: path });
+                }
+                showToast(path ? "Attachment saved" : "Attachment removed", "success");
+              }}
+            />
           </div>
 
           {/* saved signature (shows after Add Signature) */}

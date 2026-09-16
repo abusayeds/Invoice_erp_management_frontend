@@ -24,7 +24,9 @@ import { fetchDebitNotes, type DebitNoteListRow } from "@/services/debitNotesApi
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, money as fmtMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { useCollection, repo, money as fmtMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
+import { showToast } from "@/utils/toast";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import {
   Search,
   Plus,
@@ -40,8 +42,6 @@ import {
   Printer,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   Download,
   X,
   Trash2,
@@ -392,6 +392,7 @@ const AddVendorModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 /* ── Edit Debit Note (inline form, replaces detail) ────────────── */
 const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, onClose }) => {
+  const [attachment, setAttachment] = useState("");
   const dbVendors = useCollection<any>("vendors", "name");
   const vendorList = useMemo(() => dbVendors.map((v: { name: string }) => v.name), [dbVendors]);
   const [vendorQuery, setVendorQuery] = useState(dn.name);
@@ -479,13 +480,7 @@ const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, o
           </div>
           <div className="space-y-4">
             <div><label className="text-xs text-gray-500">Notes</label><textarea defaultValue={dn.note} className="mt-1 w-full h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700 outline-none resize-none" /></div>
-            <div>
-              <label className="text-xs text-gray-500">Attachment</label>
-              <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-              </div>
-            </div>
+            <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
           </div>
           <div className="border border-gray-200 rounded-md overflow-hidden self-start">
             <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{dn.amount}</span></div>
@@ -576,6 +571,8 @@ export const DebitNotes: React.FC = () => {
     }
   }, [debitNotes, selectedId]);
   const isApplied = selected ? appliedIds.has(selected.id) : false;
+  const selectedDb: any =
+    dbNotes.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {};
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -803,13 +800,19 @@ export const DebitNotes: React.FC = () => {
                   <label className="text-xs text-gray-500">Terms &amp; Conditions</label>
                   <div className="mt-1 h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">Eum illo minus fuga</div>
                 </div>
-                <div>
-                  <label className="text-xs text-gray-500">Attachment</label>
-                  <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                    <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                  </div>
-                </div>
+                <DocAttachmentField
+                  compact
+                  value={selectedDb?.Attachment || selectedDb?.attachments || ""}
+                  onChange={async (path) => {
+                    if (!selectedDb?.id) {
+                      showToast("Save the document first", "error");
+                      throw new Error("missing id");
+                    }
+                    await repo.update("debitNotes", selectedDb.id, { Attachment: path, attachments: path });
+                    await queryClient.invalidateQueries({ queryKey: ["debit-notes-list"] });
+                    showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                  }}
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500">Notes</label>

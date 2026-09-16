@@ -26,6 +26,8 @@ import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, CreateContactModal } from "@/lib/db";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
+import { updateExpense } from "@/services/accountingApi";
+import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import {
   Search,
   Plus,
@@ -35,8 +37,6 @@ import {
   Pencil,
   Mail,
   MoreVertical,
-  Upload,
-  FileText,
   X,
   Trash2,
   ChevronRight,
@@ -281,6 +281,7 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
   const [upTo, setUpTo] = useState(initial?.upTo ?? "");
   const [description, setDescription] = useState(initial?.notes ?? "");
   const [number] = useState(initial?.number?.replace("#", "") ?? "");
+  const [attachment, setAttachment] = useState(initial?.Attachment || initial?.attachments || "");
 
   const vendorName = vendorId != null ? vendors.find((v) => v.id === vendorId)?.name || "" : vendorQuery;
   const vendorMatches = vendors.filter((v) => v.name.toLowerCase().includes(vendorQuery.toLowerCase()));
@@ -302,6 +303,8 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
       vendorId: vid, category: category.trim(), taxIds: [...taxIds], inclusive, paymentType: payType,
       amount: amt, shipping: ship, total, date, recurring, upTo: recurring === "Never" ? "" : upTo,
       notes: description,
+      Attachment: attachment,
+      attachments: attachment,
     };
     if (initial?.id) {
       await repo.update("expenses", initial.id, rec);
@@ -395,13 +398,7 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
               <button key={m} onClick={() => { setPayType(m); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{m} {m === payType && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </FieldSelect>
-          <div>
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-              <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-            </div>
-          </div>
+          <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
         </div>
 
         {/* right column */}
@@ -778,13 +775,25 @@ export const Expenses: React.FC = () => {
               <FloatField label="Category *" value={selected.category} readOnly />
               <FloatField label="Default Taxes" value={(selectedDb.taxIds || []).length ? EXP_TAXES.filter((t) => selectedDb.taxIds.includes(t.id)).map((t) => t.name).join(", ") : selected.defaultTaxes || "—"} readOnly />
               <FloatField label="Payment Type" value={selectedDb.paymentType || "—"} readOnly />
-              <div>
-                <label className="text-xs text-gray-500">Attachment</label>
-                <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-                  <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Computer</span></button>
-                  <button className="flex flex-col items-center gap-2 py-5 hover:bg-gray-50"><span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span><span className="text-xs text-gray-600">Upload from Document</span></button>
-                </div>
-              </div>
+              <DocAttachmentField
+                compact
+                value={selectedDb?.Attachment || selectedDb?.attachments || ""}
+                onChange={async (path) => {
+                  const backendId = String(selectedDb?._id || selected?.backendId || "");
+                  if (!selectedDb?.id && !backendId) {
+                    showToast("Save the document first", "error");
+                    throw new Error("missing id");
+                  }
+                  if (backendId) {
+                    await updateExpense(backendId, { Attachment: path, attachments: path });
+                    await queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
+                  }
+                  if (selectedDb?.id) {
+                    await repo.update("expenses", selectedDb.id, { Attachment: path, attachments: path });
+                  }
+                  showToast(path ? "Attachment saved" : "Attachment removed", "success");
+                }}
+              />
             </div>
             {/* right */}
             <div className="space-y-6">
