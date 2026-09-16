@@ -414,24 +414,26 @@ export const Dashboard: React.FC = () => {
                 const seriesDraw = activeSeries.length ? activeSeries : chartSeries;
                 const seriesN = stackPayments ? 1 : Math.max(seriesDraw.length, 1);
                 // Same pillar look as screenshot — shrink only when needed to fit all days.
-                const barSize = Math.max(4, Math.min(28, Math.floor(640 / (n * seriesN))));
+                const barSize = Math.max(6, Math.min(28, Math.floor(700 / (n * seriesN))));
                 return (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={chartPoints}
                       barGap={2}
-                      barCategoryGap={n > 24 ? "18%" : "28%"}
-                      margin={{ top: 12, right: 12, left: 4, bottom: 4 }}
+                      barCategoryGap={n > 20 ? "16%" : "26%"}
+                      margin={{ top: 12, right: 12, left: 4, bottom: timeUnit === "Days" ? 8 : 4 }}
                     >
                       <CartesianGrid strokeDasharray="0" vertical={false} stroke="#2f4a38" />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 8, fill: "#9aa3ad" }}
+                        tick={{ fontSize: timeUnit === "Days" ? 8 : 10, fill: "#9aa3ad" }}
                         axisLine={false}
                         tickLine={false}
                         interval={0}
                         minTickGap={0}
-                        height={28}
+                        angle={timeUnit === "Days" ? -40 : 0}
+                        textAnchor={timeUnit === "Days" ? "end" : "middle"}
+                        height={timeUnit === "Days" ? 48 : 28}
                       />
                       <YAxis
                         tick={{ fontSize: 11, fill: "#9aa3ad" }}

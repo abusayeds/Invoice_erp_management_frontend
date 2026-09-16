@@ -3,7 +3,6 @@
  * plus Payment Received / Payment Made payment-method breakdown (frontend).
  */
 import { api } from "@/lib/api/client";
-import { periodToParams, dateBounds } from "@/services/dashboardSummaryApi";
 import { fetchPaymentReceived } from "@/services/paymentReceivedApi";
 import { fetchVendorPayments } from "@/services/vendorPaymentsApi";
 
@@ -48,6 +47,57 @@ const granularityOf = (unit: ChartTimeUnit): "day" | "week" | "month" => {
   if (unit === "Days") return "day";
   if (unit === "Weeks") return "week";
   return "month"; // Months + Quarters (Quarters rolled up on FE)
+};
+
+/** Fixed chart windows so the UI never overflows / needs a scrollbar. */
+const CHART_BUCKET_LIMIT: Record<ChartTimeUnit, number> = {
+  Days: 30,
+  Weeks: 4,
+  Months: 12, // one year
+  Quarters: 4, // one year as 4 quarters
+};
+
+/** Chart date range ending at `anchor` (default today), sized for the time unit. */
+export function chartRangeForUnit(
+  unit: ChartTimeUnit,
+  anchor = new Date(),
+): { from: Date; to: Date } {
+  const to = new Date(anchor);
+  to.setHours(23, 59, 59, 999);
+  const from = new Date(to);
+  from.setHours(0, 0, 0, 0);
+
+  if (unit === "Days") {
+    from.setDate(from.getDate() - (CHART_BUCKET_LIMIT.Days - 1));
+  } else if (unit === "Weeks") {
+    // Align to week start, then go back 3 more weeks (4 weeks total)
+    const day = from.getDay();
+    from.setDate(from.getDate() - day);
+    from.setDate(from.getDate() - 7 * (CHART_BUCKET_LIMIT.Weeks - 1));
+  } else if (unit === "Months") {
+    from.setMonth(from.getMonth() - (CHART_BUCKET_LIMIT.Months - 1), 1);
+  } else {
+    // Quarters: last 4 quarters (one year)
+    const qStart = Math.floor(from.getMonth() / 3) * 3;
+    from.setMonth(qStart, 1);
+    from.setMonth(from.getMonth() - 3 * (CHART_BUCKET_LIMIT.Quarters - 1), 1);
+  }
+  return { from, to };
+}
+
+const takeLastBuckets = (
+  labels: string[],
+  seriesMap: Record<string, number[]>,
+  limit: number,
+): { labels: string[]; seriesMap: Record<string, number[]> } => {
+  if (labels.length <= limit) return { labels, seriesMap };
+  const start = labels.length - limit;
+  const nextLabels = labels.slice(start);
+  const nextMap: Record<string, number[]> = {};
+  for (const [key, arr] of Object.entries(seriesMap)) {
+    nextMap[key] = arr.slice(start);
+  }
+  return { labels: nextLabels, seriesMap: nextMap };
 };
 
 const currencyParam = (currencyLabel: string): string | undefined => {
@@ -265,20 +315,21 @@ export async function loadDashboardChartView(opts: {
   timeUnit: ChartTimeUnit;
   currencyLabel: string;
 }): Promise<DashboardChartView> {
-  const { period, metric, timeUnit, currencyLabel } = opts;
+  const { metric, timeUnit, currencyLabel } = opts;
   const cur = currencyParam(currencyLabel);
+  // Chart window is driven by Days/Weeks/Months/Quarters — not the summary period filter.
+  const { from: fromD, to: toD } = chartRangeForUnit(timeUnit);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
   const params = {
-    ...periodToParams(period),
+    period: "custom",
+    from: iso(fromD),
+    to: iso(toD),
     granularity: granularityOf(timeUnit),
     ...(cur ? { currency: cur } : {}),
   };
+  const limit = CHART_BUCKET_LIMIT[timeUnit];
 
   if (metric === "Payment Received") {
-    const { from, to } = dateBounds(period);
-    const fromD = new Date(from);
-    fromD.setHours(0, 0, 0, 0);
-    const toD = new Date(to);
-    toD.setHours(23, 59, 59, 999);
     const rows = await fetchAllPaymentReceived();
     const items = rows.map((r) => {
       const methods = Array.isArray(r.payment_method) ? r.payment_method : [];
@@ -291,22 +342,23 @@ export async function loadDashboardChartView(opts: {
         currency: text(r.currency) || undefined,
       };
     });
-    return buildMethodChart(items, fromD, toD, timeUnit, cur);
+    const view = buildMethodChart(items, fromD, toD, timeUnit, cur);
+    if (view.points.length <= limit) return view;
+    return {
+      ...view,
+      points: view.points.slice(-limit),
+      donut: donutFromSeries(view.series, view.points.slice(-limit)),
+    };
   }
 
   if (metric === "Payment Made") {
-    const { from, to } = dateBounds(period);
-    const fromD = new Date(from);
-    fromD.setHours(0, 0, 0, 0);
-    const toD = new Date(to);
-    toD.setHours(23, 59, 59, 999);
     const rows = await fetchAllVendorPayments();
     const items = rows.map((r) => ({
       date: r.paymentDateIso ? new Date(r.paymentDateIso) : r.dateLabel && r.dateLabel !== "—" ? new Date(r.dateLabel) : null,
       amount: num(r.amount),
       method: text(r.method) || "Cash",
     }));
-    return buildMethodChart(
+    const view = buildMethodChart(
       items.map((it) => ({
         ...it,
         date: it.date && !Number.isNaN(it.date.getTime()) ? it.date : null,
@@ -316,6 +368,12 @@ export async function loadDashboardChartView(opts: {
       timeUnit,
       cur,
     );
+    if (view.points.length <= limit) return view;
+    return {
+      ...view,
+      points: view.points.slice(-limit),
+      donut: donutFromSeries(view.series, view.points.slice(-limit)),
+    };
   }
 
   const res = await api.raw.get("/dashboard/summary", { params });
@@ -341,6 +399,10 @@ export async function loadDashboardChartView(opts: {
     labels = rolled.labels;
     seriesMap = rolled.seriesMap;
   }
+
+  const capped = takeLastBuckets(labels, seriesMap, limit);
+  labels = capped.labels;
+  seriesMap = capped.seriesMap;
 
   const keys = Object.keys(seriesMap);
   const series = seriesFromKeys(keys);
