@@ -400,3 +400,37 @@ export async function deleteBugStage(id: string) {
 export async function reorderBugStages(ids: string[]) {
   return api.post("/project/bug-stage/reorder", { ids });
 }
+
+/** Company / staff / client project dashboard hub. */
+export type ProjectDashboardPayload = {
+  stats?: Record<string, number>;
+  bugStats?: { open?: number; resolved?: number };
+  projectStatus?: { name: string; value: number; color: string }[];
+  taskPriority?: { name: string; value: number; color: string }[];
+  teamPerformance?: {
+    name: string;
+    total_tasks?: number;
+    completed_tasks?: number;
+    completion_rate?: number;
+    total?: number;
+    completed?: number;
+    percentage?: number;
+  }[];
+  monthlyProgress?: { month: string; created?: number; completed?: number }[];
+  recentTasks?: Record<string, unknown>[];
+  latestTasks?: Record<string, unknown>[];
+  projectProgress?: Record<string, unknown>[];
+  clientProjects?: Record<string, unknown>[];
+  staffProjects?: Record<string, unknown>[];
+};
+
+export async function fetchProjectDashboard(): Promise<ProjectDashboardPayload> {
+  try {
+    const data = await api.get<ProjectDashboardPayload>("/dashboard/project");
+    return (data && typeof data === "object" ? data : {}) as ProjectDashboardPayload;
+  } catch {
+    // Legacy company-only endpoint (same payload shape).
+    const data = await api.get<ProjectDashboardPayload>("/project/dashboard/home");
+    return (data && typeof data === "object" ? data : {}) as ProjectDashboardPayload;
+  }
+}
