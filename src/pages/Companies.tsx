@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
-import { BACKEND_BASE_URL } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 import useAuth from "@/hooks/useAuth";
 import { PdfPrintSettingsModal } from "../components/modals/PdfPrintSettingsModal";
 import { AppSettingsModal } from "../components/modals/AppSettingsModal";
@@ -75,13 +75,7 @@ interface Company {
   reverseChargeSales?: boolean;
 }
 
-const resolveLogoUrl = (value?: string) => {
-  const src = String(value || "").trim();
-  if (!src) return "";
-  if (/^(https?:|data:|blob:)/i.test(src)) return src;
-  if (src.startsWith("/")) return src;
-  return `${BACKEND_BASE_URL}/${src.replace(/^\//, "")}`;
-};
+const resolveLogoUrl = (value?: string) => resolveMediaUrl(value);
 
 const uploadCompanyLogo = async (file: File): Promise<string> => {
   const formData = new FormData();

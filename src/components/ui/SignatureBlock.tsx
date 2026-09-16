@@ -6,15 +6,9 @@
  */
 
 import React from "react";
-import { BACKEND_BASE_URL } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 
-const resolveSignatureSrc = (value: unknown): string => {
-  const src = typeof value === "string" ? value.trim() : "";
-  if (!src) return "";
-  if (/^(https?:|data:|blob:)/i.test(src)) return src;
-  if (src.startsWith("/")) return src;
-  return `${BACKEND_BASE_URL}/${src}`;
-};
+const resolveSignatureSrc = (value: unknown): string => resolveMediaUrl(value);
 
 export const SignatureBlock: React.FC<{
   record: any;

@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
 import useAuth from "@/hooks/useAuth";
+import myAccountPromo from "@/assets/my-account-promo.png";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -187,7 +188,7 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
 
             <div className="mx-5 mb-6 rounded-lg overflow-hidden border border-white/10">
               <img
-                src="/images/my-account-promo.png"
+                src={myAccountPromo}
                 alt="Dashboard preview"
                 className="w-full h-auto max-h-[320px] object-cover object-top block"
               />

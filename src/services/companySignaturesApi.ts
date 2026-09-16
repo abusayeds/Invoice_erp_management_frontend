@@ -3,7 +3,7 @@
  * Used by Companies page; separate from per-document customer signatures.
  */
 import { api } from "@/lib/api/client";
-import { BACKEND_BASE_URL } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 
 export type CompanySignature = {
   id: string;
@@ -14,11 +14,7 @@ export type CompanySignature = {
 const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 export function resolveSignatureUrl(value: unknown): string {
-  const src = text(value);
-  if (!src) return "";
-  if (/^(https?:|data:|blob:)/i.test(src)) return src;
-  if (src.startsWith("/")) return src; // Vite proxies /files → backend
-  return `${BACKEND_BASE_URL}/${src}`;
+  return resolveMediaUrl(value);
 }
 
 function mapOne(doc: any): CompanySignature | null {

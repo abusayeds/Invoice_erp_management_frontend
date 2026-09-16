@@ -9,6 +9,7 @@ import {
   updatePaymentMethod,
   type PaymentMethodOption,
 } from "@/services/paymentMethodsApi";
+import { resolveMediaUrl } from "@/lib/env";
 
 type DraftState = {
   id: string | null;
@@ -136,7 +137,7 @@ export const PaymentMethodsModal: React.FC<{
                       </button>
                     )}
                     <div className="flex h-10 w-16 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
-                      {method.logo ? <img src={method.logo} alt={method.name} className="max-h-full max-w-full object-contain" /> : <span className="text-[10px] text-gray-400">No Logo</span>}
+                      {method.logo ? <img src={resolveMediaUrl(method.logo)} alt={method.name} className="max-h-full max-w-full object-contain" /> : <span className="text-[10px] text-gray-400">No Logo</span>}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-gray-900">{method.name}</div>

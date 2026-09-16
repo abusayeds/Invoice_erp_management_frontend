@@ -11,7 +11,7 @@ import { getList, toArray } from "@/services/_http";
 import { employeesService } from "@/services/hrm";
 import type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
 import { api } from "@/lib/api/client";
-import { BACKEND_BASE_URL } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 import { showToast } from "@/utils/toast";
 
 const HRM_BASE = "/hrm";
@@ -554,12 +554,8 @@ export async function uploadHrmFile(file: File): Promise<{ path: string; name: s
  * - Prod: `${BACKEND_BASE_URL}/files/...` (host root — never `/api/v1`)
  */
 export function resolveHrmFileUrl(value: unknown): string {
-  const src = String(value ?? "").trim();
-  if (!hasHrmDocument(src)) return "";
-  if (/^(https?:|data:|blob:)/i.test(src)) return src;
-  const pathPart = src.startsWith("/") ? src : `/${src.replace(/^\/+/, "")}`;
-  if (import.meta.env.DEV) return pathPart;
-  return `${BACKEND_BASE_URL}${pathPart}`;
+  if (!hasHrmDocument(value)) return "";
+  return resolveMediaUrl(value);
 }
 
 export function hrmFileLabel(pathOrName: string): string {

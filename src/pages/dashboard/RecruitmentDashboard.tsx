@@ -11,6 +11,7 @@ import {
 } from "@/services/recruitmentApi";
 import { Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { resolveMediaUrl } from "@/lib/env";
 
 const Empty = ({ message }: { message: string }) => (
   <p className="text-sm text-gray-400 py-8 text-center">{message}</p>
@@ -31,14 +32,16 @@ const Panel: React.FC<{
   </div>
 );
 
-const Avatar: React.FC<{ name: string; src?: string }> = ({ name, src }) =>
-  src ? (
-    <img src={src} alt="" className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+const Avatar: React.FC<{ name: string; src?: string }> = ({ name, src }) => {
+  const url = resolveMediaUrl(src);
+  return url ? (
+    <img src={url} alt="" className="w-8 h-8 rounded-full object-cover border border-gray-200" />
   ) : (
     <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[10px] font-semibold border border-gray-200">
       {(name || "?").slice(0, 2).toUpperCase()}
     </div>
   );
+};
 
 export const RecruitmentDashboard: React.FC = () => {
   const navigate = useNavigate();

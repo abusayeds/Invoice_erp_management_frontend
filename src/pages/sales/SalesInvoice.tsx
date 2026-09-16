@@ -31,6 +31,7 @@ import { useCollection, repo, nextNumber, money as fmtMoney } from "@/lib/db";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, type BackendInvoiceDoc } from "@/services/invoicesApi";
 import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
+import { resolveMediaUrl } from "@/lib/env";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
@@ -249,7 +250,7 @@ const DynamicPaymentBadges: React.FC<{ names: string[]; options: PaymentMethodOp
             className="px-1.5 h-6 min-w-[34px] rounded text-[9px] font-bold flex items-center justify-center border border-black/10 bg-white"
             title={name}
           >
-            {meta?.logo ? <img src={meta.logo} alt={name} className="max-h-4 max-w-14 object-contain" /> : name}
+            {meta?.logo ? <img src={resolveMediaUrl(meta.logo)} alt={name} className="max-h-4 max-w-14 object-contain" /> : name}
           </span>
         );
       })}

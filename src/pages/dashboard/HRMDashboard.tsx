@@ -20,6 +20,7 @@ import {
   Briefcase,
   Loader2,
 } from "lucide-react";
+import { resolveMediaUrl } from "@/lib/env";
 
 const emptyStats: HrmDashboardPayload["stats"] = {
   total_employees: 0,
@@ -220,7 +221,7 @@ export const HRMDashboard: React.FC = () => {
                   <div className="flex items-center gap-3 mb-2">
                     {member.avatar ? (
                       <img
-                        src={member.avatar}
+                        src={resolveMediaUrl(member.avatar)}
                         alt={member.name}
                         className="w-10 h-10 rounded-full object-cover border border-gray-200"
                       />
@@ -316,7 +317,7 @@ export const HRMDashboard: React.FC = () => {
                     <div className="flex items-center gap-3 min-w-0">
                       {employee.avatar ? (
                         <img
-                          src={employee.avatar}
+                          src={resolveMediaUrl(employee.avatar)}
                           alt={employee.name}
                           className="w-8 h-8 rounded-full object-cover border border-gray-200"
                         />

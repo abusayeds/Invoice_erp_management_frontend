@@ -1,6 +1,6 @@
 /** Products list — backend pagination via /product/all */
 import { api } from "@/lib/api/client";
-import { BACKEND_BASE_URL } from "@/lib/env";
+import { resolveMediaUrl } from "@/lib/env";
 import { fetchPaginatedList } from "./paginatedList";
 import type { TPartyPagination } from "./customerTypes";
 
@@ -16,12 +16,8 @@ export function hasProductImage(value: unknown): boolean {
 
 /** Resolve stored upload path (same rules as HRM files). */
 export function resolveProductImageUrl(value: unknown): string {
-  const src = String(value ?? "").trim();
-  if (!hasProductImage(src)) return "";
-  if (/^(https?:|data:|blob:)/i.test(src)) return src;
-  const pathPart = src.startsWith("/") ? src : `/${src.replace(/^\/+/, "")}`;
-  if (import.meta.env.DEV) return pathPart;
-  return `${BACKEND_BASE_URL}${pathPart}`;
+  if (!hasProductImage(value)) return "";
+  return resolveMediaUrl(value);
 }
 
 export async function uploadProductImage(file: File): Promise<{ path: string; url: string }> {
