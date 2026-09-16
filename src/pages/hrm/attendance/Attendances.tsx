@@ -97,7 +97,7 @@ function CellIcon({ cell }: { cell: CellView }) {
     case "holiday":
       return <Star className="w-4 h-4 text-yellow-500 mx-auto" fill="currentColor" />;
     case "dayoff":
-      return <Ban className="w-4 h-4 text-gray-300 mx-auto" />;
+      return <Ban className="w-4 h-4 text-gray-500 mx-auto" />;
     case "future":
       return <Minus className="w-4 h-4 text-gray-300 mx-auto" />;
     default:
@@ -121,17 +121,33 @@ function resolveCell(
   const dow = cellDate.getDay();
 
   if (cellDate > today) return { status: "future" };
-  if (dow === 0 || dow === 6) return { status: "dayoff", record: rec };
 
+  // Explicit saved status wins (so "Off Day" / "On Leave" icons show on weekdays).
   if (rec) {
     const s = String(rec.status || "present").toLowerCase();
     if (s.includes("half")) return { status: "half", record: rec };
     if (s.includes("leave")) return { status: "leave", record: rec };
     if (s.includes("absent")) return { status: "absent", record: rec };
     if (s.includes("holiday")) return { status: "holiday", record: rec };
+    if (s.includes("off") || s.includes("dayoff") || s.includes("day off")) {
+      return { status: "dayoff", record: rec };
+    }
     return { status: "present", record: rec };
   }
+
+  if (dow === 0 || dow === 6) return { status: "dayoff" };
   return { status: "absent" };
+}
+
+const NON_CLOCK_STATUSES = new Set(["on leave", "off day", "absent"]);
+
+function normalizeEditStatus(raw?: string) {
+  const s = String(raw || "present").trim().toLowerCase();
+  if (s === "leave" || s === "onleave") return "on leave";
+  if (s.includes("half")) return "half day";
+  if (s.includes("off") || s.includes("dayoff")) return "off day";
+  if (s === "pending") return "present";
+  return s || "present";
 }
 
 export const Attendances: React.FC = () => {
@@ -227,32 +243,39 @@ export const Attendances: React.FC = () => {
   const openEdit = (emp: GridEmp, day: number) => {
     const date = `${applied.year}-${String(applied.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const view = resolveCell(emp, applied.year, applied.month, day, cells);
-    if (view.status === "dayoff" || view.status === "future") return;
+    // Weekends without a saved record stay non-editable; saved Off Day rows stay editable.
+    if (view.status === "future") return;
+    if (view.status === "dayoff" && !view.record) return;
+    const status = normalizeEditStatus(view.record?.status || (view.status === "leave" ? "on leave" : view.status === "dayoff" ? "off day" : view.status === "half" ? "half day" : view.status === "absent" ? "absent" : "present"));
     setDraft({
-      clockIn: view.record?.clock_in || "09:00",
-      clockOut: view.record?.clock_out || "17:00",
+      clockIn: view.record?.clock_in || (NON_CLOCK_STATUSES.has(status) ? "" : "09:00"),
+      clockOut: view.record?.clock_out || (NON_CLOCK_STATUSES.has(status) ? "" : "17:00"),
       notes: view.record?.notes || "",
-      status: view.record?.status || "present",
+      status,
     });
     setEditCell({ emp, date, record: view.record });
   };
 
   const submitEdit = async () => {
     if (!editCell) return;
-    if (!draft.clockIn) {
+    const status = normalizeEditStatus(draft.status);
+    const needsClock = !NON_CLOCK_STATUSES.has(status);
+    if (needsClock && !draft.clockIn) {
       showToast("Clock in time is required", "error");
       return;
     }
     setSaving(true);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         employee_id: editCell.emp.employee_user_id,
         date: editCell.date,
-        clock_in: draft.clockIn,
-        clock_out: draft.clockOut || undefined,
         notes: draft.notes,
-        status: draft.status || "present",
+        status,
       };
+      if (needsClock) {
+        body.clock_in = draft.clockIn;
+        if (draft.clockOut) body.clock_out = draft.clockOut;
+      }
       if (editCell.record?._id) {
         await attendanceApi.updateManual(editCell.record._id, body);
       } else {
@@ -308,7 +331,7 @@ export const Attendances: React.FC = () => {
     [<span key="h" className="text-xs font-bold text-yellow-500">½</span>, "Half Day"],
     [<Flag key="l" className="w-3.5 h-3.5 text-red-500" fill="currentColor" />, "On Leave"],
     [<Star key="ho" className="w-3.5 h-3.5 text-yellow-500" fill="currentColor" />, "Holiday"],
-    [<Ban key="d" className="w-3.5 h-3.5 text-gray-400" />, "Day Off"],
+    [<Ban key="d" className="w-3.5 h-3.5 text-gray-500" />, "Day Off"],
     [<Minus key="f" className="w-3.5 h-3.5 text-gray-400" />, "Future"],
   ];
 
@@ -482,7 +505,7 @@ export const Attendances: React.FC = () => {
                   const cell = resolveCell(emp, applied.year, applied.month, d, cells);
                   const dow = new Date(applied.year, applied.month - 1, d).getDay();
                   const weekend = dow === 0 || dow === 6;
-                  const clickable = cell.status !== "dayoff" && cell.status !== "future";
+                  const clickable = cell.status !== "future" && !(cell.status === "dayoff" && !cell.record);
                   return (
                     <td
                       key={d}
@@ -621,26 +644,45 @@ export const Attendances: React.FC = () => {
               <Field label="Date" required>
                 <input type="date" value={editCell.date} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
               </Field>
-              <Field label="Clock In Time" required>
-                <input type="time" value={draft.clockIn} onChange={(e) => setDraft({ ...draft, clockIn: e.target.value })} className={inputCls} />
-              </Field>
-              <Field label="Clock Out Time">
-                <input type="time" value={draft.clockOut} onChange={(e) => setDraft({ ...draft, clockOut: e.target.value })} className={inputCls} />
-              </Field>
               <Field label="Status">
                 <select
                   value={draft.status}
-                  onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                  onChange={(e) => {
+                    const status = e.target.value;
+                    setDraft((prev) => ({
+                      ...prev,
+                      status,
+                      clockIn: NON_CLOCK_STATUSES.has(status)
+                        ? ""
+                        : prev.clockIn || "09:00",
+                      clockOut: NON_CLOCK_STATUSES.has(status)
+                        ? ""
+                        : prev.clockOut || "17:00",
+                    }));
+                  }}
                   className={`keep-box ua-field ${inputCls}`}
                 >
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
                   <option value="half day">Half Day</option>
-                  <option value="leave">On Leave</option>
+                  <option value="on leave">On Leave</option>
                   <option value="off day">Off Day</option>
-                  <option value="pending">Pending</option>
                 </select>
               </Field>
+              {!NON_CLOCK_STATUSES.has(normalizeEditStatus(draft.status)) ? (
+                <>
+                  <Field label="Clock In Time" required>
+                    <input type="time" value={draft.clockIn} onChange={(e) => setDraft({ ...draft, clockIn: e.target.value })} className={inputCls} />
+                  </Field>
+                  <Field label="Clock Out Time">
+                    <input type="time" value={draft.clockOut} onChange={(e) => setDraft({ ...draft, clockOut: e.target.value })} className={inputCls} />
+                  </Field>
+                </>
+              ) : (
+                <div className="md:col-span-1 flex items-end pb-2 text-xs text-gray-500">
+                  Clock in/out not required for this status.
+                </div>
+              )}
               <Field label="Notes" className="md:col-span-2">
                 <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={3} className={inputCls} />
               </Field>
