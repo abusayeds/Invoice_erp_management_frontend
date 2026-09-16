@@ -8,7 +8,7 @@ import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { ToastContainer } from "../ui/ToastContainer";
-import { ImportModal } from "@/lib/db";
+import { DataTransferHost } from "@/features/dataTransfer";
 import { GlobalApiLoadingBar } from "./GlobalApiLoadingBar";
 
 export const MainLayout: React.FC = () => {
@@ -52,8 +52,7 @@ export const MainLayout: React.FC = () => {
         </main>
       </div>
       <ToastContainer />
-      <ImportModal />
-      
+      <DataTransferHost />
     </div>
   );
 };

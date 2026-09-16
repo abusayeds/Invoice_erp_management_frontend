@@ -15,6 +15,7 @@
 
 import { createResourceHooks } from "@/hooks/useResource";
 import type { Entity } from "@/lib/api/types";
+import { api } from "@/lib/api/client";
 import {
   makeResource,
   getList,
@@ -312,6 +313,164 @@ export const hrmExtras = {
   dashboardEventCalendar: () => getOne(`${BASE}/dashboard/event-calendar`),
   eventCalendar: () => getList(`${BASE}/events/event-calendar`),
 };
+
+/** Normalized HRM dashboard payload for the UI (hub + legacy shapes). */
+export type HrmDashboardPayload = {
+  stats: {
+    total_employees: number;
+    present_today: number;
+    absent_today: number;
+    on_leave: number;
+    pending_leaves: number;
+    total_branches: number;
+    total_departments: number;
+    promotions_this_month: number;
+    terminations_this_month: number;
+  };
+  departmentDistribution: { name: string; count: number }[];
+  employeesOnLeave: { name: string; type: string; days: number; avatar?: string }[];
+  recentLeaveApplications: {
+    name: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+    status: string;
+  }[];
+  announcements: { title: string; description: string; date?: string }[];
+  teamMembers: {
+    name: string;
+    role: string;
+    department: string;
+    attendance?: number;
+    avatar?: string;
+  }[];
+  upcomingBirthdays: { name: string; date: string; role: string; avatar?: string }[];
+};
+
+const emptyHrmStats: HrmDashboardPayload["stats"] = {
+  total_employees: 0,
+  present_today: 0,
+  absent_today: 0,
+  on_leave: 0,
+  pending_leaves: 0,
+  total_branches: 0,
+  total_departments: 0,
+  promotions_this_month: 0,
+  terminations_this_month: 0,
+};
+
+const fmtDay = (v: unknown) => {
+  if (!v) return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function normalizeHrmDashboard(raw: unknown): HrmDashboardPayload {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const s = (d.stats && typeof d.stats === "object" ? d.stats : {}) as Record<string, any>;
+
+  const deptSrc = Array.isArray(d.departmentDistribution)
+    ? d.departmentDistribution
+    : Array.isArray(s.department_distribution)
+      ? s.department_distribution
+      : [];
+  const onLeaveSrc = Array.isArray(d.employeesOnLeave)
+    ? d.employeesOnLeave
+    : Array.isArray(s.employees_on_leave_today)
+      ? s.employees_on_leave_today
+      : [];
+  const leaveAppsSrc = Array.isArray(d.recentLeaveApplications)
+    ? d.recentLeaveApplications
+    : Array.isArray(s.recent_leave_applications)
+      ? s.recent_leave_applications
+      : [];
+  const annSrc = Array.isArray(d.announcements)
+    ? d.announcements
+    : Array.isArray(s.recent_announcements)
+      ? s.recent_announcements
+      : [];
+  const bdaySrc = Array.isArray(d.upcomingBirthdays)
+    ? d.upcomingBirthdays
+    : Array.isArray(s.upcoming_birthdays)
+      ? s.upcoming_birthdays
+      : [];
+  const teamSrc = Array.isArray(d.teamMembers)
+    ? d.teamMembers
+    : Array.isArray(s.team_members)
+      ? s.team_members
+      : [];
+
+  return {
+    stats: {
+      ...emptyHrmStats,
+      total_employees: Number(s.total_employees) || 0,
+      present_today: Number(s.present_today) || 0,
+      absent_today: Number(s.absent_today) || 0,
+      on_leave: Number(s.on_leave) || 0,
+      pending_leaves: Number(s.pending_leaves) || 0,
+      total_branches: Number(s.total_branches) || 0,
+      total_departments: Number(s.total_departments) || 0,
+      promotions_this_month: Number(s.promotions_this_month ?? s.total_promotions) || 0,
+      terminations_this_month: Number(s.terminations_this_month ?? s.terminations) || 0,
+    },
+    departmentDistribution: deptSrc.map((x: any) => ({
+      name: String(x.name || "—"),
+      count: Number(x.count ?? x.value) || 0,
+    })),
+    employeesOnLeave: onLeaveSrc.map((x: any) => ({
+      name: String(x.name || "—"),
+      type: String(x.type || x.leave_type || "Leave"),
+      days: Number(x.days) || 0,
+      avatar: x.avatar || x.profile || undefined,
+    })),
+    recentLeaveApplications: leaveAppsSrc.map((x: any) => ({
+      name: String(x.name || x.employee_name || "—"),
+      type: String(x.type || x.leave_type || "Leave"),
+      startDate: fmtDay(x.startDate ?? x.start_date),
+      endDate: fmtDay(x.endDate ?? x.end_date),
+      days: Number(x.days ?? x.total_days) || 0,
+      status: cap(String(x.status || "pending")),
+    })),
+    announcements: annSrc.map((x: any) => ({
+      title: String(x.title || ""),
+      description: String(x.description || ""),
+      date: x.date ? fmtDay(x.date) : x.created_at ? fmtDay(x.created_at) : undefined,
+    })),
+    teamMembers: teamSrc.map((x: any) => ({
+      name: String(x.name || "—"),
+      role: String(x.role || "—"),
+      department: String(x.department || "—"),
+      attendance:
+        x.attendance != null && Number(x.attendance) > 0 ? Number(x.attendance) : undefined,
+      avatar: x.avatar || undefined,
+    })),
+    upcomingBirthdays: bdaySrc.map((x: any) => ({
+      name: String(x.name || x.employee_name || "—"),
+      date: String(
+        x.date ||
+          (x.next_birthday ? fmtDay(x.next_birthday) : "") ||
+          (x.days_until != null ? `In ${x.days_until}d` : "—"),
+      ),
+      role: String(x.role || ""),
+      avatar: x.avatar || undefined,
+    })),
+  };
+}
+
+/** Prefer hub `/dashboard/hrm`, fall back to legacy `/hrm/dashboard`. */
+export async function fetchHrmDashboard(): Promise<HrmDashboardPayload> {
+  try {
+    const data = await api.get<unknown>("/dashboard/hrm");
+    return normalizeHrmDashboard(data);
+  } catch {
+    const data = await api.get<unknown>("/hrm/dashboard");
+    return normalizeHrmDashboard(data);
+  }
+}
 
 /** Staff mobile app endpoints (same backend, staff token). */
 export const mobileApi = {

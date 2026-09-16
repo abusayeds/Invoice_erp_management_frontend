@@ -34,6 +34,7 @@ import {
   type GlobalSearchModule,
 } from "@/services/globalSearchApi";
 import { dateBounds } from "@/services/dashboardSummaryApi";
+import { FOCUS_GLOBAL_SEARCH_EVENT } from "@/lib/listToolbarEvents";
 
 const MODULE_ICON: Record<Exclude<GlobalSearchModule, "All">, React.ElementType> = {
   Customers: Users,
@@ -98,6 +99,9 @@ const inPeriod = (dateLabel: string, period: PeriodOption): boolean => {
 export const GlobalSearch: React.FC = () => {
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  /** Skip opening the filter panel on the programmatic focus from list Search icons. */
+  const skipOpenOnFocusRef = useRef(false);
   const [query, setQuery] = useState("");
   const [module, setModule] = useState<GlobalSearchModule>("All");
   const [period, setPeriod] = useState<PeriodOption>("All");
@@ -120,6 +124,43 @@ export const GlobalSearch: React.FC = () => {
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  /**
+   * List sidebar Search icon → pin that module + focus navbar input.
+   * Dropdown only opens when there is no specific module (All / unknown).
+   */
+  useEffect(() => {
+    const h = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { module?: GlobalSearchModule } | undefined;
+      const next = detail?.module;
+      const known =
+        next && next !== "All" && GLOBAL_SEARCH_MODULES.includes(next) ? next : null;
+      if (known) setModule(known);
+      else if (next && GLOBAL_SEARCH_MODULES.includes(next)) setModule(next);
+
+      setModuleMenuOpen(false);
+      setPeriodMenuOpen(false);
+
+      if (known) {
+        // Already on a concrete module (e.g. Proforma Invoices) — focus only.
+        setOpen(false);
+        skipOpenOnFocusRef.current = true;
+      } else {
+        setOpen(true);
+        skipOpenOnFocusRef.current = false;
+      }
+
+      window.setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        window.setTimeout(() => {
+          skipOpenOnFocusRef.current = false;
+        }, 0);
+      }, 0);
+    };
+    window.addEventListener(FOCUS_GLOBAL_SEARCH_EVENT, h);
+    return () => window.removeEventListener(FOCUS_GLOBAL_SEARCH_EVENT, h);
   }, []);
 
   useEffect(() => {
@@ -180,6 +221,7 @@ export const GlobalSearch: React.FC = () => {
   };
 
   const openPanel = () => {
+    if (skipOpenOnFocusRef.current) return;
     setOpen(true);
     setPeriodMenuOpen(false);
     setModuleMenuOpen(false);
@@ -201,6 +243,7 @@ export const GlobalSearch: React.FC = () => {
     <div className="relative flex-1 min-w-0" ref={rootRef}>
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-500 pointer-events-none z-10" />
       <input
+        ref={inputRef}
         type="text"
         placeholder="Search…"
         value={query}

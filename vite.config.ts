@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 8080,
 
-    allowedHosts: ["preview.syedbipul.me", "sabbir8080.ssh.bd"],
+    allowedHosts: ["preview.syedbipul.me", "sabbir8080.ssh.bd" , "qyad-frontend.ssh.bd"],
 
     host: true,
     cors: true,

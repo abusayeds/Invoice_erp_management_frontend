@@ -1,5 +1,6 @@
 export { ExportDataModal } from "./ExportDataModal";
 export { ImportDataModal } from "./ImportDataModal";
+export { DataTransferHost } from "./DataTransferHost";
 export { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 export {
   EXPORT_MODULES,

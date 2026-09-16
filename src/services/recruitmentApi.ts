@@ -1100,7 +1100,198 @@ export const getOfferLetterTemplate = () => getSetting("offer-letter-template");
 export const saveOfferLetterTemplate = (body: unknown) => saveSetting("offer-letter-template", body);
 export const getOfferLetterPlaceholders = () => getSetting("offer-letter-placeholders");
 
-export async function fetchRecruitmentDashboard() {
-  const res = await api.raw.get("/recruitment/dashboard");
-  return res.data?.data ?? null;
+export async function fetchRecruitmentDashboard(): Promise<RecruitmentDashboardPayload> {
+  try {
+    const data = await api.get<unknown>("/dashboard/recruitment");
+    return normalizeRecruitmentDashboard(data);
+  } catch {
+    const res = await api.raw.get("/recruitment/dashboard");
+    return normalizeRecruitmentDashboard(res.data?.data ?? res.data ?? null);
+  }
+}
+
+export type RecruitmentDashboardPayload = {
+  stats: {
+    total_candidates: number;
+    open_positions: number;
+    interviews: number;
+    hired: number;
+  };
+  statusOverview: { name: string; value: number; color: string }[];
+  hiringFunnel: { stage: string; candidates: number; percentage: number; color: string }[];
+  onboardingProgress: { name: string; value: number; color: string }[];
+  upcomingInterviews: {
+    candidate: string;
+    position: string;
+    date: string;
+    time: string;
+    status: string;
+    avatar?: string;
+  }[];
+  recentCandidates: {
+    name: string;
+    position: string;
+    stage: string;
+    appliedDate: string;
+    avatar?: string;
+  }[];
+  openPositions: {
+    title: string;
+    department: string;
+    applicants: number;
+    daysOpen: number;
+    priority: string;
+  }[];
+};
+
+const emptyRecruitmentStats: RecruitmentDashboardPayload["stats"] = {
+  total_candidates: 0,
+  open_positions: 0,
+  interviews: 0,
+  hired: 0,
+};
+
+const fmtDay = (v: unknown) => {
+  if (!v) return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
+function normalizeRecruitmentDashboard(raw: unknown): RecruitmentDashboardPayload {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const overview = (d.overview && typeof d.overview === "object" ? d.overview : {}) as Record<string, any>;
+  const byStatus = (d.candidatesByStatus && typeof d.candidatesByStatus === "object"
+    ? d.candidatesByStatus
+    : {}) as Record<string, any>;
+  const onb = (d.onboardingStatus && typeof d.onboardingStatus === "object"
+    ? d.onboardingStatus
+    : {}) as Record<string, any>;
+  const funnelObj = (d.hiringFunnel && typeof d.hiringFunnel === "object" && !Array.isArray(d.hiringFunnel)
+    ? d.hiringFunnel
+    : null) as Record<string, any> | null;
+  const activities = (d.recentActivities && typeof d.recentActivities === "object"
+    ? d.recentActivities
+    : {}) as Record<string, any>;
+
+  // Already UI-shaped (legacy /recruitment/dashboard)
+  if (d.stats || Array.isArray(d.statusOverview) || Array.isArray(d.hiringFunnel)) {
+    const s = (d.stats && typeof d.stats === "object" ? d.stats : {}) as Record<string, any>;
+    return {
+      stats: {
+        ...emptyRecruitmentStats,
+        total_candidates: Number(s.total_candidates) || 0,
+        open_positions: Number(s.open_positions) || 0,
+        interviews: Number(s.interviews) || 0,
+        hired: Number(s.hired) || 0,
+      },
+      statusOverview: Array.isArray(d.statusOverview) ? d.statusOverview : [],
+      hiringFunnel: Array.isArray(d.hiringFunnel) ? d.hiringFunnel : [],
+      onboardingProgress: Array.isArray(d.onboardingProgress) ? d.onboardingProgress : [],
+      upcomingInterviews: Array.isArray(d.upcomingInterviews) ? d.upcomingInterviews : [],
+      recentCandidates: Array.isArray(d.recentCandidates) ? d.recentCandidates : [],
+      openPositions: Array.isArray(d.openPositions) ? d.openPositions : [],
+    };
+  }
+
+  // Hub /dashboard/recruitment (company)
+  const applied = Number(byStatus.applied) || 0;
+  const shortlisted = Number(byStatus.shortlisted) || 0;
+  const interviewScheduled = Number(byStatus.interviewScheduled) || 0;
+  const hired = Number(byStatus.hired) || 0;
+  const rejected = Number(byStatus.rejected) || 0;
+  const total =
+    Number(overview.totalCandidates) ||
+    applied + shortlisted + interviewScheduled + hired + rejected;
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+
+  const statusOverview = [
+    { name: "Applied", value: applied, color: "#3B82F6" },
+    { name: "Shortlisted", value: shortlisted, color: "#10B981" },
+    { name: "Interview", value: interviewScheduled, color: "#F59E0B" },
+    { name: "Hired", value: hired, color: "#6B7280" },
+    ...(rejected ? [{ name: "Rejected", value: rejected, color: "#EF4444" }] : []),
+  ];
+
+  const hiringFunnel = funnelObj
+    ? [
+        {
+          stage: "Applications",
+          candidates: Number(funnelObj.applications) || total,
+          percentage: 100,
+          color: "#3B82F6",
+        },
+        {
+          stage: "Shortlisted",
+          candidates: Number(funnelObj.shortlisted) || shortlisted,
+          percentage: pct(Number(funnelObj.shortlisted) || shortlisted),
+          color: "#10B981",
+        },
+        {
+          stage: "Interviewed",
+          candidates: Number(funnelObj.interviewed) || interviewScheduled,
+          percentage: pct(Number(funnelObj.interviewed) || interviewScheduled),
+          color: "#F59E0B",
+        },
+        {
+          stage: "Hired",
+          candidates: Number(funnelObj.hired) || hired,
+          percentage: pct(Number(funnelObj.hired) || hired),
+          color: "#6B7280",
+        },
+      ]
+    : [];
+
+  const onboardingProgress = [
+    { name: "Completed", value: Number(onb.completed) || 0, color: "#10B981" },
+    { name: "In Progress", value: Number(onb.inProgress) || 0, color: "#3B82F6" },
+    { name: "Pending", value: Number(onb.pending) || 0, color: "#F59E0B" },
+  ];
+
+  const upcomingSrc = Array.isArray(activities.upcomingInterviews)
+    ? activities.upcomingInterviews
+    : Array.isArray(d.calendarEvents)
+      ? d.calendarEvents
+      : [];
+  const upcomingInterviews = upcomingSrc.map((iv: any) => ({
+    candidate: String(iv.candidate || iv.candidate_name || iv.title || "Candidate"),
+    position: String(iv.position || iv.role || iv.job_title || "—"),
+    date: fmtDay(iv.date ?? iv.scheduled_date),
+    time: String(iv.time || iv.scheduled_time || ""),
+    status: String(iv.status || "scheduled").toLowerCase(),
+    avatar: iv.avatar || undefined,
+  }));
+
+  const recentSrc = Array.isArray(activities.latestCandidates) ? activities.latestCandidates : [];
+  const recentCandidates = recentSrc.map((c: any) => ({
+    name: String(c.name || "—"),
+    position: String(c.position || "—"),
+    stage: String(c.status || c.stage || "New"),
+    appliedDate: fmtDay(c.date ?? c.appliedDate ?? c.application_date),
+    avatar: c.avatar || undefined,
+  }));
+
+  const jobsSrc = Array.isArray(d.jobPostings) ? d.jobPostings : [];
+  const openPositions = jobsSrc.map((p: any) => ({
+    title: String(p.title || "—"),
+    department: String(p.department || "—"),
+    applicants: Number(p.applicants) || 0,
+    daysOpen: Number(p.daysOpen) || 0,
+    priority: String(p.priority || "Low"),
+  }));
+
+  return {
+    stats: {
+      total_candidates: total,
+      open_positions: Number(overview.activeJobPostings) || openPositions.length,
+      interviews: Number(overview.pendingInterviews) || upcomingInterviews.length,
+      hired,
+    },
+    statusOverview,
+    hiringFunnel,
+    onboardingProgress,
+    upcomingInterviews,
+    recentCandidates,
+    openPositions,
+  };
 }

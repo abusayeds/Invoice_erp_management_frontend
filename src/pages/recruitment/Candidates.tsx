@@ -280,9 +280,9 @@ export const Candidates: React.FC = () => {
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                   Loading…
-                </td>
-              </tr>
-            )}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
       </ListShell>

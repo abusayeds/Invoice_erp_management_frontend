@@ -393,3 +393,140 @@ export const getSupportInformation = () => api.get<any>("/support/setup/support-
 export const saveSupportInformation = (body: unknown) => api.patch("/support/setup/support-information", body);
 export const getContactInformation = () => api.get<any>("/support/setup/contact-information");
 export const saveContactInformation = (body: unknown) => api.patch("/support/setup/contact-information", body);
+
+export type SupportDashboardPayload = {
+  stats: {
+    totalTickets: number;
+    openTickets: number;
+    closedTickets: number;
+    todayTickets: number;
+    avgResponseTime: number | string;
+    categories: number;
+    resolutionRate: number;
+  };
+  ticketTrends: { month: string; tickets: number; resolved: number }[];
+  statusDistribution: { name: string; value: number; color: string }[];
+  categoryDistribution: { name: string; value: number; color: string }[];
+  recentTickets: {
+    id: string;
+    ticket_id: string;
+    subject: string;
+    name: string;
+    status: string;
+    category: string;
+    created_at: string;
+  }[];
+};
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const STATUS_COLORS: Record<string, string> = {
+  Closed: "#10B981",
+  "In Progress": "#3B82F6",
+  "On Hold": "#F59E0B",
+  Open: "#EF4444",
+};
+
+function normalizeSupportDashboard(raw: unknown): SupportDashboardPayload {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const s = (d.stats && typeof d.stats === "object" ? d.stats : {}) as Record<string, any>;
+
+  // Legacy shape with statCards / ticketTrends
+  if (Array.isArray(d.statCards) || Array.isArray(d.ticketTrends)) {
+    const cards = Array.isArray(d.statCards) ? d.statCards : [];
+    const num = (i: number) => {
+      const v = cards[i]?.value;
+      if (v == null) return 0;
+      const n = Number(String(v).replace(/[^\d.-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+    return {
+      stats: {
+        totalTickets: num(0),
+        openTickets: num(1),
+        closedTickets: num(2),
+        todayTickets: num(3),
+        avgResponseTime: cards[4]?.value ?? "—",
+        categories: num(5),
+        resolutionRate: 0,
+      },
+      ticketTrends: Array.isArray(d.ticketTrends) ? d.ticketTrends : [],
+      statusDistribution: Array.isArray(d.statusDistribution) ? d.statusDistribution : [],
+      categoryDistribution: (Array.isArray(d.categoryDistribution) ? d.categoryDistribution : []).map(
+        (x: any) => ({
+          name: String(x.name || "—"),
+          value: Number(x.value ?? x.count) || 0,
+          color: String(x.color || "#6B7280"),
+        }),
+      ),
+      recentTickets: (Array.isArray(d.recentTickets) ? d.recentTickets : []).map((t: any) => ({
+        id: String(t.id || t._id || t.ticket_id || ""),
+        ticket_id: String(t.ticket_id || t.id || "—"),
+        subject: String(t.subject || "—"),
+        name: String(t.name || "—"),
+        status: String(t.status || "—"),
+        category: String(t.category || "—"),
+        created_at: String(t.created_at || t.date || "").slice(0, 16),
+      })),
+    };
+  }
+
+  // Hub /dashboard/support
+  const monthly = (d.monthlyData && typeof d.monthlyData === "object" ? d.monthlyData : {}) as Record<
+    string,
+    { created?: number; resolved?: number }
+  >;
+  const ticketTrends = MONTHS.map((month) => ({
+    month,
+    tickets: Number(monthly[month]?.created) || 0,
+    resolved: Number(monthly[month]?.resolved) || 0,
+  }));
+
+  const statusDistribution = (Array.isArray(d.statusData) ? d.statusData : []).map((x: any) => ({
+    name: String(x.name || "—"),
+    value: Number(x.value) || 0,
+    color: String(x.color || STATUS_COLORS[String(x.name)] || "#6B7280"),
+  }));
+
+  const categoryDistribution = (Array.isArray(d.chartData) ? d.chartData : [])
+    .filter((x: any) => x?.name !== "No Data")
+    .map((x: any) => ({
+      name: String(x.name || "—"),
+      value: Number(x.value) || 0,
+      color: String(x.color || "#6B7280"),
+    }));
+
+  return {
+    stats: {
+      totalTickets: Number(s.totalTickets) || 0,
+      openTickets: Number(s.openTickets) || 0,
+      closedTickets: Number(s.closedTickets) || 0,
+      todayTickets: Number(s.todayTickets) || 0,
+      avgResponseTime: s.avgResponseTime != null ? Number(s.avgResponseTime) || 0 : "—",
+      categories: Number(s.categories) || 0,
+      resolutionRate: Number(s.resolutionRate) || 0,
+    },
+    ticketTrends,
+    statusDistribution,
+    categoryDistribution,
+    recentTickets: (Array.isArray(d.recentTickets) ? d.recentTickets : []).map((t: any) => ({
+      id: String(t.id || t._id || t.ticket_id || ""),
+      ticket_id: String(t.ticket_id || t.id || "—"),
+      subject: String(t.subject || "—"),
+      name: String(t.name || "—"),
+      status: String(t.status || "—"),
+      category: String(t.category || "—"),
+      created_at: String(t.created_at || "").slice(0, 16),
+    })),
+  };
+}
+
+/** Prefer hub `/dashboard/support`, fall back to legacy `/support/dashboard`. */
+export async function fetchSupportDashboard(): Promise<SupportDashboardPayload> {
+  try {
+    const data = await api.get<unknown>("/dashboard/support");
+    return normalizeSupportDashboard(data);
+  } catch {
+    const data = await api.get<unknown>("/support/dashboard");
+    return normalizeSupportDashboard(data);
+  }
+}

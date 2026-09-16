@@ -256,3 +256,97 @@ export async function fetchCrmSetupBundle() {
   ]);
   return { pipelines, leadStages, dealStages, labels, sources };
 }
+
+export type CrmDashboardPayload = {
+  stats: {
+    total_deals: number;
+    total_leads: number;
+    total_users: number;
+    total_clients: number;
+  };
+  dealsByStage: { name: string; value: number; color: string }[];
+  callsByDay: { day: string; calls: number; leads: number }[];
+  dealCallsChart: { name: string; value: number }[];
+  recentDeals: { name: string; stage: string; date: string }[];
+  recentLeads: { name: string; project: string; date: string }[];
+};
+
+const CRM_STAGE_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#6B7280", "#EF4444", "#06B6D4"];
+
+const fmtDay = (v: unknown) => {
+  if (!v) return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
+function normalizeCrmDashboard(raw: unknown): CrmDashboardPayload {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const s = (d.stats && typeof d.stats === "object" ? d.stats : {}) as Record<string, any>;
+
+  const stageSrc = Array.isArray(d.dealsByStage)
+    ? d.dealsByStage
+    : Array.isArray(d.dealStageChart)
+      ? d.dealStageChart
+      : [];
+
+  const dealsByStage = stageSrc.map((x: any, i: number) => ({
+    name: String(x.name || "—"),
+    value: Number(x.value ?? x.deals) || 0,
+    color: String(x.color || CRM_STAGE_COLORS[i % CRM_STAGE_COLORS.length]),
+  }));
+
+  const callsByDay = Array.isArray(d.callsByDay)
+    ? d.callsByDay.map((x: any) => ({
+        day: String(x.day || ""),
+        calls: Number(x.calls) || 0,
+        leads: Number(x.leads) || 0,
+      }))
+    : [];
+
+  const dealCallsChart = Array.isArray(d.dealCallsChart)
+    ? d.dealCallsChart.map((x: any) => ({
+        name: String(x.name || "—"),
+        value: Number(x.value) || 0,
+      }))
+    : [];
+
+  const recentDeals = (Array.isArray(d.recentDeals) ? d.recentDeals : []).map((x: any) => ({
+    name: String(x.name || "—"),
+    stage: String(
+      (typeof x.stage === "object" && x.stage?.name) || x.stage || x.status || "—",
+    ),
+    date: fmtDay(x.date ?? x.created_at),
+  }));
+
+  const recentLeads = (Array.isArray(d.recentLeads) ? d.recentLeads : []).map((x: any) => ({
+    name: String(x.name || "—"),
+    project: String(x.project || x.subject || "—"),
+    date: fmtDay(x.date ?? x.created_at),
+  }));
+
+  return {
+    stats: {
+      total_deals: Number(s.total_deals) || 0,
+      total_leads: Number(s.total_leads) || 0,
+      total_users: Number(s.total_users) || 0,
+      total_clients: Number(s.total_clients) || 0,
+    },
+    dealsByStage,
+    callsByDay,
+    dealCallsChart,
+    recentDeals,
+    recentLeads,
+  };
+}
+
+/** Prefer hub `/dashboard/crm`, fall back to legacy `/crm/dashboard`. */
+export async function fetchCrmDashboard(): Promise<CrmDashboardPayload> {
+  try {
+    const data = await api.get<unknown>("/dashboard/crm");
+    return normalizeCrmDashboard(data);
+  } catch {
+    const data = await api.get<unknown>("/crm/dashboard");
+    return normalizeCrmDashboard(data);
+  }
+}

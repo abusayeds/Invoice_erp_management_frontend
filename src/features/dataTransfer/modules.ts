@@ -325,7 +325,17 @@ export const IMPORT_MODULES: ImportModuleDef[] = IMPORT_MENU_ORDER.map(({ id, la
 });
 
 export function exportModuleById(id: ExportModuleId): ExportModuleDef {
-  return EXPORT_MODULES.find((m) => m.id === id) || EXPORT_MODULES[0];
+  const fromMenu = EXPORT_MODULES.find((m) => m.id === id);
+  if (fromMenu) return fromMenu;
+  const label =
+    IMPORT_MENU_ORDER.find((m) => m.id === id)?.label ||
+    (id === "timelogs" ? "Time Logs" : id);
+  return {
+    id,
+    label,
+    title: `Export ${label === "Time Logs" ? "Timelogs" : label}`,
+    fields: FIELDS_BY_ID[id] || CONTACTS_FIELDS,
+  };
 }
 
 export function importModuleById(id: ImportModuleId): ImportModuleDef {
