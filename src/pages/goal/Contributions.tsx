@@ -1,36 +1,38 @@
 /**
- * File: src/pages/goal/Contributions.tsx
- * Manage Contributions — matches references/goal/contribute/*.png in the
- * Qayd blue theme. Persists in meta row `goal:contributions`; creating a
- * contribution also bumps the goal's current amount (cross-page liveQuery).
+ * Manage Contributions — server-backed via /api/v1/goal/contributions.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
 import { money } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  goalContributionStore,
-  goalStore,
-  goalUid,
-  type GoalContribution,
-} from "@/lib/db/goal";
-import { Field, inputCls, SearchSelect } from "../hrm/hrmShared";
+  fetchContributions,
+  createContribution,
+  updateContribution,
+  deleteContribution,
+  searchGoals,
+  type ContributionRow,
+} from "@/services/goalApi";
+import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
 
 const emptyDraft = () => ({
   id: "",
   goal: "",
+  goalId: "",
   date: "",
   amount: 0,
-  type: "Manual" as GoalContribution["type"],
+  type: "Manual" as ContributionRow["type"],
   notes: "",
 });
 
 export const Contributions: React.FC = () => {
-  const contributions = goalContributionStore.use();
-  const goals = goalStore.use();
+  const queryClient = useQueryClient();
 
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
@@ -39,51 +41,96 @@ export const Contributions: React.FC = () => {
   const [sortAsc, setSortAsc] = useState(true);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
-  const [deleteTarget, setDeleteTarget] = useState<GoalContribution | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContributionRow | null>(null);
 
-  const list = contributions || [];
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const rows = list.filter(
-      (c) => (typeFilter === "All" || c.type === typeFilter) && c.goal.toLowerCase().includes(q),
-    );
-    rows.sort((a, b) => (sortAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
-    return rows;
-  }, [list, search, typeFilter, sortAsc]);
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const { data } = useQuery({
+    queryKey: ["goal-contributions", page, perPage, search, sortAsc, typeFilter],
+    queryFn: () =>
+      fetchContributions({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("contribution_date", sortAsc ? "Ascending" : "Descending"),
+        contribution_type: typeFilter === "All" ? undefined : typeFilter.toLowerCase(),
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+
+  const paginated = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
+
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["goal-contributions"] });
+    await queryClient.invalidateQueries({ queryKey: ["goal-goals"] });
+  };
 
   const submit = async () => {
-    if (!draft.goal || !draft.date || !(Number(draft.amount) > 0)) {
+    if (!draft.goalId || !draft.date || !(Number(draft.amount) > 0)) {
       showToast("Please fill all required fields", "error");
       return;
     }
     const amount = Number(draft.amount);
-    if (modal === "edit") {
-      await goalContributionStore.save(list.map((c) => (c.id === draft.id ? { ...c, ...draft, amount } : c)));
-      showToast("Contribution updated successfully", "success");
-    } else {
-      await goalContributionStore.save([...list, { ...draft, amount, id: goalUid() }]);
-      // bump the goal's current amount so Goals/Details reflect it live
-      await goalStore.save(
-        (goals || []).map((g) => (g.name === draft.goal ? { ...g, currentAmount: g.currentAmount + amount } : g)),
-      );
-      showToast("Contribution created successfully", "success");
+    try {
+      if (modal === "edit") {
+        await updateContribution(draft.id, {
+          goalId: draft.goalId,
+          date: draft.date,
+          amount,
+          type: draft.type,
+          notes: draft.notes,
+        });
+        showToast("Contribution updated successfully", "success");
+      } else {
+        await createContribution({
+          goalId: draft.goalId,
+          date: draft.date,
+          amount,
+          type: draft.type,
+          notes: draft.notes,
+        });
+        showToast("Contribution created successfully", "success");
+      }
+      await invalidate();
+      setModal(null);
+    } catch {
+      showToast("Failed to save contribution", "error");
     }
-    setModal(null);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await goalContributionStore.save(list.filter((c) => c.id !== deleteTarget.id));
-    showToast("Contribution deleted successfully", "success");
-    setDeleteTarget(null);
+    try {
+      await deleteContribution(deleteTarget.id);
+      showToast("Contribution deleted successfully", "success");
+      await invalidate();
+      setDeleteTarget(null);
+    } catch {
+      showToast("Failed to delete contribution", "error");
+    }
   };
 
-  const actions = (c: GoalContribution) => (
+  const actions = (c: ContributionRow) => (
     <div className="flex items-center gap-1.5">
       <button
         onClick={() => {
-          setDraft({ ...c });
+          setDraft({
+            id: c.id,
+            goal: c.goal,
+            goalId: c.goalId,
+            date: c.date,
+            amount: c.amount,
+            type: c.type,
+            notes: c.notes,
+          });
           setModal("edit");
         }}
         className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
@@ -107,14 +154,14 @@ export const Contributions: React.FC = () => {
           setDraft(emptyDraft());
           setModal("create");
         }}
-        search={search}
-        setSearch={setSearch}
+        search={searchInput}
+        setSearch={setSearchInput}
         searchPlaceholder="Search Contributions..."
         perPage={perPage}
         setPerPage={setPerPage}
         page={page}
         setPage={setPage}
-        total={filtered.length}
+        total={total}
         filterOptions={["Manual", "Automatic"]}
         filterValue={typeFilter}
         setFilterValue={setTypeFilter}
@@ -128,12 +175,20 @@ export const Contributions: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Goal</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
-                  <button onClick={() => setSortAsc(!sortAsc)} className="flex items-center gap-1 hover:text-gray-900">
+                  <button
+                    onClick={() => {
+                      setSortAsc(!sortAsc);
+                      setPage(1);
+                    }}
+                    className="flex items-center gap-1 hover:text-gray-900"
+                  >
                     Date <ArrowUpDown className="w-3 h-3" />
                   </button>
                 </th>
                 {["Amount", "Type", "Notes", "Actions"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -149,7 +204,11 @@ export const Contributions: React.FC = () => {
                 </tr>
               ))}
               {paginated.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">No contributions found.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                    No contributions found.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -178,7 +237,13 @@ export const Contributions: React.FC = () => {
         <ModalShell title={modal === "edit" ? "Edit Contribution" : "Create Contribution"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"}>
           <div className="space-y-4">
             <Field label="Goal" required>
-              <SearchSelect value={draft.goal} onChange={(v) => setDraft({ ...draft, goal: v })} options={(goals || []).map((g) => g.name)} placeholder="Select Goal" />
+              <AsyncSearchSelect
+                value={draft.goalId}
+                displayName={draft.goal}
+                onChange={(id, opt) => setDraft({ ...draft, goalId: id, goal: opt?.name || "" })}
+                onSearch={searchGoals}
+                placeholder="Select Goal"
+              />
             </Field>
             <Field label="Date" required>
               <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
@@ -186,8 +251,21 @@ export const Contributions: React.FC = () => {
             <Field label="Amount" required>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" min={0} value={draft.amount || ""} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })} placeholder="0" className={`${inputCls} pl-7`} />
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.amount || ""}
+                  onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })}
+                  placeholder="0"
+                  className={`${inputCls} pl-7`}
+                />
               </div>
+            </Field>
+            <Field label="Type">
+              <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as ContributionRow["type"] })} className={selectCls}>
+                <option value="Manual">Manual</option>
+                <option value="Automatic">Automatic</option>
+              </select>
             </Field>
             <Field label="Notes">
               <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Enter notes..." rows={3} className={inputCls} />

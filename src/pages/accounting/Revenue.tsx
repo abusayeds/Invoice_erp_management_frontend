@@ -1,408 +1,267 @@
 /**
- * File: src/pages/accounting/Revenue.tsx
- * Revenues (accounting) — list, create/edit modal, approve, post, delete.
- *
- * Endpoints (under /account):
- *   GET    revenues/all?page=&limit=
- *   POST   revenues/create
- *   PATCH  revenues/edit/:id
- *   POST   revenues/approve/:id
- *   POST   revenues/post/:id
- *   DELETE revenues/delete/:id
- *
- * Dropdowns: revenue-categories/all, bank-accounts/all, chart-of-accounts/all.
+ * Revenues — /api/v1/account/revenues
  */
-
-import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
-import { api } from "../../lib/api/client";
-import { ApiError } from "../../lib/api/ApiError";
+import { money } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  Search,
-  Plus,
-  Edit,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Calendar,
-  Check,
-  Send,
-  Loader2,
-} from "lucide-react";
+  fetchRevenues,
+  createRevenue,
+  updateRevenue,
+  deleteRevenue,
+  approveRevenue,
+  postRevenue,
+  searchRevenueCategories,
+  searchBankAccounts,
+  searchChartAccounts,
+  REVENUE_STATUSES,
+  type RevenueRow,
+} from "@/services/accountingApi";
+import { Field, inputCls, AsyncSearchSelect } from "../hrm/hrmShared";
+import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
+import { ArrowUpDown, Edit, Trash2, CheckCircle2, Send } from "lucide-react";
 
-interface Revenue {
-  id: string;
-  date: string;
-  categoryId: string;
-  bankAccountId: string;
-  chartOfAccountId: string;
-  amount: number;
-  description: string;
-  referenceNumber: string;
-  status: string;
-}
-interface ApiRevenue {
-  _id: string;
-  revenue_date?: string;
-  category_id?: string | { _id: string };
-  bank_account_id?: string | { _id: string };
-  chart_of_account_id?: string | { _id: string };
-  amount?: number;
-  description?: string;
-  reference_number?: string;
-  status?: string;
-}
-interface Named {
-  _id: string;
-  category_name?: string;
-  account_name?: string;
-  account_code?: string;
-  bank_name?: string;
-}
+const STATUS_CHIP: Record<string, string> = {
+  Draft: "bg-gray-100 text-gray-600",
+  Approved: "bg-amber-100 text-amber-700",
+  Posted: "bg-green-100 text-green-700",
+};
 
-const errMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError && err.message ? err.message : fallback;
-const refId = (v: { _id: string } | string | null | undefined): string =>
-  typeof v === "object" && v ? v._id : (v ?? "");
-const toDateInput = (iso?: string) => (iso ? iso.slice(0, 10) : "");
-const money = (n: number) =>
-  `$${(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-
-const mapApi = (r: ApiRevenue): Revenue => ({
-  id: r._id,
-  date: toDateInput(r.revenue_date),
-  categoryId: refId(r.category_id),
-  bankAccountId: refId(r.bank_account_id),
-  chartOfAccountId: refId(r.chart_of_account_id),
-  amount: r.amount ?? 0,
-  description: r.description ?? "",
-  referenceNumber: r.reference_number ?? "",
-  status: (r.status ?? "draft").toLowerCase(),
-});
-
-const emptyForm = {
-  revenue_date: new Date().toISOString().split("T")[0],
+const emptyDraft = () => ({
+  id: "",
+  revenue_date: new Date().toISOString().slice(0, 10),
   category_id: "",
+  category_name: "",
   bank_account_id: "",
+  bank_account_name: "",
   chart_of_account_id: "",
-  amount: 0,
+  chart_of_account_name: "",
+  amount: "" as string | number,
   description: "",
   reference_number: "",
-};
-
-const statusColor = (s: string) => {
-  switch (s) {
-    case "posted":
-      return "bg-green-100 text-green-700";
-    case "approved":
-      return "bg-blue-100 text-blue-700";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
-};
+});
 
 export const Revenues: React.FC = () => {
-  const navigate = useNavigate();
-
-  const [rows, setRows] = useState<Revenue[]>([]);
-  const [categories, setCategories] = useState<Named[]>([]);
-  const [banks, setBanks] = useState<Named[]>([]);
-  const [coa, setCoa] = useState<Named[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
+  const qc = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [perPage, setPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-
-  const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-
-  const [showDelete, setShowDelete] = useState(false);
-  const [toDelete, setToDelete] = useState<Revenue | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const catName = (id: string) => categories.find((c) => c._id === id)?.category_name || "—";
-  const bankName = (id: string) => {
-    const b = banks.find((x) => x._id === id);
-    return b ? b.account_name || b.bank_name || "—" : "—";
-  };
-
-  const loadRows = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await api.get<ApiRevenue[]>("/account/revenues/all", {
-        params: { page: 1, limit: 1000 },
-      });
-      setRows(Array.isArray(data) ? data.map(mapApi) : []);
-    } catch (err) {
-      const m = errMessage(err, "Couldn't load revenues.");
-      setLoadError(m);
-      showToast(m, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  const loadOptions = useCallback(async () => {
-    const [c, b, a] = await Promise.allSettled([
-      api.get<Named[]>("/account/revenue-categories/all"),
-      api.get<Named[]>("/account/bank-accounts/all", { params: { page: 1, limit: 1000 } }),
-      api.get<Named[]>("/account/chart-of-accounts/all", { params: { page: 1, limit: 1000 } }),
-    ]);
-    if (c.status === "fulfilled" && Array.isArray(c.value)) setCategories(c.value);
-    if (b.status === "fulfilled" && Array.isArray(b.value)) setBanks(b.value);
-    if (a.status === "fulfilled" && Array.isArray(a.value)) setCoa(a.value);
-  }, []);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
+  const [draft, setDraft] = useState(emptyDraft());
+  const [deleteTarget, setDeleteTarget] = useState<RevenueRow | null>(null);
 
   useEffect(() => {
-    loadRows();
-    loadOptions();
-  }, [loadRows, loadOptions]);
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
 
-  const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return rows;
-    const q = searchQuery.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.referenceNumber.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q) ||
-        catName(r.categoryId).toLowerCase().includes(q),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, searchQuery, categories]);
+  const { data, isLoading } = useQuery({
+    queryKey: ["account-revenues", page, perPage, search, sortAsc, statusFilter],
+    queryFn: () =>
+      fetchRevenues({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("revenue_date", sortAsc ? "Ascending" : "Descending"),
+        status: statusFilter === "All" ? undefined : statusFilter,
+      }),
+    placeholderData: (prev) => prev,
+  });
 
-  const totalPages = Math.ceil(filtered.length / perPage);
-  const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const rows = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["account-revenues"] });
 
-  const canEdit = (s: string) => s === "draft";
-  const canApprove = (s: string) => s === "draft";
-  const canPost = (s: string) => s === "approved";
-
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setShowModal(true); };
-  const openEdit = (r: Revenue) => {
-    setForm({
-      revenue_date: r.date,
-      category_id: r.categoryId,
-      bank_account_id: r.bankAccountId,
-      chart_of_account_id: r.chartOfAccountId,
-      amount: r.amount,
-      description: r.description,
-      reference_number: r.referenceNumber,
-    });
-    setEditingId(r.id);
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    if (!form.category_id) return showToast("Select a revenue category", "info");
-    if (!form.amount || form.amount <= 0) return showToast("Enter a valid amount", "info");
-    setSaving(true);
+  const submit = async () => {
+    if (!draft.revenue_date || !draft.category_id || !draft.bank_account_id || !draft.chart_of_account_id) {
+      showToast("Date, category, bank account and GL account are required", "error");
+      return;
+    }
+    const amount = Number(draft.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      showToast("Enter a valid amount", "error");
+      return;
+    }
+    const body = {
+      revenue_date: draft.revenue_date,
+      category_id: draft.category_id,
+      bank_account_id: draft.bank_account_id,
+      chart_of_account_id: draft.chart_of_account_id,
+      amount,
+      description: draft.description.trim() || undefined,
+      reference_number: draft.reference_number.trim() || undefined,
+    };
     try {
-      if (editingId) await api.patch(`/account/revenues/edit/${editingId}`, form);
-      else await api.post("/account/revenues/create", form);
-      showToast(`Revenue ${editingId ? "updated" : "created"}!`, "success");
-      setShowModal(false);
-      await loadRows();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't save revenue."), "error");
-    } finally {
-      setSaving(false);
+      if (modal === "edit") {
+        await updateRevenue(draft.id, body);
+        showToast("Revenue updated", "success");
+      } else {
+        await createRevenue(body);
+        showToast("Revenue created", "success");
+      }
+      await invalidate();
+      setModal(null);
+    } catch (e: any) {
+      showToast(e?.message || "Failed to save", "error");
     }
   };
 
-  const doAction = async (id: string, action: "approve" | "post") => {
-    setProcessingId(id);
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
     try {
-      await api.post(`/account/revenues/${action}/${id}`);
-      showToast(`Revenue ${action === "approve" ? "approved" : "posted"}!`, "success");
-      await loadRows();
-    } catch (err) {
-      showToast(errMessage(err, `Couldn't ${action} revenue.`), "error");
-    } finally {
-      setProcessingId(null);
+      await fn();
+      showToast(ok, "success");
+      await invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Action failed", "error");
     }
   };
 
-  const handleDelete = async () => {
-    if (!toDelete) return;
-    setDeleting(true);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/account/revenues/delete/${toDelete.id}`);
-      showToast("Revenue deleted!", "success");
-      setShowDelete(false);
-      setToDelete(null);
-      await loadRows();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't delete revenue."), "error");
-    } finally {
-      setDeleting(false);
+      await deleteRevenue(deleteTarget.id);
+      showToast("Revenue deleted", "success");
+      await invalidate();
+      setDeleteTarget(null);
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
     }
   };
-
-  const inputCls =
-    "w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white";
 
   return (
-    <div className="module-page-shell overflow-hidden flex flex-col p-0">
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
-          <span>›</span><span className="text-gray-900 font-medium">Revenues</span>
-        </div>
-      </div>
-
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Revenues</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Record and post revenue entries</p>
-          </div>
-          <button onClick={openCreate} className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm" title="Create Revenue"><Plus className="w-5 h-5" /></button>
-        </div>
-      </div>
-
-      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search by reference, note or category..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600" />
-            </div>
-            <button onClick={() => loadRows()} className="px-4 py-1.5 bg-green-500 text-white text-sm rounded-md hover:bg-green-600">Refresh</button>
-          </div>
-          <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white">
-            <option value={5}>5 per page</option><option value={10}>10 per page</option><option value={25}>25 per page</option><option value={50}>50 per page</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[900px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Reference</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Category</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Bank</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-600">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Actions</th>
+    <>
+      <ListShell
+        module="Accounting"
+        current="Revenue"
+        title="Manage Revenue"
+        onCreate={() => { setDraft(emptyDraft()); setModal("create"); }}
+        search={searchInput}
+        setSearch={setSearchInput}
+        searchPlaceholder="Search revenues…"
+        perPage={perPage}
+        setPerPage={setPerPage}
+        page={page}
+        setPage={setPage}
+        total={total}
+        filterOptions={[...REVENUE_STATUSES]}
+        filterValue={statusFilter}
+        setFilterValue={setStatusFilter}
+      >
+        <table className="w-full text-sm min-w-[1000px]">
+          <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+                <button type="button" onClick={() => { setSortAsc(!sortAsc); setPage(1); }} className="flex items-center gap-1 hover:text-gray-900">
+                  Date <ArrowUpDown className="w-3 h-3" />
+                </button>
+              </th>
+              {["Number", "Category", "Amount", "Bank", "Status", "Actions"].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3.5 text-gray-600">{r.date}</td>
+                <td className="px-4 py-3.5 font-medium text-gray-900">{r.number || "—"}</td>
+                <td className="px-4 py-3.5 text-gray-600">{r.categoryName || "—"}</td>
+                <td className="px-4 py-3.5 text-gray-900">{money(r.amount)}</td>
+                <td className="px-4 py-3.5 text-gray-600">{r.bankAccountName || "—"}</td>
+                <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || STATUS_CHIP.Draft)}</td>
+                <td className="px-4 py-3.5">
+                  <div className="flex items-center gap-1.5">
+                    {r.status === "Draft" && (
+                      <>
+                        <button type="button" onClick={() => void run(() => approveRevenue(r.id), "Approved")} className="p-1.5 text-gray-400 hover:text-green-600 rounded hover:bg-green-50" title="Approve">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraft({
+                              id: r.id,
+                              revenue_date: r.date,
+                              category_id: r.categoryId,
+                              category_name: r.categoryName,
+                              bank_account_id: r.bankAccountId,
+                              bank_account_name: r.bankAccountName,
+                              chart_of_account_id: r.chartAccountId,
+                              chart_of_account_name: r.chartAccountName,
+                              amount: r.amount,
+                              description: r.description,
+                              reference_number: r.reference,
+                            });
+                            setModal("edit");
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => setDeleteTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                    {r.status === "Approved" && (
+                      <button type="button" onClick={() => void run(() => postRevenue(r.id), "Posted")} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Post">
+                        <Send className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {loading ? (
-                <tr><td colSpan={7} className="px-4 py-16"><div className="flex items-center justify-center gap-2 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading…</span></div></td></tr>
-              ) : loadError ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-red-600">{loadError}</td></tr>
-              ) : paginated.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">No revenues found.</td></tr>
-              ) : (
-                paginated.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-600">{r.date}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{r.referenceNumber || "—"}</td>
-                    <td className="px-4 py-3 text-gray-600">{catName(r.categoryId)}</td>
-                    <td className="px-4 py-3 text-gray-600">{bankName(r.bankAccountId)}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">{money(r.amount)}</td>
-                    <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full capitalize ${statusColor(r.status)}`}>{r.status}</span></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        {canApprove(r.status) ? (
-                          <button onClick={() => doAction(r.id, "approve")} disabled={processingId === r.id} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg disabled:opacity-50" title="Approve">{processingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}</button>
-                          ) : <span className="w-7 h-7" /> /* fixed slot keeps action columns aligned */}
-                        {canPost(r.status) ? (
-                          <button onClick={() => doAction(r.id, "post")} disabled={processingId === r.id} className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg disabled:opacity-50" title="Post">{processingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</button>
-                          ) : <span className="w-7 h-7" /> /* fixed slot keeps action columns aligned */}
-                        <button onClick={() => openEdit(r)} disabled={!canEdit(r.status)} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400" title={canEdit(r.status) ? "Edit" : "Only draft can be edited"}><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => { setToDelete(r); setShowDelete(true); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">No revenues found.</td></tr>
+            )}
+            {isLoading && (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">Loading…</td></tr>
+            )}
+          </tbody>
+        </table>
+      </ListShell>
 
-      <div className="bg-white border-t border-gray-200 px-4 sm:px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="text-sm text-gray-500">Showing {filtered.length === 0 ? 0 : (currentPage - 1) * perPage + 1} to {Math.min(currentPage * perPage, filtered.length)} of {filtered.length} results</div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronLeft className="w-4 h-4" /><span className="hidden sm:inline">Previous</span></button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (<button key={page} onClick={() => setCurrentPage(page)} className={`w-8 h-8 text-sm rounded-md flex items-center justify-center ${currentPage === page ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}>{page}</button>))}
-            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><span className="hidden sm:inline">Next</span><ChevronRight className="w-4 h-4" /></button>
+      {modal && (
+        <ModalShell title={modal === "edit" ? "Edit Revenue" : "Create Revenue"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"} wide>
+          <div className="space-y-4">
+            <Field label="Date" required>
+              <input type="date" value={draft.revenue_date} onChange={(e) => setDraft({ ...draft, revenue_date: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Category" required>
+              <AsyncSearchSelect value={draft.category_id} displayName={draft.category_name} onChange={(id, opt) => setDraft({ ...draft, category_id: id, category_name: opt?.name || "" })} onSearch={searchRevenueCategories} placeholder="Search categories…" />
+            </Field>
+            <Field label="Bank Account" required>
+              <AsyncSearchSelect value={draft.bank_account_id} displayName={draft.bank_account_name} onChange={(id, opt) => setDraft({ ...draft, bank_account_id: id, bank_account_name: opt?.name || "" })} onSearch={searchBankAccounts} placeholder="Search bank accounts…" />
+            </Field>
+            <Field label="GL Account" required>
+              <AsyncSearchSelect value={draft.chart_of_account_id} displayName={draft.chart_of_account_name} onChange={(id, opt) => setDraft({ ...draft, chart_of_account_id: id, chart_of_account_name: opt?.name || "" })} onSearch={searchChartAccounts} placeholder="Search chart of accounts…" />
+            </Field>
+            <Field label="Amount" required>
+              <input type="number" min={0} step="0.01" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Reference">
+              <input value={draft.reference_number} onChange={(e) => setDraft({ ...draft, reference_number: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Description">
+              <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} rows={2} className={inputCls} />
+            </Field>
           </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">{editingId ? "Edit Revenue" : "Create Revenue"}</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="date" className={`${inputCls} pl-10`} value={form.revenue_date} onChange={(e) => setForm({ ...form, revenue_date: e.target.value })} /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label><input className={inputCls} value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="REF-001" /></div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Revenue Category *</label>
-                <select className={inputCls} value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
-                  <option value="">Select category</option>
-                  {categories.map((c) => (<option key={c._id} value={c._id}>{c.category_name}</option>))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account</label>
-                <select className={inputCls} value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })}>
-                  <option value="">Select bank account</option>
-                  {banks.map((b) => (<option key={b._id} value={b._id}>{b.account_name || b.bank_name}</option>))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">GL Account</label>
-                <select className={inputCls} value={form.chart_of_account_id} onChange={(e) => setForm({ ...form, chart_of_account_id: e.target.value })}>
-                  <option value="">Select GL account</option>
-                  {coa.map((a) => (<option key={a._id} value={a._id}>{a.account_code} · {a.account_name}</option>))}
-                </select>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label><input type="number" min={0} step="0.01" className={inputCls} value={form.amount} onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })} /></div>
-              <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea rows={2} className={inputCls} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-            </div>
-            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-              <button onClick={() => setShowModal(false)} disabled={saving} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm disabled:opacity-50">Cancel</button>
-              <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm inline-flex items-center gap-2 disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{editingId ? "Save Changes" : "Create"}</button>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
-      {showDelete && toDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-            <div className="p-6 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="w-8 h-8 text-red-600" /></div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Revenue</h3>
-              <p className="text-gray-500 mb-6">Delete this revenue entry ({money(toDelete.amount)})? This action cannot be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={handleDelete} disabled={deleting} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 inline-flex items-center justify-center gap-2 disabled:opacity-50">{deleting && <Loader2 className="w-4 h-4 animate-spin" />}{deleting ? "Deleting…" : "Delete"}</button>
-                <button onClick={() => setShowDelete(false)} disabled={deleting} className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {deleteTarget && (
+        <DeleteConfirm what="revenue" name={deleteTarget.number || deleteTarget.date} onConfirm={() => void confirmDelete()} onCancel={() => setDeleteTarget(null)} />
       )}
-    </div>
+    </>
   );
 };

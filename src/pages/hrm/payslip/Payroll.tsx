@@ -428,7 +428,7 @@ export const Payroll: React.FC = () => {
                 <select
                   value={draft.frequency}
                   onChange={(e) => setDraft({ ...draft, frequency: e.target.value as PayrollRecord["frequency"] })}
-                  className={`${inputCls} bg-white`}
+                  className={`keep-box ua-field ${inputCls}`}
                 >
                   <option>Weekly</option>
                   <option>Monthly</option>

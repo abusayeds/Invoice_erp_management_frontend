@@ -1,428 +1,300 @@
 /**
- * File: src/pages/accounting/CustomerPayments.tsx
- * Customer Payments — list, create (with invoice allocations), mark-cleared, delete.
- *
- * Endpoints (under /account):
- *   GET    customer-payments/all?page=&limit=
- *   GET    customer-payments/customers/:id/outstanding
- *   POST   customer-payments/create
- *   PATCH  customer-payments/update-status/:id   { status }
- *   DELETE customer-payments/delete/:id
+ * Customer Payments — /api/v1/account/customer-payments
  */
-
-import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
-import { api } from "../../lib/api/client";
-import { ApiError } from "../../lib/api/ApiError";
+import { money } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  Search,
-  Plus,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Calendar,
-  CheckCircle,
-  Loader2,
-} from "lucide-react";
+  fetchCustomerPayments,
+  fetchCustomerOutstanding,
+  createCustomerPayment,
+  updateCustomerPaymentStatus,
+  deleteCustomerPayment,
+  searchCustomers,
+  searchBankAccounts,
+  PAYMENT_STATUSES,
+  type CustomerPaymentRow,
+} from "@/services/accountingApi";
+import { Field, inputCls, AsyncSearchSelect } from "../hrm/hrmShared";
+import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
+import { ArrowUpDown, Trash2, CheckCircle2 } from "lucide-react";
 
-interface Payment {
-  id: string;
-  date: string;
-  customerId: string;
-  customerName: string;
-  bankAccountId: string;
-  referenceNumber: string;
-  amount: number;
-  status: string;
-  notes: string;
-}
-interface Outstanding {
-  invoiceId: string;
-  invoiceNumber: string;
-  outstanding: number;
-}
-interface Allocation {
-  invoiceId: string;
-  invoiceNumber: string;
-  outstanding: number;
-  allocated: number;
-}
-interface Named {
-  _id: string;
-  name?: string;
-  account_name?: string;
-  bank_name?: string;
-}
+const STATUS_CHIP: Record<string, string> = {
+  Pending: "bg-amber-100 text-amber-700",
+  Cleared: "bg-green-100 text-green-700",
+  Cancelled: "bg-red-100 text-red-600",
+};
 
-const errMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError && err.message ? err.message : fallback;
-const refId = (v: any): string => (typeof v === "object" && v ? v._id : (v ?? ""));
-const refName = (v: any): string => (typeof v === "object" && v ? (v.name ?? "") : "");
-const toDateInput = (iso?: string) => (iso ? iso.slice(0, 10) : "");
-const money = (n: number) =>
-  `$${(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-
-const mapApi = (p: any): Payment => ({
-  id: p._id,
-  date: toDateInput(p.payment_date),
-  customerId: refId(p.customer_id),
-  customerName: refName(p.customer_id),
-  bankAccountId: refId(p.bank_account_id),
-  referenceNumber: p.reference_number ?? "",
-  amount: p.payment_amount ?? 0,
-  status: (p.status ?? "pending").toLowerCase(),
-  notes: p.notes ?? "",
-});
-
-const statusColor = (s: string) =>
-  s === "cleared" ? "bg-green-100 text-green-700" : s === "bounced" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700";
+type Alloc = { invoiceId: string; invoiceNumber: string; outstanding: number; allocated: number };
 
 export const CustomerPayments: React.FC = () => {
-  const navigate = useNavigate();
-
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [customers, setCustomers] = useState<Named[]>([]);
-  const [banks, setBanks] = useState<Named[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
+  const qc = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [perPage, setPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-
-  const [showModal, setShowModal] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    payment_date: new Date().toISOString().split("T")[0],
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [modal, setModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerPaymentRow | null>(null);
+  const [draft, setDraft] = useState({
+    payment_date: new Date().toISOString().slice(0, 10),
     customer_id: "",
+    customer_name: "",
     bank_account_id: "",
+    bank_account_name: "",
     reference_number: "",
-    payment_amount: 0,
+    payment_amount: "" as string | number,
     notes: "",
   });
-  const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [allocs, setAllocs] = useState<Alloc[]>([]);
   const [loadingOutstanding, setLoadingOutstanding] = useState(false);
 
-  const [showDelete, setShowDelete] = useState(false);
-  const [toDelete, setToDelete] = useState<Payment | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
 
-  const custName = (id: string, fallback: string) =>
-    fallback || customers.find((c) => c._id === id)?.name || "—";
-  const bankName = (id: string) => {
-    const b = banks.find((x) => x._id === id);
-    return b ? b.account_name || b.bank_name || "—" : "—";
-  };
+  const { data, isLoading } = useQuery({
+    queryKey: ["customer-payments", page, perPage, search, sortAsc, statusFilter],
+    queryFn: () =>
+      fetchCustomerPayments({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("payment_date", sortAsc ? "Ascending" : "Descending"),
+        status: statusFilter === "All" ? undefined : statusFilter,
+      }),
+    placeholderData: (prev) => prev,
+  });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await api.get<any[]>("/account/customer-payments/all", { params: { page: 1, limit: 1000 } });
-      setPayments(Array.isArray(data) ? data.map(mapApi) : []);
-    } catch (err) {
-      const m = errMessage(err, "Couldn't load customer payments.");
-      setLoadError(m);
-      showToast(m, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  const loadOptions = useCallback(async () => {
-    const [c, b] = await Promise.allSettled([
-      api.get<Named[]>("/customer/all", { params: { page: 1, limit: 1000 } }),
-      api.get<Named[]>("/account/bank-accounts/all", { params: { page: 1, limit: 1000 } }),
-    ]);
-    if (c.status === "fulfilled" && Array.isArray(c.value)) setCustomers(c.value);
-    if (b.status === "fulfilled" && Array.isArray(b.value)) setBanks(b.value);
-  }, []);
+  const rows = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["customer-payments"] });
 
-  useEffect(() => { load(); loadOptions(); }, [load, loadOptions]);
-
-  const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return payments;
-    const q = searchQuery.toLowerCase();
-    return payments.filter((p) => p.referenceNumber.toLowerCase().includes(q) || custName(p.customerId, p.customerName).toLowerCase().includes(q));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payments, searchQuery, customers]);
-  const totalPages = Math.ceil(filtered.length / perPage);
-  const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
-
-  const openCreate = () => {
-    setForm({ payment_date: new Date().toISOString().split("T")[0], customer_id: "", bank_account_id: "", reference_number: "", payment_amount: 0, notes: "" });
-    setAllocations([]);
-    setShowModal(true);
-  };
-
-  const onCustomerChange = async (customerId: string) => {
-    setForm((f) => ({ ...f, customer_id: customerId }));
-    setAllocations([]);
-    if (!customerId) return;
+  const onCustomer = async (id: string, name: string) => {
+    setDraft((d) => ({ ...d, customer_id: id, customer_name: name }));
+    setAllocs([]);
+    if (!id) return;
     setLoadingOutstanding(true);
     try {
-      const data = await api.get<any[]>(`/account/customer-payments/customers/${customerId}/outstanding`);
-      const list: Outstanding[] = (Array.isArray(data) ? data : []).map((o) => ({
-        invoiceId: o._id ?? o.invoice_id ?? "",
-        invoiceNumber: o.invoice_number ?? o.invoiceNumber ?? "",
-        outstanding: o.balance_amount ?? o.outstanding ?? o.total ?? 0,
-      }));
-      setAllocations(list.map((o) => ({ ...o, allocated: 0 })));
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't load outstanding invoices."), "error");
+      const list = await fetchCustomerOutstanding(id);
+      setAllocs(list.map((o) => ({ ...o, allocated: 0 })));
+    } catch (e: any) {
+      showToast(e?.message || "Could not load outstanding invoices", "error");
     } finally {
       setLoadingOutstanding(false);
     }
   };
 
-  const setAlloc = (invoiceId: string, val: number) =>
-    setAllocations((prev) => prev.map((a) => (a.invoiceId === invoiceId ? { ...a, allocated: val } : a)));
-
-  const allocatedTotal = allocations.reduce((s, a) => s + (a.allocated || 0), 0);
-
-  const handleCreate = async () => {
-    if (!form.customer_id) return showToast("Select a customer", "info");
-    if (!form.payment_amount || form.payment_amount <= 0) return showToast("Enter a valid payment amount", "info");
-    const used = allocations.filter((a) => a.allocated > 0);
-    setSaving(true);
+  const submit = async () => {
+    if (!draft.customer_id || !draft.bank_account_id) {
+      showToast("Customer and bank account are required", "error");
+      return;
+    }
+    const amount = Number(draft.payment_amount);
+    if (!amount || amount <= 0) {
+      showToast("Enter a valid payment amount", "error");
+      return;
+    }
+    const used = allocs.filter((a) => a.allocated > 0);
+    if (!used.length) {
+      showToast("Allocate at least one invoice", "error");
+      return;
+    }
     try {
-      await api.post("/account/customer-payments/create", {
-        payment_date: form.payment_date,
-        customer_id: form.customer_id,
-        bank_account_id: form.bank_account_id || undefined,
-        reference_number: form.reference_number,
-        payment_amount: form.payment_amount,
-        notes: form.notes,
+      await createCustomerPayment({
+        payment_date: draft.payment_date,
+        customer_id: draft.customer_id,
+        bank_account_id: draft.bank_account_id,
+        reference_number: draft.reference_number.trim() || undefined,
+        payment_amount: amount,
+        notes: draft.notes.trim() || undefined,
         allocations: used.map((a) => ({ invoice_id: a.invoiceId, allocated_amount: a.allocated })),
         credit_notes: [],
       });
-      showToast("Customer payment created!", "success");
-      setShowModal(false);
-      await load();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't create payment."), "error");
-    } finally {
-      setSaving(false);
+      showToast("Payment created", "success");
+      setModal(false);
+      await invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Failed to create payment", "error");
     }
   };
 
-  const markCleared = async (p: Payment) => {
-    setProcessingId(p.id);
+  const markCleared = async (p: CustomerPaymentRow) => {
     try {
-      await api.patch(`/account/customer-payments/update-status/${p.id}`, { status: "cleared" });
-      showToast("Payment marked cleared!", "success");
-      await load();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't update status."), "error");
-    } finally {
-      setProcessingId(null);
+      await updateCustomerPaymentStatus(p.id, "cleared");
+      showToast("Marked cleared", "success");
+      await invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Failed", "error");
     }
   };
 
-  const handleDelete = async () => {
-    if (!toDelete) return;
-    setDeleting(true);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/account/customer-payments/delete/${toDelete.id}`);
-      showToast("Payment deleted!", "success");
-      setShowDelete(false);
-      setToDelete(null);
-      await load();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't delete payment."), "error");
-    } finally {
-      setDeleting(false);
+      await deleteCustomerPayment(deleteTarget.id);
+      showToast("Payment deleted", "success");
+      await invalidate();
+      setDeleteTarget(null);
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
     }
   };
-
-  const inputCls =
-    "w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white";
 
   return (
-    <div className="module-page-shell overflow-hidden flex flex-col p-0">
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <button onClick={() => navigate("/")} className="hover:text-gray-700">Dashboard</button>
-          <span>›</span><span className="text-gray-900 font-medium">Customer Payments</span>
-        </div>
-      </div>
-
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Customer Payments</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Receipts and invoice allocations</p>
-          </div>
-          <button onClick={openCreate} className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm" title="Record Payment"><Plus className="w-5 h-5" /></button>
-        </div>
-      </div>
-
-      <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search by reference or customer..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600" />
-            </div>
-            <button onClick={() => load()} className="px-4 py-1.5 bg-green-500 text-white text-sm rounded-md hover:bg-green-600">Refresh</button>
-          </div>
-          <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setCurrentPage(1); }} className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white">
-            <option value={5}>5 per page</option><option value={10}>10 per page</option><option value={25}>25 per page</option><option value={50}>50 per page</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[860px]">
-            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Reference</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Bank</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-600">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {loading ? (
-                <tr><td colSpan={7} className="px-4 py-16"><div className="flex items-center justify-center gap-2 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading…</span></div></td></tr>
-              ) : loadError ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-red-600">{loadError}</td></tr>
-              ) : paginated.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">No payments found.</td></tr>
-              ) : (
-                paginated.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{p.referenceNumber || "—"}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.date}</td>
-                    <td className="px-4 py-3 text-gray-600">{custName(p.customerId, p.customerName)}</td>
-                    <td className="px-4 py-3 text-gray-600">{bankName(p.bankAccountId)}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">{money(p.amount)}</td>
-                    <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full capitalize ${statusColor(p.status)}`}>{p.status}</span></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        {p.status !== "cleared" ? (
-                          <button onClick={() => markCleared(p)} disabled={processingId === p.id} className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg disabled:opacity-50" title="Mark cleared">{processingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}</button>
-                        ) : (
-                          <span className="w-7 h-7" /> /* fixed slot keeps action columns aligned */
-                        )}
-                        <button onClick={() => { setToDelete(p); setShowDelete(true); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="bg-white border-t border-gray-200 px-4 sm:px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="text-sm text-gray-500">Showing {filtered.length === 0 ? 0 : (currentPage - 1) * perPage + 1} to {Math.min(currentPage * perPage, filtered.length)} of {filtered.length} results</div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronLeft className="w-4 h-4" /><span className="hidden sm:inline">Previous</span></button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (<button key={page} onClick={() => setCurrentPage(page)} className={`w-8 h-8 text-sm rounded-md flex items-center justify-center ${currentPage === page ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}>{page}</button>))}
-            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><span className="hidden sm:inline">Next</span><ChevronRight className="w-4 h-4" /></button>
-          </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-semibold text-gray-900">Record Customer Payment</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
-                  <div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="date" className={`${inputCls} pl-10`} value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} /></div>
-                </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label><input className={inputCls} value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="INV-001" /></div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
-                  <select className={inputCls} value={form.customer_id} onChange={(e) => onCustomerChange(e.target.value)}>
-                    <option value="">Select customer</option>
-                    {customers.map((c) => (<option key={c._id} value={c._id}>{c.name}</option>))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account</label>
-                  <select className={inputCls} value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })}>
-                    <option value="">Select bank account</option>
-                    {banks.map((b) => (<option key={b._id} value={b._id}>{b.account_name || b.bank_name}</option>))}
-                  </select>
-                </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Payment Amount *</label><input type="number" min={0} step="0.01" className={inputCls} value={form.payment_amount} onChange={(e) => setForm({ ...form, payment_amount: parseFloat(e.target.value) || 0 })} /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Notes</label><input className={inputCls} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Outstanding Invoices</h4>
-                {loadingOutstanding ? (
-                  <div className="flex items-center gap-2 text-gray-500 text-sm py-4"><Loader2 className="w-4 h-4 animate-spin" />Loading outstanding invoices…</div>
-                ) : !form.customer_id ? (
-                  <p className="text-sm text-gray-400 py-2">Select a customer to view outstanding invoices.</p>
-                ) : allocations.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-2">No outstanding invoices for this customer.</p>
-                ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Invoice</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Outstanding</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-600 w-32">Allocate</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {allocations.map((a) => (
-                          <tr key={a.invoiceId}>
-                            <td className="px-3 py-2 text-gray-900">{a.invoiceNumber || a.invoiceId}</td>
-                            <td className="px-3 py-2 text-right text-gray-600">{money(a.outstanding)}</td>
-                            <td className="px-3 py-2 text-right">
-                              <input type="number" min={0} step="0.01" max={a.outstanding} value={a.allocated} onChange={(e) => setAlloc(a.invoiceId, parseFloat(e.target.value) || 0)} className="w-28 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="px-3 py-2 bg-gray-50 text-right text-sm text-gray-700">Allocated: <span className="font-semibold">{money(allocatedTotal)}</span></div>
+    <>
+      <ListShell
+        module="Accounting"
+        current="Customer Payments"
+        title="Customer Payments"
+        onCreate={() => {
+          setDraft({
+            payment_date: new Date().toISOString().slice(0, 10),
+            customer_id: "",
+            customer_name: "",
+            bank_account_id: "",
+            bank_account_name: "",
+            reference_number: "",
+            payment_amount: "",
+            notes: "",
+          });
+          setAllocs([]);
+          setModal(true);
+        }}
+        search={searchInput}
+        setSearch={setSearchInput}
+        searchPlaceholder="Search payments…"
+        perPage={perPage}
+        setPerPage={setPerPage}
+        page={page}
+        setPage={setPage}
+        total={total}
+        filterOptions={[...PAYMENT_STATUSES]}
+        filterValue={statusFilter}
+        setFilterValue={setStatusFilter}
+      >
+        <table className="w-full text-sm min-w-[950px]">
+          <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+                <button type="button" onClick={() => { setSortAsc(!sortAsc); setPage(1); }} className="flex items-center gap-1 hover:text-gray-900">
+                  Date <ArrowUpDown className="w-3 h-3" />
+                </button>
+              </th>
+              {["Number", "Customer", "Amount", "Bank", "Status", "Actions"].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3.5 text-gray-600">{r.date}</td>
+                <td className="px-4 py-3.5 font-medium text-gray-900">{r.number || "—"}</td>
+                <td className="px-4 py-3.5 text-gray-900">{r.customerName || "—"}</td>
+                <td className="px-4 py-3.5 text-gray-900">{money(r.amount)}</td>
+                <td className="px-4 py-3.5 text-gray-600">{r.bankAccountName || "—"}</td>
+                <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || STATUS_CHIP.Pending)}</td>
+                <td className="px-4 py-3.5">
+                  <div className="flex items-center gap-1.5">
+                    {r.status === "Pending" && (
+                      <button type="button" onClick={() => void markCleared(r)} className="p-1.5 text-gray-400 hover:text-green-600 rounded hover:bg-green-50" title="Mark cleared">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setDeleteTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-              <button onClick={() => setShowModal(false)} disabled={saving} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm disabled:opacity-50">Cancel</button>
-              <button onClick={handleCreate} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm inline-flex items-center gap-2 disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />}Create</button>
+                </td>
+              </tr>
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">No payments found.</td></tr>
+            )}
+            {isLoading && (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">Loading…</td></tr>
+            )}
+          </tbody>
+        </table>
+      </ListShell>
+
+      {modal && (
+        <ModalShell title="Create Customer Payment" onClose={() => setModal(false)} onSubmit={submit} submitLabel="Create" wide>
+          <div className="space-y-4">
+            <Field label="Payment Date" required>
+              <input type="date" value={draft.payment_date} onChange={(e) => setDraft({ ...draft, payment_date: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Customer" required>
+              <AsyncSearchSelect value={draft.customer_id} displayName={draft.customer_name} onChange={(id, opt) => void onCustomer(id, opt?.name || "")} onSearch={searchCustomers} placeholder="Search customers…" />
+            </Field>
+            <Field label="Bank Account" required>
+              <AsyncSearchSelect value={draft.bank_account_id} displayName={draft.bank_account_name} onChange={(id, opt) => setDraft({ ...draft, bank_account_id: id, bank_account_name: opt?.name || "" })} onSearch={searchBankAccounts} placeholder="Search bank accounts…" />
+            </Field>
+            <Field label="Amount" required>
+              <input type="number" min={0.01} step="0.01" value={draft.payment_amount} onChange={(e) => setDraft({ ...draft, payment_amount: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Reference">
+              <input value={draft.reference_number} onChange={(e) => setDraft({ ...draft, reference_number: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Notes">
+              <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2} className={inputCls} />
+            </Field>
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Invoice allocations</p>
+              {loadingOutstanding && <p className="text-sm text-gray-500">Loading outstanding…</p>}
+              {!loadingOutstanding && allocs.length === 0 && <p className="text-sm text-gray-500">Select a customer to load invoices.</p>}
+              {allocs.length > 0 && (
+                <div className="border border-gray-200 rounded-md overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs text-gray-600">Invoice</th>
+                        <th className="px-3 py-2 text-left text-xs text-gray-600">Outstanding</th>
+                        <th className="px-3 py-2 text-left text-xs text-gray-600">Allocate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {allocs.map((a) => (
+                        <tr key={a.invoiceId}>
+                          <td className="px-3 py-2">{a.invoiceNumber}</td>
+                          <td className="px-3 py-2">{money(a.outstanding)}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={a.outstanding}
+                              step="0.01"
+                              value={a.allocated || ""}
+                              onChange={(e) =>
+                                setAllocs((prev) =>
+                                  prev.map((x) => (x.invoiceId === a.invoiceId ? { ...x, allocated: Number(e.target.value) || 0 } : x)),
+                                )
+                              }
+                              className={inputCls}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
 
-      {showDelete && toDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-            <div className="p-6 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="w-8 h-8 text-red-600" /></div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Payment</h3>
-              <p className="text-gray-500 mb-6">Delete payment <span className="font-semibold">{toDelete.referenceNumber || ""}</span> ({money(toDelete.amount)})? This action cannot be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={handleDelete} disabled={deleting} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 inline-flex items-center justify-center gap-2 disabled:opacity-50">{deleting && <Loader2 className="w-4 h-4 animate-spin" />}{deleting ? "Deleting…" : "Delete"}</button>
-                <button onClick={() => setShowDelete(false)} disabled={deleting} className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {deleteTarget && (
+        <DeleteConfirm what="payment" name={deleteTarget.number || deleteTarget.customerName} onConfirm={() => void confirmDelete()} onCancel={() => setDeleteTarget(null)} />
       )}
-    </div>
+    </>
   );
 };

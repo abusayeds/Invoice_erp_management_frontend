@@ -28,6 +28,7 @@ import { QuickScan } from "@/pages/documents/QuickScan";
 import { MyDocument } from "@/pages/documents/MyDocument";
 import { TimeLogs } from "@/pages/TimeLogs";
 import { Projects, ProjectDetail, ProjectBugs } from "@/pages/project/Projects";
+import { ProjectTasks } from "@/pages/project/ProjectTasks";
 import { ProjectReports, ProjectReportDetail } from "@/pages/project/ProjectReports";
 import { ProjectSystemSetup } from "@/pages/project/ProjectSystemSetup";
 import { Reports } from "@/pages/Reports";
@@ -361,6 +362,10 @@ export const route = createBrowserRouter([
           {
             path: "projects/:id",
             element: <ProjectDetail />,
+          },
+          {
+            path: "projects/:id/tasks",
+            element: <ProjectTasks />,
           },
           {
             path: "projects/:id/bugs",

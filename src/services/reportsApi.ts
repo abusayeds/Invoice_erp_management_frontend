@@ -312,21 +312,28 @@ export async function loadReportView(reportName: string, filters: ReportFilters 
       if (!data) {
         return unavailable(reportName, "No balance sheet found. Generate one under Double Entry → Balance Sheets.");
       }
+      // Supports both mapped FE view and raw backend envelope
+      const date = String(data.date || data.balance_sheet?.balance_sheet_date || data.balance_sheet_date || "—").slice(0, 10);
+      const year = String(data.year || data.balance_sheet?.financial_year || data.financial_year || "—");
+      const status = String(data.status || data.balance_sheet?.status || "—");
+      const assets = Number(data.summary?.assets ?? data.summary?.total_assets ?? data.total_assets) || 0;
+      const liabilities = Number(data.summary?.liabilities ?? data.summary?.total_liabilities ?? data.total_liabilities) || 0;
+      const equity = Number(data.summary?.equity ?? data.summary?.total_equity ?? data.total_equity) || 0;
       const cols: ReportCol[] = [{ label: "Field" }, { label: "Value", right: true }];
       const rows = [
-        ["Date", String(data.balance_sheet_date || "—").slice(0, 10)],
-        ["Financial year", String(data.financial_year || "—")],
-        ["Status", String(data.status || "—")],
-        ["Total assets", money(Number(data.total_assets) || 0)],
-        ["Total liabilities", money(Number(data.total_liabilities) || 0)],
-        ["Total equity", money(Number(data.total_equity) || 0)],
+        ["Date", date],
+        ["Financial year", year],
+        ["Status", status],
+        ["Total assets", money(assets)],
+        ["Total liabilities", money(liabilities)],
+        ["Total equity", money(equity)],
       ];
       return {
         name: reportName,
         cols,
         rows,
         totals: ["", ""],
-        meta: { asOf: String(data.balance_sheet_date || "").slice(0, 10) },
+        meta: { asOf: date },
         source: "backend",
       };
     }

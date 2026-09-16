@@ -1,775 +1,295 @@
 /**
- * File: src/pages/accounting/AccountsSystem.tsx
- * Accounting System Setup — Account Categories, Account Types, Revenue
- * Categories and Expense Categories.
- *
- * Endpoints (all under /account):
- *   Account Categories: GET account-categories/all, POST create, PATCH edit/:id, DELETE delete/:id
- *   Account Types:      GET account-types/all, POST create, PATCH edit/:id, DELETE delete/:id
- *   Revenue Categories: GET revenue-categories/all, POST create, PATCH edit/:id, DELETE delete/:id
- *   Expense Categories: GET expense-categories/all, POST create, PATCH edit/:id, DELETE delete/:id
- *
- * Account Types reference an account-category (category_id); Revenue/Expense
- * categories reference a GL account (gl_account_id) from the chart of accounts.
+ * Accounting System — categories / types / revenue & expense categories
  */
-
-import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
-import { api } from "../../lib/api/client";
-import { ApiError } from "../../lib/api/ApiError";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  Plus,
-  Edit,
-  Trash2,
-  X,
-  CheckCircle,
-  XCircle,
-  Tag,
-  DollarSign,
-  FolderOpen,
-  Layers,
-  Loader2,
-} from "lucide-react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface AccountCategory {
-  id: string;
-  name: string;
-  code: string;
-  type: string; // asset | liability | equity | revenue | expense
-  description: string;
-  isActive: boolean;
-}
-interface AccountType {
-  id: string;
-  categoryId: string;
-  name: string;
-  code: string;
-  normalBalance: string; // debit | credit
-  description: string;
-  isActive: boolean;
-}
-interface RevenueCategory {
-  id: string;
-  name: string;
-  code: string;
-  glAccountId: string;
-  description: string;
-  isActive: boolean;
-}
-interface ExpenseCategory {
-  id: string;
-  name: string;
-  code: string;
-  glAccountId: string;
-  description: string;
-  isActive: boolean;
-}
-interface Coa {
-  id: string;
-  name: string;
-  code: string;
-}
-
-const errMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError && err.message ? err.message : fallback;
-const refId = (v: { _id: string } | string | null | undefined): string =>
-  typeof v === "object" && v ? v._id : (v ?? "");
-
-const ACCOUNT_TYPE_KINDS = ["asset", "liability", "equity", "revenue", "expense"];
-const NORMAL_BALANCES = ["debit", "credit"];
-
-const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => (
-  <span
-    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
-  >
-    {active ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-    {active ? "Active" : "Inactive"}
-  </span>
-);
+  fetchAccountCategories,
+  createAccountCategory,
+  updateAccountCategory,
+  deleteAccountCategory,
+  fetchAccountTypes,
+  createAccountType,
+  updateAccountType,
+  deleteAccountType,
+  fetchRevenueCategories,
+  createRevenueCategory,
+  updateRevenueCategory,
+  deleteRevenueCategory,
+  fetchExpenseCategories,
+  createExpenseCategory,
+  updateExpenseCategory,
+  deleteExpenseCategory,
+  searchAccountCategories,
+  searchChartAccounts,
+  ACCOUNT_TYPE_KINDS,
+  NORMAL_BALANCES,
+} from "@/services/accountingApi";
+import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
+import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
+import { Edit, Trash2 } from "lucide-react";
 
 type Tab = "categories" | "types" | "revenue" | "expense";
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export const AccountingSystem: React.FC = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Tab>("categories");
-
-  const [accountCategories, setAccountCategories] = useState<AccountCategory[]>([]);
-  const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
-  const [revenueCategories, setRevenueCategories] = useState<RevenueCategory[]>([]);
-  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
-  const [coa, setCoa] = useState<Coa[]>([]);
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  // Which modal + editing id
-  const [modal, setModal] = useState<"" | Tab>("");
+  const qc = useQueryClient();
+  const [tab, setTab] = useState<Tab>("categories");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [perPage, setPerPage] = useState(10);
+  const [page, setPage] = useState(1);
+  const [modal, setModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [categoryForm, setCategoryForm] = useState({
-    name: "",
-    code: "",
-    type: "asset",
-    description: "",
-    is_active: true,
-  });
-  const [typeForm, setTypeForm] = useState({
-    category_id: "",
-    name: "",
-    code: "",
-    normal_balance: "debit",
-    description: "",
-    is_active: true,
-  });
-  const [revenueForm, setRevenueForm] = useState({
-    category_name: "",
-    category_code: "",
-    description: "",
-    gl_account_id: "",
-    is_active: true,
-  });
-  const [expenseForm, setExpenseForm] = useState({
-    category_name: "",
-    category_code: "",
-    description: "",
-    gl_account_id: "",
-    is_active: true,
-  });
-
-  // ─── Loaders ───────────────────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [cat, typ, rev, exp, coaRes] = await Promise.allSettled([
-        api.get<any[]>("/account/account-categories/all"),
-        api.get<any[]>("/account/account-types/all"),
-        api.get<any[]>("/account/revenue-categories/all"),
-        api.get<any[]>("/account/expense-categories/all"),
-        api.get<any[]>("/account/chart-of-accounts/all", {
-          params: { page: 1, limit: 1000 },
-        }),
-      ]);
-      if (cat.status === "fulfilled" && Array.isArray(cat.value))
-        setAccountCategories(
-          cat.value.map((c) => ({
-            id: c._id,
-            name: c.name ?? "",
-            code: c.code ?? "",
-            type: c.type ?? "",
-            description: c.description ?? "",
-            isActive: c.is_active ?? true,
-          })),
-        );
-      if (typ.status === "fulfilled" && Array.isArray(typ.value))
-        setAccountTypes(
-          typ.value.map((t) => ({
-            id: t._id,
-            categoryId: refId(t.category_id),
-            name: t.name ?? "",
-            code: t.code ?? "",
-            normalBalance: t.normal_balance ?? "",
-            description: t.description ?? "",
-            isActive: t.is_active ?? true,
-          })),
-        );
-      if (rev.status === "fulfilled" && Array.isArray(rev.value))
-        setRevenueCategories(
-          rev.value.map((r) => ({
-            id: r._id,
-            name: r.category_name ?? "",
-            code: r.category_code ?? "",
-            glAccountId: refId(r.gl_account_id),
-            description: r.description ?? "",
-            isActive: r.is_active ?? true,
-          })),
-        );
-      if (exp.status === "fulfilled" && Array.isArray(exp.value))
-        setExpenseCategories(
-          exp.value.map((e) => ({
-            id: e._id,
-            name: e.category_name ?? "",
-            code: e.category_code ?? "",
-            glAccountId: refId(e.gl_account_id),
-            description: e.description ?? "",
-            isActive: e.is_active ?? true,
-          })),
-        );
-      if (coaRes.status === "fulfilled" && Array.isArray(coaRes.value))
-        setCoa(
-          coaRes.value.map((a) => ({
-            id: a._id,
-            name: a.account_name ?? "",
-            code: a.account_code ?? "",
-          })),
-        );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [draft, setDraft] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
 
-  const categoryNameById = (id: string) =>
-    accountCategories.find((c) => c.id === id)?.name || id || "—";
-  const coaLabel = (id: string) => {
-    const a = coa.find((x) => x.id === id);
-    return a ? `${a.code} · ${a.name}` : id || "—";
-  };
+  useEffect(() => {
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
+  }, [tab]);
 
-  // ─── Open modals ───────────────────────────────────────────────────────────
-  const openCategory = (item?: AccountCategory) => {
-    setEditingId(item?.id ?? null);
-    setCategoryForm(
-      item
-        ? { name: item.name, code: item.code, type: item.type || "asset", description: item.description, is_active: item.isActive }
-        : { name: "", code: "", type: "asset", description: "", is_active: true },
-    );
-    setModal("categories");
-  };
-  const openType = (item?: AccountType) => {
-    setEditingId(item?.id ?? null);
-    setTypeForm(
-      item
-        ? { category_id: item.categoryId, name: item.name, code: item.code, normal_balance: item.normalBalance || "debit", description: item.description, is_active: item.isActive }
-        : { category_id: "", name: "", code: "", normal_balance: "debit", description: "", is_active: true },
-    );
-    setModal("types");
-  };
-  const openRevenue = (item?: RevenueCategory) => {
-    setEditingId(item?.id ?? null);
-    setRevenueForm(
-      item
-        ? { category_name: item.name, category_code: item.code, description: item.description, gl_account_id: item.glAccountId, is_active: item.isActive }
-        : { category_name: "", category_code: "", description: "", gl_account_id: "", is_active: true },
-    );
-    setModal("revenue");
-  };
-  const openExpense = (item?: ExpenseCategory) => {
-    setEditingId(item?.id ?? null);
-    setExpenseForm(
-      item
-        ? { category_name: item.name, category_code: item.code, description: item.description, gl_account_id: item.glAccountId, is_active: item.isActive }
-        : { category_name: "", category_code: "", description: "", gl_account_id: "", is_active: true },
-    );
-    setModal("expense");
+  const listParams = {
+    page,
+    limit: perPage,
+    searchTerm: search || undefined,
+    sort: buildListSortParam(tab === "revenue" || tab === "expense" ? "category_name" : "name", "Ascending"),
   };
 
-  // ─── Generic save / delete ─────────────────────────────────────────────────
-  const save = async (base: string, payload: object, validate: () => string | null) => {
-    const msg = validate();
-    if (msg) return showToast(msg, "info");
-    setSaving(true);
+  const { data, isLoading } = useQuery({
+    queryKey: ["account-system", tab, page, perPage, search],
+    queryFn: () => {
+      if (tab === "categories") return fetchAccountCategories(listParams);
+      if (tab === "types") return fetchAccountTypes(listParams);
+      if (tab === "revenue") return fetchRevenueCategories(listParams);
+      return fetchExpenseCategories(listParams);
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  const rows = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["account-system"] });
+
+  const titles: Record<Tab, string> = {
+    categories: "Account Categories",
+    types: "Account Types",
+    revenue: "Revenue Categories",
+    expense: "Expense Categories",
+  };
+
+  const openCreate = () => {
+    setEditingId(null);
+    if (tab === "categories") setDraft({ name: "", code: "", type: "asset", description: "", is_active: true });
+    else if (tab === "types") setDraft({ name: "", code: "", category_id: "", category_name: "", normal_balance: "debit", description: "", is_active: true });
+    else setDraft({ category_name: "", category_code: "", gl_account_id: "", gl_account_name: "", description: "", is_active: true });
+    setModal(true);
+  };
+
+  const submit = async () => {
     try {
-      if (editingId) await api.patch(`/account/${base}/edit/${editingId}`, payload);
-      else await api.post(`/account/${base}/create`, payload);
-      showToast(`${editingId ? "Updated" : "Created"} successfully!`, "success");
-      setModal("");
-      await loadAll();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't save."), "error");
-    } finally {
-      setSaving(false);
+      if (tab === "categories") {
+        if (!draft.name?.trim() || !draft.code?.trim()) return showToast("Name and code required", "error");
+        const body = { name: draft.name.trim(), code: draft.code.trim(), type: draft.type, description: draft.description || undefined, is_active: draft.is_active };
+        if (editingId) await updateAccountCategory(editingId, body);
+        else await createAccountCategory(body);
+      } else if (tab === "types") {
+        if (!draft.name?.trim() || !draft.code?.trim() || !draft.category_id) return showToast("Name, code and category required", "error");
+        const body = { name: draft.name.trim(), code: draft.code.trim(), category_id: draft.category_id, normal_balance: draft.normal_balance, description: draft.description || undefined, is_active: draft.is_active };
+        if (editingId) await updateAccountType(editingId, body);
+        else await createAccountType(body);
+      } else {
+        if (!draft.category_name?.trim() || !draft.category_code?.trim()) return showToast("Name and code required", "error");
+        const body = { category_name: draft.category_name.trim(), category_code: draft.category_code.trim(), gl_account_id: draft.gl_account_id || undefined, description: draft.description || undefined, is_active: draft.is_active };
+        if (tab === "revenue") {
+          if (editingId) await updateRevenueCategory(editingId, body);
+          else await createRevenueCategory(body);
+        } else {
+          if (editingId) await updateExpenseCategory(editingId, body);
+          else await createExpenseCategory(body);
+        }
+      }
+      showToast(editingId ? "Updated" : "Created", "success");
+      setModal(false);
+      await invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
     }
   };
 
-  const remove = async (base: string, id: string, label: string) => {
-    if (!confirm(`Are you sure you want to delete this ${label}?`)) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/account/${base}/delete/${id}`);
-      showToast(`${label} deleted successfully!`, "success");
-      await loadAll();
-    } catch (err) {
-      showToast(errMessage(err, "Couldn't delete."), "error");
+      if (tab === "categories") await deleteAccountCategory(deleteTarget.id);
+      else if (tab === "types") await deleteAccountType(deleteTarget.id);
+      else if (tab === "revenue") await deleteRevenueCategory(deleteTarget.id);
+      else await deleteExpenseCategory(deleteTarget.id);
+      showToast("Deleted", "success");
+      setDeleteTarget(null);
+      await invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
     }
   };
 
-  // ─── Reusable table shell ──────────────────────────────────────────────────
-  const TableCard: React.FC<{
-    title: string;
-    onCreate: () => void;
-    headers: string[];
-    children: React.ReactNode;
-    colSpan: number;
-    rows: number;
-  }> = ({ title, onCreate, headers, children, colSpan, rows }) => (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-        <h3 className="font-semibold text-gray-900">{title}</h3>
-        <button
-          onClick={onCreate}
-          className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+  return (
+    <>
+      <ListShell
+        module="Accounting"
+        current="System"
+        title={titles[tab]}
+        onCreate={openCreate}
+        search={searchInput}
+        setSearch={setSearchInput}
+        searchPlaceholder={`Search ${titles[tab].toLowerCase()}…`}
+        perPage={perPage}
+        setPerPage={setPerPage}
+        page={page}
+        setPage={setPage}
+        total={total}
+      >
+        <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white flex gap-2 flex-wrap">
+          {([
+            ["categories", "Account Categories"],
+            ["types", "Account Types"],
+            ["revenue", "Revenue Categories"],
+            ["expense", "Expense Categories"],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`px-3 py-1.5 text-sm rounded-md border ${tab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <table className="w-full text-sm min-w-[800px]">
+          <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
             <tr>
-              {headers.map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">
-                  {h}
-                </th>
+              {(tab === "types"
+                ? ["Name", "Code", "Category", "Normal", "Status", "Actions"]
+                : tab === "categories"
+                  ? ["Name", "Code", "Type", "Status", "Actions"]
+                  : ["Name", "Code", "GL Account", "Status", "Actions"]
+              ).map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr>
-                <td colSpan={colSpan} className="px-4 py-12">
-                  <div className="flex items-center justify-center gap-2 text-gray-500">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span className="text-sm">Loading…</span>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {rows.map((r: any) => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3.5 font-medium text-gray-900">{r.name}</td>
+                <td className="px-4 py-3.5 text-gray-600">{r.code}</td>
+                {tab === "categories" && <td className="px-4 py-3.5 text-gray-600 capitalize">{r.type || "—"}</td>}
+                {tab === "types" && (
+                  <>
+                    <td className="px-4 py-3.5 text-gray-600">{r.categoryName || "—"}</td>
+                    <td className="px-4 py-3.5 text-gray-600 capitalize">{r.normalBalance}</td>
+                  </>
+                )}
+                {(tab === "revenue" || tab === "expense") && (
+                  <td className="px-4 py-3.5 text-gray-600">{r.glAccountName || "—"}</td>
+                )}
+                <td className="px-4 py-3.5">
+                  {chip(r.isActive ? "Active" : "Inactive", r.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}
+                </td>
+                <td className="px-4 py-3.5">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(r.id);
+                        if (tab === "categories") setDraft({ name: r.name, code: r.code, type: r.type || "asset", description: r.description, is_active: r.isActive });
+                        else if (tab === "types") setDraft({ name: r.name, code: r.code, category_id: r.categoryId, category_name: r.categoryName, normal_balance: r.normalBalance || "debit", description: r.description, is_active: r.isActive });
+                        else setDraft({ category_name: r.name, category_code: r.code, gl_account_id: r.glAccountId, gl_account_name: r.glAccountName, description: r.description, is_active: r.isActive });
+                        setModal(true);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => setDeleteTarget({ id: r.id, name: r.name })} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </td>
               </tr>
-            ) : rows === 0 ? (
-              <tr>
-                <td colSpan={colSpan} className="px-4 py-12 text-center text-gray-500">
-                  No records found.
-                </td>
-              </tr>
-            ) : (
-              children
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">No records found.</td></tr>
+            )}
+            {isLoading && (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">Loading…</td></tr>
             )}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
+      </ListShell>
 
-  const RowActions: React.FC<{ onEdit: () => void; onDelete: () => void }> = ({ onEdit, onDelete }) => (
-    <div className="flex items-center gap-2">
-      <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600">
-        <Edit className="w-4 h-4" />
-      </button>
-      <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-600">
-        <Trash2 className="w-4 h-4" />
-      </button>
-    </div>
-  );
-
-  const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: "categories", label: "Account Categories", icon: Layers },
-    { key: "types", label: "Account Types", icon: FolderOpen },
-    { key: "revenue", label: "Revenue Categories", icon: DollarSign },
-    { key: "expense", label: "Expense Categories", icon: Tag },
-  ];
-
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  return (
-    <div className="module-page-shell overflow-auto">
-      {/* Breadcrumb */}
-      <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 sticky top-0 z-10">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <button onClick={() => navigate("/")} className="hover:text-gray-700">
-            Dashboard
-          </button>
-          <span>›</span>
-          <span className="text-gray-900 font-medium">Accounting · System Setup</span>
-        </div>
-      </div>
-
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="dashboard-title-bar -mx-4 md:-mx-6 mb-6 flex-col items-start">
-            <h1 className="text-2xl font-semibold text-gray-900">System Setup</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Account categories, types and revenue / expense categories
-            </p>
+      {modal && (
+        <ModalShell title={`${editingId ? "Edit" : "Create"} ${titles[tab].slice(0, -1)}`} onClose={() => setModal(false)} onSubmit={submit} submitLabel={editingId ? "Update" : "Create"}>
+          <div className="space-y-4">
+            {tab === "categories" && (
+              <>
+                <Field label="Name" required><input value={draft.name || ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={inputCls} /></Field>
+                <Field label="Code" required><input value={draft.code || ""} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={inputCls} /></Field>
+                <Field label="Type">
+                  <select value={draft.type || "asset"} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={selectCls}>
+                    {ACCOUNT_TYPE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                </Field>
+              </>
+            )}
+            {tab === "types" && (
+              <>
+                <Field label="Name" required><input value={draft.name || ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={inputCls} /></Field>
+                <Field label="Code" required><input value={draft.code || ""} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={inputCls} /></Field>
+                <Field label="Category" required>
+                  <AsyncSearchSelect value={draft.category_id || ""} displayName={draft.category_name} onChange={(id, opt) => setDraft({ ...draft, category_id: id, category_name: opt?.name || "" })} onSearch={searchAccountCategories} placeholder="Search categories…" />
+                </Field>
+                <Field label="Normal Balance">
+                  <select value={draft.normal_balance || "debit"} onChange={(e) => setDraft({ ...draft, normal_balance: e.target.value })} className={selectCls}>
+                    {NORMAL_BALANCES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+              </>
+            )}
+            {(tab === "revenue" || tab === "expense") && (
+              <>
+                <Field label="Name" required><input value={draft.category_name || ""} onChange={(e) => setDraft({ ...draft, category_name: e.target.value })} className={inputCls} /></Field>
+                <Field label="Code" required><input value={draft.category_code || ""} onChange={(e) => setDraft({ ...draft, category_code: e.target.value })} className={inputCls} /></Field>
+                <Field label="GL Account">
+                  <AsyncSearchSelect value={draft.gl_account_id || ""} displayName={draft.gl_account_name} onChange={(id, opt) => setDraft({ ...draft, gl_account_id: id, gl_account_name: opt?.name || "" })} onSearch={searchChartAccounts} placeholder="Search chart of accounts…" />
+                </Field>
+              </>
+            )}
+            <Field label="Description"><textarea value={draft.description || ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} rows={2} className={inputCls} /></Field>
+            <Field label="Status">
+              <select value={draft.is_active ? "1" : "0"} onChange={(e) => setDraft({ ...draft, is_active: e.target.value === "1" })} className={selectCls}>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </Field>
           </div>
-
-          {/* Tabs */}
-          <div className="bg-white border-b border-gray-200 px-4 sm:px-6 rounded-t-lg">
-            <div className="flex gap-6 overflow-x-auto">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                    activeTab === t.key
-                      ? "border-blue-600 text-blue-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  <t.icon className="w-4 h-4 inline mr-2" />
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="mt-6">
-            {activeTab === "categories" && (
-              <TableCard
-                title="Account Categories"
-                onCreate={() => openCategory()}
-                headers={["Name", "Code", "Type", "Description", "Active", "Action"]}
-                colSpan={6}
-                rows={accountCategories.length}
-              >
-                {accountCategories.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{item.code}</td>
-                    <td className="px-4 py-3 text-gray-600 capitalize">{item.type || "—"}</td>
-                    <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{item.description || "—"}</td>
-                    <td className="px-4 py-3"><StatusBadge active={item.isActive} /></td>
-                    <td className="px-4 py-3">
-                      <RowActions
-                        onEdit={() => openCategory(item)}
-                        onDelete={() => remove("account-categories", item.id, "account category")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </TableCard>
-            )}
-
-            {activeTab === "types" && (
-              <TableCard
-                title="Account Types"
-                onCreate={() => openType()}
-                headers={["Name", "Code", "Normal Balance", "Category", "Active", "Action"]}
-                colSpan={6}
-                rows={accountTypes.length}
-              >
-                {accountTypes.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{item.code}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium capitalize ${item.normalBalance === "debit" ? "text-blue-600" : "text-green-600"}`}>
-                        {item.normalBalance || "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{categoryNameById(item.categoryId)}</td>
-                    <td className="px-4 py-3"><StatusBadge active={item.isActive} /></td>
-                    <td className="px-4 py-3">
-                      <RowActions
-                        onEdit={() => openType(item)}
-                        onDelete={() => remove("account-types", item.id, "account type")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </TableCard>
-            )}
-
-            {activeTab === "revenue" && (
-              <TableCard
-                title="Revenue Categories"
-                onCreate={() => openRevenue()}
-                headers={["Name", "Code", "GL Account", "Description", "Active", "Action"]}
-                colSpan={6}
-                rows={revenueCategories.length}
-              >
-                {revenueCategories.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{item.code}</td>
-                    <td className="px-4 py-3 text-gray-600">{coaLabel(item.glAccountId)}</td>
-                    <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{item.description || "—"}</td>
-                    <td className="px-4 py-3"><StatusBadge active={item.isActive} /></td>
-                    <td className="px-4 py-3">
-                      <RowActions
-                        onEdit={() => openRevenue(item)}
-                        onDelete={() => remove("revenue-categories", item.id, "revenue category")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </TableCard>
-            )}
-
-            {activeTab === "expense" && (
-              <TableCard
-                title="Expense Categories"
-                onCreate={() => openExpense()}
-                headers={["Name", "Code", "GL Account", "Description", "Active", "Action"]}
-                colSpan={6}
-                rows={expenseCategories.length}
-              >
-                {expenseCategories.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{item.code}</td>
-                    <td className="px-4 py-3 text-gray-600">{coaLabel(item.glAccountId)}</td>
-                    <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{item.description || "—"}</td>
-                    <td className="px-4 py-3"><StatusBadge active={item.isActive} /></td>
-                    <td className="px-4 py-3">
-                      <RowActions
-                        onEdit={() => openExpense(item)}
-                        onDelete={() => remove("expense-categories", item.id, "expense category")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </TableCard>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Account Category Modal ── */}
-      {modal === "categories" && (
-        <ModalShell
-          title={`${editingId ? "Edit" : "Create"} Account Category`}
-          onClose={() => setModal("")}
-          onSave={() =>
-            save(
-              "account-categories",
-              {
-                name: categoryForm.name.trim(),
-                code: categoryForm.code.trim(),
-                type: categoryForm.type,
-                description: categoryForm.description,
-                is_active: categoryForm.is_active,
-              },
-              () =>
-                !categoryForm.name.trim()
-                  ? "Please enter a name"
-                  : !categoryForm.code.trim()
-                    ? "Please enter a code"
-                    : null,
-            )
-          }
-          saving={saving}
-          editing={!!editingId}
-        >
-          <Field label="Name *">
-            <input className={inputCls} value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} />
-          </Field>
-          <Field label="Code *">
-            <input className={inputCls} value={categoryForm.code} onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })} />
-          </Field>
-          <Field label="Type">
-            <select className={inputCls} value={categoryForm.type} onChange={(e) => setCategoryForm({ ...categoryForm, type: e.target.value })}>
-              {ACCOUNT_TYPE_KINDS.map((t) => (
-                <option key={t} value={t} className="capitalize">{t}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Description">
-            <textarea className={inputCls} rows={2} value={categoryForm.description} onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })} />
-          </Field>
-          <ActiveCheck checked={categoryForm.is_active} onChange={(v) => setCategoryForm({ ...categoryForm, is_active: v })} />
         </ModalShell>
       )}
 
-      {/* ── Account Type Modal ── */}
-      {modal === "types" && (
-        <ModalShell
-          title={`${editingId ? "Edit" : "Create"} Account Type`}
-          onClose={() => setModal("")}
-          onSave={() =>
-            save(
-              "account-types",
-              {
-                category_id: typeForm.category_id,
-                name: typeForm.name.trim(),
-                code: typeForm.code.trim(),
-                normal_balance: typeForm.normal_balance,
-                description: typeForm.description,
-                is_active: typeForm.is_active,
-              },
-              () =>
-                !typeForm.name.trim()
-                  ? "Please enter a name"
-                  : !typeForm.code.trim()
-                    ? "Please enter a code"
-                    : !typeForm.category_id
-                      ? "Please select a category"
-                      : null,
-            )
-          }
-          saving={saving}
-          editing={!!editingId}
-        >
-          <Field label="Category *">
-            <select className={inputCls} value={typeForm.category_id} onChange={(e) => setTypeForm({ ...typeForm, category_id: e.target.value })}>
-              <option value="">Select Category</option>
-              {accountCategories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Name *">
-            <input className={inputCls} value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} />
-          </Field>
-          <Field label="Code *">
-            <input className={inputCls} value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} />
-          </Field>
-          <Field label="Normal Balance">
-            <select className={inputCls} value={typeForm.normal_balance} onChange={(e) => setTypeForm({ ...typeForm, normal_balance: e.target.value })}>
-              {NORMAL_BALANCES.map((b) => (
-                <option key={b} value={b} className="capitalize">{b}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Description">
-            <textarea className={inputCls} rows={2} value={typeForm.description} onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })} />
-          </Field>
-          <ActiveCheck checked={typeForm.is_active} onChange={(v) => setTypeForm({ ...typeForm, is_active: v })} />
-        </ModalShell>
+      {deleteTarget && (
+        <DeleteConfirm what="record" name={deleteTarget.name} onConfirm={() => void confirmDelete()} onCancel={() => setDeleteTarget(null)} />
       )}
-
-      {/* ── Revenue Category Modal ── */}
-      {modal === "revenue" && (
-        <ModalShell
-          title={`${editingId ? "Edit" : "Create"} Revenue Category`}
-          onClose={() => setModal("")}
-          onSave={() =>
-            save(
-              "revenue-categories",
-              {
-                category_name: revenueForm.category_name.trim(),
-                category_code: revenueForm.category_code.trim(),
-                description: revenueForm.description,
-                gl_account_id: revenueForm.gl_account_id || undefined,
-                is_active: revenueForm.is_active,
-              },
-              () =>
-                !revenueForm.category_name.trim()
-                  ? "Please enter a category name"
-                  : !revenueForm.category_code.trim()
-                    ? "Please enter a category code"
-                    : null,
-            )
-          }
-          saving={saving}
-          editing={!!editingId}
-        >
-          <Field label="Category Name *">
-            <input className={inputCls} value={revenueForm.category_name} onChange={(e) => setRevenueForm({ ...revenueForm, category_name: e.target.value })} />
-          </Field>
-          <Field label="Category Code *">
-            <input className={inputCls} value={revenueForm.category_code} onChange={(e) => setRevenueForm({ ...revenueForm, category_code: e.target.value })} />
-          </Field>
-          <Field label="GL Account">
-            <select className={inputCls} value={revenueForm.gl_account_id} onChange={(e) => setRevenueForm({ ...revenueForm, gl_account_id: e.target.value })}>
-              <option value="">Select GL Account</option>
-              {coa.map((a) => (
-                <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Description">
-            <textarea className={inputCls} rows={2} value={revenueForm.description} onChange={(e) => setRevenueForm({ ...revenueForm, description: e.target.value })} />
-          </Field>
-          <ActiveCheck checked={revenueForm.is_active} onChange={(v) => setRevenueForm({ ...revenueForm, is_active: v })} />
-        </ModalShell>
-      )}
-
-      {/* ── Expense Category Modal ── */}
-      {modal === "expense" && (
-        <ModalShell
-          title={`${editingId ? "Edit" : "Create"} Expense Category`}
-          onClose={() => setModal("")}
-          onSave={() =>
-            save(
-              "expense-categories",
-              {
-                category_name: expenseForm.category_name.trim(),
-                category_code: expenseForm.category_code.trim(),
-                description: expenseForm.description,
-                gl_account_id: expenseForm.gl_account_id || undefined,
-                is_active: expenseForm.is_active,
-              },
-              () =>
-                !expenseForm.category_name.trim()
-                  ? "Please enter a category name"
-                  : !expenseForm.category_code.trim()
-                    ? "Please enter a category code"
-                    : null,
-            )
-          }
-          saving={saving}
-          editing={!!editingId}
-        >
-          <Field label="Category Name *">
-            <input className={inputCls} value={expenseForm.category_name} onChange={(e) => setExpenseForm({ ...expenseForm, category_name: e.target.value })} />
-          </Field>
-          <Field label="Category Code *">
-            <input className={inputCls} value={expenseForm.category_code} onChange={(e) => setExpenseForm({ ...expenseForm, category_code: e.target.value })} />
-          </Field>
-          <Field label="GL Account">
-            <select className={inputCls} value={expenseForm.gl_account_id} onChange={(e) => setExpenseForm({ ...expenseForm, gl_account_id: e.target.value })}>
-              <option value="">Select GL Account</option>
-              {coa.map((a) => (
-                <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Description">
-            <textarea className={inputCls} rows={2} value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
-          </Field>
-          <ActiveCheck checked={expenseForm.is_active} onChange={(v) => setExpenseForm({ ...expenseForm, is_active: v })} />
-        </ModalShell>
-      )}
-    </div>
+    </>
   );
 };
-
-// ─── Small shared UI bits ──────────────────────────────────────────────────────
-
-const inputCls =
-  "w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white resize-y";
-
-const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    {children}
-  </div>
-);
-
-const ActiveCheck: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
-  <label className="flex items-center gap-2 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={(e) => onChange(e.target.checked)}
-      className="w-4 h-4 text-blue-600 rounded border-gray-300"
-    />
-    <span className="text-sm text-gray-700">Is Active</span>
-  </label>
-);
-
-const ModalShell: React.FC<{
-  title: string;
-  onClose: () => void;
-  onSave: () => void;
-  saving: boolean;
-  editing: boolean;
-  children: React.ReactNode;
-}> = ({ title, onClose, onSave, saving, editing, children }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-    <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center justify-between p-4 border-b border-gray-100">
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-          <X className="w-5 h-5 text-gray-500" />
-        </button>
-      </div>
-      <div className="p-6 space-y-4">{children}</div>
-      <div className="flex justify-end gap-3 p-4 border-t border-gray-100">
-        <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-          Cancel
-        </button>
-        <button onClick={onSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-flex items-center gap-2 disabled:opacity-50">
-          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-          {editing ? "Update" : "Create"}
-        </button>
-      </div>
-    </div>
-  </div>
-);

@@ -288,8 +288,8 @@ textarea.ua-field.keep-box {
   box-shadow: 0 0 0 1px var(--themeColor) !important;
 }
 .ua-field.keep-box option {
-  background-color: var(--surface);
-  color: var(--color-base-900);
+  background-color: var(--surface) !important;
+  color: var(--color-base-900) !important;
 }
 
 /* Native <select> must stay boxed app-wide (CRM/HRM). Debox + dark
@@ -305,6 +305,7 @@ select:not(.rounded-full, table select):focus {
   border-color: var(--themeColor) !important;
   box-shadow: 0 0 0 1px var(--themeColor) !important;
 }
+/* Options follow theme surfaces — do not force white. */
 select option,
 select optgroup {
   background-color: var(--surface) !important;

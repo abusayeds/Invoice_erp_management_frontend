@@ -1,14 +1,10 @@
 /**
- * File: src/pages/doubleEntry/deShared.tsx
- * Shared bits for the Double Entry pages — summary amount cards, labeled
- * date inputs, report header shell and a jsPDF+autotable download helper —
- * matching references/double entry/* in the Qayd blue theme.
+ * Shared bits for Double Entry pages — summary cards, date fields, report
+ * title, PDF helper. Inputs use keep-box ua-field (no forced white).
  */
 
 import React from "react";
 import { FileText } from "lucide-react";
-
-/* ── summary cards (Total Debit / Total Assets / Net Loss …) ───── */
 
 const TONES = {
   green: "text-green-700",
@@ -27,23 +23,17 @@ export function SummaryCard({ label, value, tone }: { label: string; value: stri
   );
 }
 
-/* ── labeled date input ────────────────────────────────────────── */
+export const deFieldCls =
+  "keep-box ua-field px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
 
 export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
-      />
+      <input type="date" value={value} onChange={(e) => onChange(e.target.value)} className={deFieldCls} />
     </div>
   );
 }
-
-/* ── report title block (doc icon + title + subtitle) ──────────── */
 
 export function ReportTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -58,8 +48,6 @@ export function ReportTitle({ title, subtitle }: { title: string; subtitle: stri
     </div>
   );
 }
-
-/* ── PDF download (jsPDF + autotable, dynamic import) ──────────── */
 
 export async function downloadTablePdf(
   filename: string,
@@ -87,9 +75,13 @@ export async function downloadTablePdf(
   doc.save(filename);
 }
 
-/** "2026-07-07" → "Jul 7, 2026" */
 export const prettyDate = (iso: string) => {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+export const yearDefaults = () => {
+  const y = new Date().getFullYear();
+  return { from: `${y}-01-01`, to: `${y}-12-31` };
 };

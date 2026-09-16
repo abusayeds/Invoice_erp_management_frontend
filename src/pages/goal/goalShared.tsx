@@ -5,11 +5,26 @@
  * toolbar + pagination footer + delete-confirm modal, in the Qayd blue theme.
  */
 
-import React, { useState } from "react";
+import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { showToast } from "../../utils/toast";
-import { HrmBreadcrumb } from "../hrm/hrmShared";
-import { Search, Plus, Filter, ChevronDown, Trash2, List, LayoutGrid } from "lucide-react";
+import { HrmBreadcrumb, selectCls } from "../hrm/hrmShared";
+import { Search, Plus, Trash2, List, LayoutGrid } from "lucide-react";
+
+function compactPageList(current: number, totalPages: number): (number | "…")[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const set = new Set<number>([1, totalPages, current]);
+  for (let d = -2; d <= 2; d++) {
+    const p = current + d;
+    if (p >= 1 && p <= totalPages) set.add(p);
+  }
+  const sorted = [...set].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
+    out.push(sorted[i]);
+  }
+  return out;
+}
 
 export function ListShell({
   module,
@@ -53,52 +68,47 @@ export function ListShell({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
-  const [showFilters, setShowFilters] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const pageItems = useMemo(() => compactPageList(page, totalPages), [page, totalPages]);
 
   return (
     <div className="module-page-shell flex flex-col overflow-hidden p-0">
       <HrmBreadcrumb trail={[{ label: "Dashboard", to: "/" }, { label: module }]} current={current} onNavigate={navigate} />
 
-      <div className="module-title-bar px-4 sm:px-6">
-        <div className="flex items-center justify-between">
+      <div className="module-title-bar px-4 sm:px-6 pr-6 sm:pr-10">
+        <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           {onCreate && (
-            <button onClick={onCreate} title={`Create ${current.toLowerCase()}`} className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm">
+            <button onClick={onCreate} title={`Create ${current.toLowerCase()}`} className="w-9 h-9 flex-shrink-0 mr-2 sm:mr-4 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm">
               <Plus className="w-5 h-5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* toolbar */}
+      {/* toolbar — single row */}
       <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder={searchPlaceholder}
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full sm:w-80 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md"
-              />
-            </div>
-            <button onClick={() => showToast("Search applied", "info")} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">
-              Search
-            </button>
+        <div className="flex items-center gap-2 flex-nowrap">
+          <div className="relative flex-shrink-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-56 sm:w-72 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md"
+            />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
             {view && setView && (
               <div className="flex border border-gray-300 rounded-md overflow-hidden">
-                <button onClick={() => setView("list")} title="List view" className={`px-2.5 py-1.5 ${view === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                <button type="button" onClick={() => setView("list")} title="List view" className={`px-2.5 py-1.5 ${view === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
                   <List className="w-4 h-4" />
                 </button>
-                <button onClick={() => setView("grid")} title="Grid view" className={`px-2.5 py-1.5 border-l border-gray-300 ${view === "grid" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                <button type="button" onClick={() => setView("grid")} title="Grid view" className={`px-2.5 py-1.5 border-l border-gray-300 ${view === "grid" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
                   <LayoutGrid className="w-4 h-4" />
                 </button>
               </div>
@@ -109,38 +119,29 @@ export function ListShell({
                 setPerPage(Number(e.target.value));
                 setPage(1);
               }}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
+              className={`${selectCls} px-3 py-1.5 text-sm`}
             >
               <option value={5}>5 per page</option>
               <option value={10}>10 per page</option>
               <option value={25}>25 per page</option>
             </select>
             {filterOptions && setFilterValue && (
-              <div className="relative">
-                <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50">
-                  <Filter className="w-4 h-4 text-gray-500" />
-                  <span>Filters</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-                </button>
-                {showFilters && (
-                  <div className="absolute right-0 top-10 w-52 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50 max-h-72 overflow-y-auto">
-                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 border-b border-gray-100">{filterLabel}</div>
-                    {["All", ...filterOptions].map((o) => (
-                      <button
-                        key={o}
-                        onClick={() => {
-                          setFilterValue(o);
-                          setPage(1);
-                          setShowFilters(false);
-                        }}
-                        className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${filterValue === o ? "text-blue-600 font-medium" : "text-gray-700"}`}
-                      >
-                        {o}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <select
+                value={filterValue || "All"}
+                onChange={(e) => {
+                  setFilterValue(e.target.value);
+                  setPage(1);
+                }}
+                className={`${selectCls} px-3 py-1.5 text-sm min-w-[8.5rem]`}
+                title={filterLabel}
+              >
+                <option value="All">All {filterLabel}</option>
+                {filterOptions.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </div>
@@ -158,11 +159,17 @@ export function ListShell({
           <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50">
             ‹ Previous
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-md ${p === page ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50 border border-gray-300"}`}>
-              {p}
-            </button>
-          ))}
+          {pageItems.map((p, i) =>
+            p === "…" ? (
+              <span key={`e-${i}`} className="px-1 text-gray-400">
+                …
+              </span>
+            ) : (
+              <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-md ${p === page ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50 border border-gray-300"}`}>
+                {p}
+              </button>
+            ),
+          )}
           <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-600 disabled:opacity-40 hover:bg-gray-50">
             Next ›
           </button>

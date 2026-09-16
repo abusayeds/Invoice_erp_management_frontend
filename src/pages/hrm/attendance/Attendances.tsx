@@ -377,7 +377,7 @@ export const Attendances: React.FC = () => {
               <select
                 value={employeeFilter}
                 onChange={(e) => setEmployeeFilter(e.target.value)}
-                className={`keep-box ua-field ${inputCls} bg-white`}
+                className={`keep-box ua-field ${inputCls}`}
               >
                 <option value="">All Employees</option>
                 {empOptions.map((e) => (
@@ -389,7 +389,7 @@ export const Attendances: React.FC = () => {
             </div>
             <div className="w-full sm:w-44">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Month</label>
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={`${inputCls} bg-white`}>
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={`keep-box ua-field ${inputCls}`}>
                 {MONTHS.map((m, i) => (
                   <option key={m} value={i + 1}>
                     {m}
@@ -399,7 +399,7 @@ export const Attendances: React.FC = () => {
             </div>
             <div className="w-full sm:w-36">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Year</label>
-              <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={`${inputCls} bg-white`}>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={`keep-box ua-field ${inputCls}`}>
                 {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -631,12 +631,14 @@ export const Attendances: React.FC = () => {
                 <select
                   value={draft.status}
                   onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-                  className={`keep-box ua-field ${inputCls} bg-white`}
+                  className={`keep-box ua-field ${inputCls}`}
                 >
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
-                  <option value="half">Half Day</option>
+                  <option value="half day">Half Day</option>
                   <option value="leave">On Leave</option>
+                  <option value="off day">Off Day</option>
+                  <option value="pending">Pending</option>
                 </select>
               </Field>
               <Field label="Notes" className="md:col-span-2">

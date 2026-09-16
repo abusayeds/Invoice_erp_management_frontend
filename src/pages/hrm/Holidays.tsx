@@ -342,7 +342,7 @@ export const Holidays: React.FC = () => {
                 <input type="date" value={draft.end} onChange={(e) => setDraft({ ...draft, end: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Holiday Type" required>
-                <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
+                <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`keep-box ua-field ${inputCls}`}>
                   <option value="">Select Holiday Type</option>
                   {typeNames.map((t) => (
                     <option key={t}>{t}</option>

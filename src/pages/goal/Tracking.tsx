@@ -1,25 +1,37 @@
 /**
- * File: src/pages/goal/Tracking.tsx
- * Manage Tracking — matches references/goal/tracking/*.png in the Qayd blue
- * theme. Persists in meta row `goal:tracking`.
+ * Manage Tracking — server-backed via /api/v1/goal/tracking.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
 import { money } from "@/lib/db";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  goalTrackingStore,
-  goalStore,
-  goalUid,
-  type GoalTracking,
-} from "@/lib/db/goal";
-import { Field, inputCls, SearchSelect } from "../hrm/hrmShared";
+  fetchTracking,
+  createTracking,
+  updateTracking,
+  deleteTracking,
+  searchGoals,
+  type TrackingRow,
+} from "@/services/goalApi";
+import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Eye, Edit, Trash2, X } from "lucide-react";
+
+const TRACK_FILTER_BE: Record<string, string> = {
+  "On track": "on_track",
+  Behind: "behind",
+  Ahead: "ahead",
+  Critical: "critical",
+};
+
+const TRACK_STATUSES = ["On track", "Behind", "Ahead", "Critical"] as const;
 
 const emptyDraft = () => ({
   id: "",
   goal: "",
+  goalId: "",
   date: "",
   previousAmount: 0,
   contribution: 0,
@@ -27,13 +39,13 @@ const emptyDraft = () => ({
   progress: 0,
   daysLeft: 0,
   projectedDate: "",
-  status: "On track" as GoalTracking["status"],
+  status: "On track" as TrackingRow["status"],
 });
 
 export const Tracking: React.FC = () => {
-  const tracking = goalTrackingStore.use();
-  const goals = goalStore.use();
+  const queryClient = useQueryClient();
 
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
@@ -41,62 +53,97 @@ export const Tracking: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [sortAsc, setSortAsc] = useState(true);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
-  const [draft, setDraft] = useState<any>(emptyDraft());
-  const [viewRow, setViewRow] = useState<GoalTracking | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<GoalTracking | null>(null);
+  const [draft, setDraft] = useState(emptyDraft());
+  const [viewRow, setViewRow] = useState<TrackingRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TrackingRow | null>(null);
 
-  const list = tracking || [];
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const rows = list.filter(
-      (t) => (statusFilter === "All" || t.status === statusFilter) && t.goal.toLowerCase().includes(q),
-    );
-    rows.sort((a, b) => (sortAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
-    return rows;
-  }, [list, search, statusFilter, sortAsc]);
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const { data } = useQuery({
+    queryKey: ["goal-tracking", page, perPage, search, sortAsc, statusFilter],
+    queryFn: () =>
+      fetchTracking({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("tracking_date", sortAsc ? "Ascending" : "Descending"),
+        on_track_status: statusFilter === "All" ? undefined : TRACK_FILTER_BE[statusFilter],
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+
+  const paginated = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
 
   const submit = async () => {
-    if (!draft.goal || !draft.date) {
+    if (!draft.goalId || !draft.date) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    const rec: GoalTracking = {
-      id: draft.id || goalUid(),
-      goal: draft.goal,
-      date: draft.date,
-      contribution: Number(draft.contribution) || 0,
-      currentAmount: Number(draft.currentAmount) || 0,
-      progress: Number(draft.progress) || 0,
-      daysLeft: Number(draft.daysLeft) || 0,
-      projectedDate: draft.projectedDate || "",
-      status: draft.status,
-    };
-    if (modal === "edit") {
-      await goalTrackingStore.save(list.map((t) => (t.id === rec.id ? rec : t)));
-      showToast("Tracking updated successfully", "success");
-    } else {
-      await goalTrackingStore.save([...list, rec]);
-      showToast("Tracking created successfully", "success");
+    try {
+      const payload = {
+        goalId: draft.goalId,
+        date: draft.date,
+        contribution: Number(draft.contribution) || 0,
+        currentAmount: Number(draft.currentAmount) || 0,
+        progress: Number(draft.progress) || 0,
+        daysLeft: Number(draft.daysLeft) || 0,
+        projectedDate: draft.projectedDate || undefined,
+        status: draft.status,
+      };
+      if (modal === "edit") {
+        await updateTracking(draft.id, payload);
+        showToast("Tracking updated successfully", "success");
+      } else {
+        await createTracking(payload);
+        showToast("Tracking created successfully", "success");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["goal-tracking"] });
+      setModal(null);
+    } catch {
+      showToast("Failed to save tracking entry", "error");
     }
-    setModal(null);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await goalTrackingStore.save(list.filter((t) => t.id !== deleteTarget.id));
-    showToast("Tracking deleted successfully", "success");
-    setDeleteTarget(null);
+    try {
+      await deleteTracking(deleteTarget.id);
+      showToast("Tracking deleted successfully", "success");
+      await queryClient.invalidateQueries({ queryKey: ["goal-tracking"] });
+      setDeleteTarget(null);
+    } catch {
+      showToast("Failed to delete tracking entry", "error");
+    }
   };
 
-  const actions = (t: GoalTracking) => (
+  const actions = (t: TrackingRow) => (
     <div className="flex items-center gap-1.5">
       <button onClick={() => setViewRow(t)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="View">
         <Eye className="w-4 h-4" />
       </button>
       <button
         onClick={() => {
-          setDraft({ ...t, previousAmount: t.currentAmount - t.contribution });
+          setDraft({
+            id: t.id,
+            goal: t.goal,
+            goalId: t.goalId,
+            date: t.date,
+            previousAmount: t.currentAmount - t.contribution,
+            contribution: t.contribution,
+            currentAmount: t.currentAmount,
+            progress: t.progress,
+            daysLeft: t.daysLeft,
+            projectedDate: t.projectedDate,
+            status: t.status,
+          });
           setModal("edit");
         }}
         className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
@@ -120,15 +167,15 @@ export const Tracking: React.FC = () => {
           setDraft(emptyDraft());
           setModal("create");
         }}
-        search={search}
-        setSearch={setSearch}
+        search={searchInput}
+        setSearch={setSearchInput}
         searchPlaceholder="Search Goals..."
         perPage={perPage}
         setPerPage={setPerPage}
         page={page}
         setPage={setPage}
-        total={filtered.length}
-        filterOptions={["On track", "Behind", "Ahead"]}
+        total={total}
+        filterOptions={["On track", "Behind", "Ahead", "Critical"]}
         filterValue={statusFilter}
         setFilterValue={setStatusFilter}
         view={view}
@@ -140,12 +187,20 @@ export const Tracking: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Goal</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
-                  <button onClick={() => setSortAsc(!sortAsc)} className="flex items-center gap-1 hover:text-gray-900">
+                  <button
+                    onClick={() => {
+                      setSortAsc(!sortAsc);
+                      setPage(1);
+                    }}
+                    className="flex items-center gap-1 hover:text-gray-900"
+                  >
                     Date <ArrowUpDown className="w-3 h-3" />
                   </button>
                 </th>
                 {["Contribution", "Current Amount", "Progress", "Days Left", "Status", "Actions"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -163,7 +218,11 @@ export const Tracking: React.FC = () => {
                 </tr>
               ))}
               {paginated.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">No tracking entries found.</td></tr>
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                    No tracking entries found.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -178,9 +237,18 @@ export const Tracking: React.FC = () => {
                   </div>
                   {chip(t.status, STATUS_CHIP[t.status])}
                 </div>
-                <div className="flex justify-between text-sm mb-1"><span className="text-gray-500">Contribution</span><span className="text-gray-900">{money(t.contribution)}</span></div>
-                <div className="flex justify-between text-sm mb-1"><span className="text-gray-500">Current</span><span className="text-gray-900">{money(t.currentAmount)}</span></div>
-                <div className="flex justify-between text-sm mb-2"><span className="text-gray-500">Days Left</span><span className="text-gray-900">{t.daysLeft}</span></div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-500">Contribution</span>
+                  <span className="text-gray-900">{money(t.contribution)}</span>
+                </div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-500">Current</span>
+                  <span className="text-gray-900">{money(t.currentAmount)}</span>
+                </div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-500">Days Left</span>
+                  <span className="text-gray-900">{t.daysLeft}</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.min(100, t.progress)}%` }} />
@@ -198,8 +266,14 @@ export const Tracking: React.FC = () => {
       {modal && (
         <ModalShell title={modal === "edit" ? "Edit Tracking" : "Create Tracking"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"} wide>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
-            <Field label="Goal" className="md:col-span-2">
-              <SearchSelect value={draft.goal} onChange={(v) => setDraft({ ...draft, goal: v })} options={(goals || []).map((g) => g.name)} placeholder="Select Goal" />
+            <Field label="Goal" className="md:col-span-2" required>
+              <AsyncSearchSelect
+                value={draft.goalId}
+                displayName={draft.goal}
+                onChange={(id, opt) => setDraft({ ...draft, goalId: id, goal: opt?.name || "" })}
+                onSearch={searchGoals}
+                placeholder="Select Goal"
+              />
             </Field>
             <Field label="Tracking Date" required className="md:col-span-2">
               <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
@@ -207,29 +281,59 @@ export const Tracking: React.FC = () => {
             <Field label="Previous Amount" required>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" min={0} value={draft.previousAmount || ""} onChange={(e) => {
-                  const prev = Number(e.target.value);
-                  setDraft({ ...draft, previousAmount: prev, currentAmount: prev + Number(draft.contribution || 0) });
-                }} placeholder="0" className={`${inputCls} pl-7`} />
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.previousAmount || ""}
+                  onChange={(e) => {
+                    const prev = Number(e.target.value);
+                    setDraft({ ...draft, previousAmount: prev, currentAmount: prev + Number(draft.contribution || 0) });
+                  }}
+                  placeholder="0"
+                  className={`${inputCls} pl-7`}
+                />
               </div>
             </Field>
             <Field label="Contribution Amount" required>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" min={0} value={draft.contribution || ""} onChange={(e) => {
-                  const contribution = Number(e.target.value);
-                  setDraft({ ...draft, contribution, currentAmount: Number(draft.previousAmount || 0) + contribution });
-                }} placeholder="0" className={`${inputCls} pl-7`} />
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.contribution || ""}
+                  onChange={(e) => {
+                    const contribution = Number(e.target.value);
+                    setDraft({ ...draft, contribution, currentAmount: Number(draft.previousAmount || 0) + contribution });
+                  }}
+                  placeholder="0"
+                  className={`${inputCls} pl-7`}
+                />
               </div>
             </Field>
             <Field label="Current Amount" required>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" min={0} value={draft.currentAmount || ""} onChange={(e) => setDraft({ ...draft, currentAmount: Number(e.target.value) })} placeholder="0" className={`${inputCls} pl-7`} />
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.currentAmount || ""}
+                  onChange={(e) => setDraft({ ...draft, currentAmount: Number(e.target.value) })}
+                  placeholder="0"
+                  className={`${inputCls} pl-7`}
+                />
               </div>
             </Field>
             <Field label="Progress Percentage" required>
-              <input type="number" min={0} max={100} step="0.01" value={draft.progress || ""} onChange={(e) => setDraft({ ...draft, progress: Number(e.target.value) })} placeholder="0" className={inputCls} />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={draft.progress || ""}
+                onChange={(e) => setDraft({ ...draft, progress: Number(e.target.value) })}
+                placeholder="0"
+                className={inputCls}
+              />
             </Field>
             <Field label="Days Remaining" required>
               <input type="number" min={0} value={draft.daysLeft || ""} onChange={(e) => setDraft({ ...draft, daysLeft: Number(e.target.value) })} placeholder="0" className={inputCls} />
@@ -238,17 +342,18 @@ export const Tracking: React.FC = () => {
               <input type="date" value={draft.projectedDate} onChange={(e) => setDraft({ ...draft, projectedDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Status" className="md:col-span-2">
-              <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className={`${inputCls} bg-white`}>
-                <option value="On track">On Track</option>
-                <option>Behind</option>
-                <option>Ahead</option>
+              <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as TrackingRow["status"] })} className={selectCls}>
+                {TRACK_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s === "On track" ? "On Track" : s}
+                  </option>
+                ))}
               </select>
             </Field>
           </div>
         </ModalShell>
       )}
 
-      {/* view modal */}
       {viewRow && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">

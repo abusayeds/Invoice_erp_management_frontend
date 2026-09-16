@@ -1,37 +1,56 @@
 /**
- * File: src/pages/project/ProjectSystemSetup.tsx
- * Project System Setup (ERPGo reference): Task Stage / Bug Stage editors.
- * Each is a reorderable (drag) list of coloured stages with create/edit/delete,
- * persisted in Dexie meta via projectStore's stage helpers.
+ * Project System Setup — Task Stage / Bug Stage editors (backend APIs).
  */
-
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tag, Bug as BugIcon, Plus, Pencil, Trash2, GripVertical, X } from "lucide-react";
 import { showToast } from "../../utils/toast";
 import {
-  useStages, saveStages, newStageId, type Stage, type StageKind,
-} from "@/lib/db/projectStore";
+  fetchTaskStages,
+  createTaskStage,
+  updateTaskStage,
+  deleteTaskStage,
+  reorderTaskStages,
+  fetchBugStages,
+  createBugStage,
+  updateBugStage,
+  deleteBugStage,
+  reorderBugStages,
+  type StageRow,
+} from "@/services/projectApi";
+
+type StageKind = "task" | "bug";
 
 const STAGE_COLORS = ["#3B82F6", "#60A5FA", "#7C3AED", "#06B6D4", "#22C55E", "#F59E0B", "#EF4444", "#374151", "#EC4899", "#14B8A6"];
 
-/* ── Create / Edit stage modal ───────────────────────────────────── */
+const field =
+  "keep-box ua-field w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600";
+
 const StageModal: React.FC<{
-  kind: StageKind; initial?: Stage | null; onClose: () => void; onSave: (s: Stage) => void;
+  kind: StageKind;
+  initial?: StageRow | null;
+  onClose: () => void;
+  onSave: (name: string, color: string) => Promise<void>;
 }> = ({ kind, initial, onClose, onSave }) => {
   const [name, setName] = useState(initial?.name ?? "");
   const [color, setColor] = useState(initial?.color ?? "#EF4444");
+  const [saving, setSaving] = useState(false);
   const kindLabel = kind === "task" ? "Task Stage" : "Bug Stage";
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-  const submit = () => {
+
+  const submit = async () => {
     if (!name.trim()) return showToast("Please enter a name", "info");
-    onSave({ id: initial?.id ?? newStageId(), name: name.trim(), color, isDone: initial?.isDone });
-    onClose();
+    setSaving(true);
+    try {
+      await onSave(name.trim(), color);
+      onClose();
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    } finally {
+      setSaving(false);
+    }
   };
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40" onMouseDown={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onMouseDown={(e) => e.stopPropagation()}>
@@ -42,7 +61,7 @@ const StageModal: React.FC<{
         <div className="p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Enter ${kind} stage name`} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Enter ${kind} stage name`} autoFocus className={field} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
@@ -58,37 +77,67 @@ const StageModal: React.FC<{
         </div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-200">
           <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50">Cancel</button>
-          <button onClick={submit} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700">{initial ? "Save" : "Create"}</button>
+          <button disabled={saving} onClick={submit} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50">{initial ? "Save" : "Create"}</button>
         </div>
       </div>
     </div>
   );
 };
 
-/* ── Stage list (per kind) ───────────────────────────────────────── */
 const StageList: React.FC<{ kind: StageKind }> = ({ kind }) => {
-  const stages = useStages(kind);
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [editStage, setEditStage] = useState<Stage | null>(null);
+  const [editStage, setEditStage] = useState<StageRow | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
-  const title = kind === "task" ? "Task Stage" : "Bug Stage";
-  const list = stages ?? [];
+  const queryKey = kind === "task" ? ["task-stages"] : ["bug-stages"];
+  const { data: list = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: kind === "task" ? fetchTaskStages : fetchBugStages,
+  });
 
-  const upsert = (s: Stage) => {
-    const exists = list.some((x) => x.id === s.id);
-    saveStages(kind, exists ? list.map((x) => (x.id === s.id ? s : x)) : [...list, s]);
-    showToast(exists ? "Stage updated" : "Stage created", "success");
+  const title = kind === "task" ? "Task Stage" : "Bug Stage";
+
+  const invalidate = () => qc.invalidateQueries({ queryKey });
+
+  const upsert = async (name: string, color: string) => {
+    if (editStage) {
+      if (kind === "task") await updateTaskStage(editStage.id, { name, color });
+      else await updateBugStage(editStage.id, { name, color });
+      showToast("Stage updated", "success");
+    } else {
+      if (kind === "task") await createTaskStage({ name, color });
+      else await createBugStage({ name, color });
+      showToast("Stage created", "success");
+    }
+    invalidate();
   };
-  const remove = (id: string) => {
-    if (confirm("Delete this stage?")) saveStages(kind, list.filter((x) => x.id !== id));
+
+  const remove = async (id: string) => {
+    if (!confirm("Delete this stage?")) return;
+    try {
+      if (kind === "task") await deleteTaskStage(id);
+      else await deleteBugStage(id);
+      showToast("Stage deleted", "success");
+      invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
+    }
   };
-  const reorder = (from: number, to: number) => {
+
+  const reorder = async (from: number, to: number) => {
     if (from === to) return;
     const next = [...list];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
-    saveStages(kind, next);
+    try {
+      const ids = next.map((s) => s.id);
+      if (kind === "task") await reorderTaskStages(ids);
+      else await reorderBugStages(ids);
+      invalidate();
+    } catch (e: any) {
+      showToast(e?.message || "Reorder failed", "error");
+    }
   };
 
   return (
@@ -98,36 +147,43 @@ const StageList: React.FC<{ kind: StageKind }> = ({ kind }) => {
         <button onClick={() => { setEditStage(null); setModalOpen(true); }} className="w-9 h-9 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><Plus className="w-5 h-5" /></button>
       </div>
       <div className="p-4 space-y-3">
-        {list.map((s, i) => (
+        {isLoading && <div className="text-center text-sm text-gray-400 py-8">Loading…</div>}
+        {!isLoading && list.map((s, i) => (
           <div
             key={s.id}
             draggable
             onDragStart={() => setDragIdx(i)}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={() => { if (dragIdx !== null) reorder(dragIdx, i); setDragIdx(null); }}
-            className={`flex items-center gap-3 px-3 py-3 rounded-lg border ${s.isDone ? "border-emerald-500/40" : "border-gray-200"} hover:bg-gray-50`}
+            onDrop={() => { if (dragIdx !== null) void reorder(dragIdx, i); setDragIdx(null); }}
+            className={`flex items-center gap-3 px-3 py-3 rounded-lg border ${s.complete ? "border-emerald-500/40" : "border-gray-200"} hover:bg-gray-50`}
           >
             <GripVertical className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0" />
             <span className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold flex-shrink-0">{i + 1}</span>
             <span className="w-5 h-5 rounded flex-shrink-0" style={{ backgroundColor: s.color }} />
             <div className="min-w-0">
               <div className="text-sm font-medium text-gray-900">{s.name}</div>
-              {s.isDone && <div className="text-xs text-emerald-400">Done Stage</div>}
+              {s.complete && <div className="text-xs text-emerald-400">Done Stage</div>}
             </div>
             <div className="ml-auto flex items-center gap-1">
               <button onClick={() => { setEditStage(s); setModalOpen(true); }} className="p-1.5 rounded-md text-blue-400 hover:bg-blue-500/10"><Pencil className="w-4 h-4" /></button>
-              <button onClick={() => remove(s.id)} className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => void remove(s.id)} className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10"><Trash2 className="w-4 h-4" /></button>
             </div>
           </div>
         ))}
-        {list.length === 0 && <div className="text-center text-sm text-gray-400 py-8">No stages yet.</div>}
+        {!isLoading && list.length === 0 && <div className="text-center text-sm text-gray-400 py-8">No stages yet.</div>}
       </div>
-      {modalOpen && <StageModal kind={kind} initial={editStage} onClose={() => setModalOpen(false)} onSave={upsert} />}
+      {modalOpen && (
+        <StageModal
+          kind={kind}
+          initial={editStage}
+          onClose={() => setModalOpen(false)}
+          onSave={upsert}
+        />
+      )}
     </div>
   );
 };
 
-/* ══════════════════════════════════════════════════════════════════ */
 export const ProjectSystemSetup: React.FC = () => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<StageKind>("task");

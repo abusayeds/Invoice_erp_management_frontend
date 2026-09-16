@@ -1,16 +1,18 @@
 /**
- * File: src/pages/goal/Category.tsx
- * Manage Categories — matches references/goal/category/*.png in the Qayd
- * blue theme. Persists in meta row `goal:categories`.
+ * Manage Categories — server-backed via /api/v1/goal/categories.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "../../utils/toast";
+import { buildListSortParam } from "@/lib/listSort";
 import {
-  goalCategoryStore,
-  goalUid,
-  type GoalCategory,
-} from "@/lib/db/goal";
+  fetchGoalCategories,
+  createGoalCategory,
+  updateGoalCategory,
+  deleteGoalCategory,
+  type GoalCategoryRow,
+} from "@/services/goalApi";
 import { Field, inputCls } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
@@ -18,8 +20,9 @@ import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
 const emptyDraft = () => ({ id: "", name: "", code: "", description: "", active: true });
 
 export const Category: React.FC = () => {
-  const categories = goalCategoryStore.use();
+  const queryClient = useQueryClient();
 
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
@@ -28,20 +31,35 @@ export const Category: React.FC = () => {
   const [sortAsc, setSortAsc] = useState(true);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
-  const [deleteTarget, setDeleteTarget] = useState<GoalCategory | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GoalCategoryRow | null>(null);
 
-  const list = categories || [];
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const rows = list.filter(
-      (c) =>
-        (statusFilter === "All" || (statusFilter === "Active" ? c.active : !c.active)) &&
-        (c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)),
-    );
-    rows.sort((a, b) => (sortAsc ? a[sortField].localeCompare(b[sortField]) : b[sortField].localeCompare(a[sortField])));
-    return rows;
-  }, [list, search, statusFilter, sortField, sortAsc]);
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const sortBe = sortField === "code" ? "category_code" : "category_name";
+
+  const { data } = useQuery({
+    queryKey: ["goal-categories", page, perPage, search, sortBe, sortAsc, statusFilter],
+    queryFn: () =>
+      fetchGoalCategories({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam(sortBe, sortAsc ? "Ascending" : "Descending"),
+        is_active:
+          statusFilter === "All" ? undefined : statusFilter === "Active",
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+
+  const paginated = data?.rows ?? [];
+  const total = data?.pagination?.totalData ?? 0;
 
   const toggleSort = (f: "name" | "code") => {
     if (sortField === f) setSortAsc(!sortAsc);
@@ -49,6 +67,7 @@ export const Category: React.FC = () => {
       setSortField(f);
       setSortAsc(true);
     }
+    setPage(1);
   };
 
   const submit = async () => {
@@ -56,21 +75,41 @@ export const Category: React.FC = () => {
       showToast("Please fill all required fields", "error");
       return;
     }
-    if (modal === "edit") {
-      await goalCategoryStore.save(list.map((c) => (c.id === draft.id ? { ...c, ...draft } : c)));
-      showToast("Category updated successfully", "success");
-    } else {
-      await goalCategoryStore.save([...list, { ...draft, id: goalUid() }]);
-      showToast("Category created successfully", "success");
+    try {
+      if (modal === "edit") {
+        await updateGoalCategory(draft.id, {
+          name: draft.name,
+          code: draft.code,
+          description: draft.description,
+          active: draft.active,
+        });
+        showToast("Category updated successfully", "success");
+      } else {
+        await createGoalCategory({
+          name: draft.name,
+          code: draft.code,
+          description: draft.description,
+          active: draft.active,
+        });
+        showToast("Category created successfully", "success");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["goal-categories"] });
+      setModal(null);
+    } catch {
+      showToast("Failed to save category", "error");
     }
-    setModal(null);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await goalCategoryStore.save(list.filter((c) => c.id !== deleteTarget.id));
-    showToast("Category deleted successfully", "success");
-    setDeleteTarget(null);
+    try {
+      await deleteGoalCategory(deleteTarget.id);
+      showToast("Category deleted successfully", "success");
+      await queryClient.invalidateQueries({ queryKey: ["goal-categories"] });
+      setDeleteTarget(null);
+    } catch {
+      showToast("Failed to delete category", "error");
+    }
   };
 
   return (
@@ -83,14 +122,14 @@ export const Category: React.FC = () => {
           setDraft(emptyDraft());
           setModal("create");
         }}
-        search={search}
-        setSearch={setSearch}
+        search={searchInput}
+        setSearch={setSearchInput}
         searchPlaceholder="Search Categories..."
         perPage={perPage}
         setPerPage={setPerPage}
         page={page}
         setPage={setPage}
-        total={filtered.length}
+        total={total}
         filterOptions={["Active", "Inactive"]}
         filterValue={statusFilter}
         setFilterValue={setStatusFilter}
@@ -125,7 +164,7 @@ export const Category: React.FC = () => {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => {
-                        setDraft({ ...c });
+                        setDraft({ id: c.id, name: c.name, code: c.code, description: c.description, active: c.active });
                         setModal("edit");
                       }}
                       className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
@@ -141,7 +180,11 @@ export const Category: React.FC = () => {
               </tr>
             ))}
             {paginated.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-500">No categories found.</td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
+                  No categories found.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -173,9 +216,7 @@ export const Category: React.FC = () => {
         </ModalShell>
       )}
 
-      {deleteTarget && (
-        <DeleteConfirm what="Category" name={deleteTarget.name} onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />
-      )}
+      {deleteTarget && <DeleteConfirm what="Category" name={deleteTarget.name} onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />}
     </>
   );
 };

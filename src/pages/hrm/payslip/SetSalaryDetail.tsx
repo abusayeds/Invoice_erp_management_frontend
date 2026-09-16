@@ -759,7 +759,7 @@ export const SetSalaryDetail: React.FC = () => {
             />
           </Field>
           <Field label="Type" required>
-            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`keep-box ua-field ${inputCls}`}>
               <option value="">Select type</option>
               <option>Fixed</option>
               <option>Percentage</option>
@@ -785,7 +785,7 @@ export const SetSalaryDetail: React.FC = () => {
             />
           </Field>
           <Field label="Type" required>
-            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.type || "")} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`keep-box ua-field ${inputCls}`}>
               <option value="">Select type</option>
               <option>Fixed</option>
               <option>Percentage</option>
@@ -831,7 +831,7 @@ export const SetSalaryDetail: React.FC = () => {
             </Field>
           </div>
           <Field label="Status" required>
-            <select value={String(draft.status || "Active")} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className={`${inputCls} bg-white`}>
+            <select value={String(draft.status || "Active")} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className={`keep-box ua-field ${inputCls}`}>
               <option>Active</option>
               <option>Inactive</option>
             </select>
