@@ -23,6 +23,7 @@ import { useCollection, repo, nextNumber, money as fmtMoney, CreateDocForm, DocP
 import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
@@ -686,14 +687,9 @@ export const CreditNotes: React.FC = () => {
                   {(close) => (
                     <div className="py-1">
                       <button type="button" onClick={() => { showToast("Opening WhatsApp…", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
-                      <button type="button" onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                        Duplicate <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dupOpen ? "rotate-90" : ""}`} />
-                      </button>
-                      {dupOpen && (
-                        <div className="bg-gray-50 border-y border-gray-100">
-                          <button type="button" onClick={() => { duplicateAsCreditNote(); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left whitespace-nowrap">As Credit Note</button>
-                        </div>
-                      )}
+                      <MoreMenuFlyoutRow label="Duplicate">
+                        <button type="button" onClick={() => { duplicateAsCreditNote(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">As Credit Note</button>
+                      </MoreMenuFlyoutRow>
                       <button type="button" onClick={() => { setModal("apply"); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Apply to Invoice</button>
                       <button type="button" onClick={() => { setSigRequestOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Signature Request</button>
                       <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left border-t border-gray-200">Activity Log</button>

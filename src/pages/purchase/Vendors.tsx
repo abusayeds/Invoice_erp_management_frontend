@@ -7,9 +7,9 @@
  * Connected to backend via /api/v1/vendor/* (same party write shape as Customers).
  */
 
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
-import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { createdOnToRange, createCustomer, type CustomerFormData } from "@/services/customersApi";
 import type { TBackendParty } from "@/services/customerTypes";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -157,51 +157,28 @@ const DetailMoreMenu: React.FC<{
   onTrash: () => void;
   onDuplicate: (target: "customer" | "vendor" | "both") => void;
 }> = ({ close, onArchive, onTrash, onDuplicate }) => {
-  const [subOpen, setSubOpen] = useState(false);
-  const dupRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<number | null>(null);
   const item = "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left";
   const run = (fn: () => void) => { fn(); close(); };
-  const openSub = () => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current);
-    setSubOpen(true);
-  };
-  const scheduleClose = () => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setSubOpen(false), 160);
-  };
   return (
     <div>
       <button type="button" onClick={() => run(onArchive)} className={item}>
         <span className="flex items-center gap-2"><Archive className="w-4 h-4" /> Archive</span>
       </button>
-      <div
-        ref={dupRef}
-        className="relative"
-        onMouseEnter={openSub}
-        onMouseLeave={scheduleClose}
+      <MoreMenuFlyoutRow
+        label={<span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>}
+        className={item}
       >
-        <button type="button" className={item}>
-          <span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
-        </button>
-        <MenuSideFlyout
-          open={subOpen}
-          anchorRef={dupRef}
-          onHoverChange={(h) => (h ? openSub() : scheduleClose())}
-        >
-          {(["customer", "vendor", "both"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => run(() => onDuplicate(t))}
-              className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left capitalize"
-            >
-              {t}
-            </button>
-          ))}
-        </MenuSideFlyout>
-      </div>
+        {(["customer", "vendor", "both"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => run(() => onDuplicate(t))}
+            className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left capitalize"
+          >
+            {t}
+          </button>
+        ))}
+      </MoreMenuFlyoutRow>
       <button type="button" onClick={() => run(onTrash)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">
         <Trash2 className="w-4 h-4" /> Trash
       </button>

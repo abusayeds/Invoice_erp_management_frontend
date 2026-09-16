@@ -1,9 +1,13 @@
 /**
  * Nested side flyout for ⋮ menus (Duplicate ▸, Mark As ▸).
  * Portaled + fixed so it is not clipped by parent menu overflow.
+ * Width is fixed so every module submenu looks the same size.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+/** Shared flyout width (px) — keep Duplicate / Mark As panels consistent. */
+export const MENU_SIDE_FLYOUT_WIDTH = 168;
 
 type Props = {
   open: boolean;
@@ -31,7 +35,7 @@ export const MenuSideFlyout: React.FC<Props> = ({
     const panel = panelRef.current;
     if (!anchor) return;
     const r = anchor.getBoundingClientRect();
-    const pw = panel?.offsetWidth || 190;
+    const pw = MENU_SIDE_FLYOUT_WIDTH;
     const ph = panel?.offsetHeight || 40;
     let left = side === "left" ? r.left - pw - 4 : r.right + 4;
     let top = r.top;
@@ -66,13 +70,19 @@ export const MenuSideFlyout: React.FC<Props> = ({
   return createPortal(
     <div
       ref={panelRef}
-      className={`fixed z-[90] min-w-[170px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${className}`}
-      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999, visibility: "hidden" }}
+      className={`fixed z-[90] bg-white border border-gray-200 rounded-md shadow-xl py-1 overflow-hidden ${className}`}
+      style={{
+        width: MENU_SIDE_FLYOUT_WIDTH,
+        maxWidth: MENU_SIDE_FLYOUT_WIDTH,
+        ...(pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999, visibility: "hidden" as const }),
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
     >
-      {children}
+      <div className="w-full [&_button]:w-full [&_button]:max-w-full [&_button]:truncate [&_button]:overflow-hidden [&_button]:text-ellipsis [&_button]:whitespace-nowrap [&_button]:px-3 [&_button]:py-2 [&_button]:text-sm [&_button]:text-left">
+        {children}
+      </div>
     </div>,
     document.body,
   );

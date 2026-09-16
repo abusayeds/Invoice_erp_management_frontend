@@ -22,6 +22,7 @@ import { api } from "@/lib/api/client";
 import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { CreateSalesReceiptForm } from "./CreateSalesReceiptForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
@@ -534,7 +535,24 @@ export const SalesReceipts: React.FC = () => {
               <div className="min-w-0"><h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1><button className="text-xs text-blue-600 hover:text-blue-700 underline">{selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || "View Contact"}</button></div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Sales Receipt ${selectedDb.number} printed.`); setModal("preview"); } }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>)}
-                <Dropdown align="right" panelClass="w-56" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>{(close) => (<><button onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button><div className="relative" onMouseEnter={() => setDupOpen(true)} onMouseLeave={() => setDupOpen(false)}><button className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><span className="flex items-center gap-2"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</span> <ChevronRight className="w-4 h-4 text-gray-400" /></button>{dupOpen && <div className="absolute right-full top-0 mr-0.5 min-w-[170px] bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">{duplicateAs.map((item) => <button key={item} onClick={() => { duplicateReceiptAs(item); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{item}</button>)}</div>}</div><button onClick={() => { setSigRequestOpen(true); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button><button onClick={() => { setActivityOpen(true); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><History className="w-4 h-4 text-gray-400" /> Activity Log</button><button onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button></>)}</Dropdown>
+                <Dropdown align="right" panelClass="w-56" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
+                  {(close) => (
+                    <>
+                      <button type="button" onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
+                      <MoreMenuFlyoutRow
+                        label={<span className="flex items-center gap-2"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</span>}
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        {duplicateAs.map((item) => (
+                          <button key={item} type="button" onClick={() => { duplicateReceiptAs(item); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{item}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
+                      <button type="button" onClick={() => { setSigRequestOpen(true); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button>
+                      <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><History className="w-4 h-4 text-gray-400" /> Activity Log</button>
+                      <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
+                    </>
+                  )}
+                </Dropdown>
               </div>
             </div>
             {expanded && <>

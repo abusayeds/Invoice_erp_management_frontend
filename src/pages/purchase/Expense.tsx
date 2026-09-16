@@ -12,6 +12,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor, DATE_FILTER_OPTIONS } from "@/lib/listDateRange";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -759,14 +760,9 @@ export const Expenses: React.FC = () => {
                 {(close) => (
                   <div className="py-1">
                     <button type="button" onClick={() => { createInvoiceFromExpense(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Create Invoice</button>
-                    <button type="button" onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                      Duplicate <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dupOpen ? "rotate-90" : ""}`} />
-                    </button>
-                    {dupOpen && (
-                      <div className="bg-gray-50 border-y border-gray-100">
-                        <button type="button" onClick={() => { duplicateExpense(); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left whitespace-nowrap">As Expense</button>
-                      </div>
-                    )}
+                    <MoreMenuFlyoutRow label="Duplicate">
+                      <button type="button" onClick={() => { duplicateExpense(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">As Expense</button>
+                    </MoreMenuFlyoutRow>
                     <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
                   </div>
                 )}

@@ -12,6 +12,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListEmptyState } from "@/components/ListEmptyState";
@@ -472,26 +473,16 @@ export const PurchaseOrder: React.FC = () => {
                     <div className="py-1">
                       <button type="button" onClick={() => { showToast("Opening WhatsApp…", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
                       <button type="button" onClick={() => { convertToBill(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Convert to Bill</button>
-                      <button type="button" onClick={() => setMarkAsOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                        Mark As <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${markAsOpen ? "rotate-90" : ""}`} />
-                      </button>
-                      {markAsOpen && (
-                        <div className="bg-gray-50 border-y border-gray-100">
-                          {markAsStatuses.map((st) => (
-                            <button key={st} type="button" onClick={() => { markAs(st); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left">{st}</button>
-                          ))}
-                        </div>
-                      )}
-                      <button type="button" onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                        Duplicate <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dupOpen ? "rotate-90" : ""}`} />
-                      </button>
-                      {dupOpen && (
-                        <div className="bg-gray-50 border-y border-gray-100">
-                          {duplicateAs.map((st) => (
-                            <button key={st} type="button" onClick={() => { duplicatePoAs(st); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left whitespace-nowrap">{st}</button>
-                          ))}
-                        </div>
-                      )}
+                      <MoreMenuFlyoutRow label="Mark As">
+                        {markAsStatuses.map((st) => (
+                          <button key={st} type="button" onClick={() => { markAs(st); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{st}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
+                      <MoreMenuFlyoutRow label="Duplicate">
+                        {duplicateAs.map((st) => (
+                          <button key={st} type="button" onClick={() => { duplicatePoAs(st); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{st}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
                       <button type="button" onClick={() => { setSigRequestOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left border-t border-gray-200">Signature Request</button>
                       <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Activity Log</button>
                       <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>

@@ -21,6 +21,7 @@ import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { buildListSortParam } from "@/lib/listSort";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import {
   fetchProformaInvoice,
   fetchProformaInvoices,
@@ -765,26 +766,16 @@ export const ProformaInvoices: React.FC = () => {
                     <div className="py-1">
                       <button type="button" onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
                       <button type="button" onClick={() => { convertToInvoice(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Convert to Invoice</button>
-                      <button type="button" onClick={() => setMarkAsOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                        Mark As <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${markAsOpen ? "rotate-90" : ""}`} />
-                      </button>
-                      {markAsOpen && (
-                        <div className="bg-gray-50 border-y border-gray-100">
-                          {(["Draft", "Sent", "Invoiced", "Cancelled"] as Status[]).map((item) => (
-                            <button key={item} type="button" onClick={() => { markAs(item); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left">{item}</button>
-                          ))}
-                        </div>
-                      )}
-                      <button type="button" onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                        Duplicate <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dupOpen ? "rotate-90" : ""}`} />
-                      </button>
-                      {dupOpen && (
-                        <div className="bg-gray-50 border-y border-gray-100">
-                          {["As Invoice", "As Proforma Invoice", "As Purchase Order"].map((item) => (
-                            <button key={item} type="button" onClick={() => { duplicateAs(item); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left whitespace-nowrap">{item}</button>
-                          ))}
-                        </div>
-                      )}
+                      <MoreMenuFlyoutRow label="Mark As">
+                        {(["Draft", "Sent", "Invoiced", "Cancelled"] as Status[]).map((item) => (
+                          <button key={item} type="button" onClick={() => { markAs(item); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">{item}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
+                      <MoreMenuFlyoutRow label="Duplicate">
+                        {["As Invoice", "As Proforma Invoice", "As Purchase Order"].map((item) => (
+                          <button key={item} type="button" onClick={() => { duplicateAs(item); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{item}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
                       <button type="button" onClick={() => { showToast("Signature request sent", "success"); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left border-t border-gray-200">Signature Request</button>
                       <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Activity Log</button>
                       <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>

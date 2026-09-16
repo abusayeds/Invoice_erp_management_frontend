@@ -13,6 +13,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { useQuery } from "@tanstack/react-query";
@@ -668,27 +669,27 @@ export const PurchaseReturns: React.FC = () => {
                 <Dropdown align="right" panelClass="w-60" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <>
-                      <button onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
-                      <button onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><span className="flex items-center gap-2"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</span> <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-                      {dupOpen && (
-                        <div className="bg-gray-50">
-                          {duplicateAs.map((s) => (
-                            <button key={s} onClick={close} className="w-full px-6 py-2 text-sm text-gray-600 hover:bg-gray-100 text-left">{s}</button>
-                          ))}
-                        </div>
-                      )}
-                      <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><CornerUpLeft className="w-4 h-4 text-gray-400" /> Convert to Debit Note</button>
-                      <button onClick={() => setMarkAsOpen((o) => !o)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Mark As <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-                      {markAsOpen && (
-                        <div className="bg-gray-50">
-                          {markAsList.map((s) => (
-                            <button key={s} onClick={close} className="w-full px-6 py-2 text-sm text-gray-600 hover:bg-gray-100 text-left">{s}</button>
-                          ))}
-                        </div>
-                      )}
-                      <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button>
-                      <button onClick={() => { setModal("activity"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><History className="w-4 h-4 text-gray-400" /> Activity Log</button>
-                      <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
+                      <button type="button" onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
+                      <MoreMenuFlyoutRow
+                        label={<span className="flex items-center gap-2"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</span>}
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        {duplicateAs.map((s) => (
+                          <button key={s} type="button" onClick={close} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
+                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><CornerUpLeft className="w-4 h-4 text-gray-400" /> Convert to Debit Note</button>
+                      <MoreMenuFlyoutRow
+                        label="Mark As"
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        {markAsList.map((s) => (
+                          <button key={s} type="button" onClick={close} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
+                        ))}
+                      </MoreMenuFlyoutRow>
+                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button>
+                      <button type="button" onClick={() => { setModal("activity"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><History className="w-4 h-4 text-gray-400" /> Activity Log</button>
+                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
                     </>
                   )}
                 </Dropdown>
