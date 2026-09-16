@@ -667,21 +667,21 @@ export const Bills: React.FC = () => {
                 <Dropdown align="right" panelClass="min-w-[200px]" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 cursor-pointer"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <div className="py-1">
-                      <button onClick={() => { showToast("Opening WhatsApp…", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
-                      <div className="relative" onMouseEnter={() => setDupOpen(true)} onMouseLeave={() => setDupOpen(false)}>
-                        <button className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Duplicate <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-                        {dupOpen && (
-                          <div className="absolute right-full top-0 mr-0.5 min-w-[160px] bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">
-                            {duplicateAs.map((st) => (
-                              <button key={st} onClick={() => { duplicateBillAs(st); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{st}</button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button onClick={() => { createDebitNote(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Debit Note</button>
-                      <button onClick={() => { setSigRequestOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Signature Request</button>
-                      <button onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Activity Log</button>
-                      <button onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
+                      <button type="button" onClick={() => { showToast("Opening WhatsApp…", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
+                      <button type="button" onClick={() => setDupOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                        Duplicate <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dupOpen ? "rotate-90" : ""}`} />
+                      </button>
+                      {dupOpen && (
+                        <div className="bg-gray-50 border-y border-gray-100">
+                          {duplicateAs.map((st) => (
+                            <button key={st} type="button" onClick={() => { duplicateBillAs(st); close(); }} className="w-full px-4 py-2.5 pl-8 text-sm text-gray-700 hover:bg-gray-100 text-left whitespace-nowrap">{st}</button>
+                          ))}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => { createDebitNote(); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Debit Note</button>
+                      <button type="button" onClick={() => { setSigRequestOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Signature Request</button>
+                      <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Activity Log</button>
+                      <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
                     </div>
                   )}
                 </Dropdown>

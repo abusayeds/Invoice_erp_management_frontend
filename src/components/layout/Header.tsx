@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { SettingsDropdown } from "@/pages/SettingsDropdown";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { MyAccountModal } from "@/components/modals/MyAccountModal";
 import useAuth from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
@@ -119,6 +120,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [showCreate, setShowCreate] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMyAccount, setShowMyAccount] = useState(false);
   const [showApps, setShowApps] = useState(false);
   const [notifications, setNotifications] = useState(sampleNotifications);
   const [announcements, setAnnouncements] = useState(sampleAnnouncements);
@@ -426,13 +428,16 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                 <div className="border-t border-white/10" />
 
                 <div className="flex items-center justify-between gap-3 px-4 py-3">
-                  <Link
-                    to="/companies"
-                    onClick={() => setShowUserMenu(false)}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowMyAccount(true);
+                    }}
                     className="text-sm text-white hover:underline"
                   >
                     My Account
-                  </Link>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -450,6 +455,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           )}
         </div>
       </div>
+
+      <MyAccountModal open={showMyAccount} onClose={() => setShowMyAccount(false)} />
     </div>
   );
 };

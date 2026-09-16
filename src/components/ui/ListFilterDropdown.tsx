@@ -1,8 +1,10 @@
 /**
  * Fixed-position filter chip dropdown for list sidebars.
- * Absolute panels get clipped by ResizableListPanel / .list-filter-toolbar overflow.
+ * Panel is portaled to document.body so nested flyouts (Duplicate ▸ etc.)
+ * are not clipped by ResizableListPanel / overflow ancestors.
  */
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export const ListFilterDropdown: React.FC<{
   trigger: React.ReactNode;
@@ -13,7 +15,9 @@ export const ListFilterDropdown: React.FC<{
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left?: number; right?: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left?: number; right?: number; width: number } | null>(
+    null,
+  );
 
   const updatePosition = () => {
     const node = ref.current;
@@ -49,8 +53,26 @@ export const ListFilterDropdown: React.FC<{
     };
   }, [open, align]);
 
+  const panel =
+    open && rect
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className={`fixed z-[80] min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${panelClass}`}
+            style={
+              align === "right"
+                ? { top: rect.top, right: rect.right }
+                : { top: rect.top, left: rect.left, minWidth: Math.max(rect.width, 180) }
+            }
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative inline-flex" ref={ref}>
       <button
         type="button"
         onClick={() => {
@@ -63,19 +85,7 @@ export const ListFilterDropdown: React.FC<{
       >
         {trigger}
       </button>
-      {open && rect && (
-        <div
-          ref={panelRef}
-          className={`fixed z-50 min-w-[180px] max-h-[70vh] overflow-y-auto hover-scrollbar rounded-md border border-gray-200 bg-white py-1 shadow-xl ${panelClass}`}
-          style={
-            align === "right"
-              ? { top: rect.top, right: rect.right }
-              : { top: rect.top, left: rect.left, minWidth: Math.max(rect.width, 180) }
-          }
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {panel}
     </div>
   );
 };

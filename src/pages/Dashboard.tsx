@@ -419,36 +419,51 @@ export const Dashboard: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="p-4 h-[280px]" ref={scrollRef}>
+          <div className="p-4 h-[280px] overflow-x-auto custom-scrollbar" ref={scrollRef}>
             {chartLoading ? (
               <div className="flex h-full items-center justify-center text-gray-500">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
             ) : chartType === "bar" ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartPoints} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2a333d" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#1a212a",
-                      border: "1px solid #3a444f",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  {chartSeries.map((s) => (
-                    <Bar
-                      key={s.key}
-                      dataKey={s.key}
-                      stackId={stackPayments ? "pay" : undefined}
-                      fill={s.color}
-                      radius={[2, 2, 0, 0]}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
+              (() => {
+                /** Fixed pillar width for Days / Weeks / Months / Quarters — same as Months look. */
+                const BAR_SIZE = 28;
+                const BAR_GAP = 4;
+                const CATEGORY_GAP = 22;
+                const barsPerCat = stackPayments ? 1 : Math.max(chartSeries.length, 1);
+                const categoryPitch =
+                  barsPerCat * BAR_SIZE + Math.max(barsPerCat - 1, 0) * BAR_GAP + CATEGORY_GAP;
+                const chartMinWidth = Math.max(720, chartPoints.length * categoryPitch + 80);
+                return (
+                  <div style={{ width: chartMinWidth, height: "100%", minWidth: "100%" }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartPoints} barGap={BAR_GAP} barCategoryGap={CATEGORY_GAP}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2a333d" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#8b94a0" }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "#1a212a",
+                            border: "1px solid #3a444f",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                        />
+                        {chartSeries.map((s) => (
+                          <Bar
+                            key={s.key}
+                            dataKey={s.key}
+                            stackId={stackPayments ? "pay" : undefined}
+                            fill={s.color}
+                            barSize={BAR_SIZE}
+                            radius={[2, 2, 0, 0]}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

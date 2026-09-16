@@ -161,23 +161,28 @@ const DetailMoreMenu: React.FC<{
   const run = (fn: () => void) => { fn(); close(); };
   return (
     <div>
-      <button onClick={() => run(onArchive)} className={item}>
+      <button type="button" onClick={() => run(onArchive)} className={item}>
         <span className="flex items-center gap-2"><Archive className="w-4 h-4" /> Archive</span>
       </button>
-      <div className="relative" onMouseLeave={() => setSubOpen(false)}>
-        <button onClick={() => setSubOpen((o) => !o)} onMouseEnter={() => setSubOpen(true)} className={item}>
-          <span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
-        </button>
-        {subOpen && (
-          <div className="absolute right-full top-0 mr-1 min-w-[150px] bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">
-            {(["customer", "vendor", "both"] as const).map((t) => (
-              <button key={t} onClick={() => run(() => onDuplicate(t))} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left capitalize">{t}</button>
-            ))}
-          </div>
-        )}
-      </div>
-      <button onClick={() => run(onTrash)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">
+      <button type="button" onClick={() => setSubOpen((o) => !o)} className={item}>
+        <span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${subOpen ? "rotate-90" : ""}`} />
+      </button>
+      {subOpen && (
+        <div className="bg-gray-50 border-y border-gray-100 py-0.5">
+          {(["customer", "vendor", "both"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => run(() => onDuplicate(t))}
+              className="w-full px-3 py-2 pl-9 text-sm text-gray-700 hover:bg-gray-100 text-left capitalize"
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      <button type="button" onClick={() => run(onTrash)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">
         <Trash2 className="w-4 h-4" /> Trash
       </button>
     </div>

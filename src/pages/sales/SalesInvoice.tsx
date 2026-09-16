@@ -33,6 +33,7 @@ import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDele
 import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import {
   Search,
@@ -500,34 +501,59 @@ const PaidMenu: React.FC<{ close: () => void; onAddPayment: () => void; onMarkPa
 const DUP_TARGETS = ["As Invoice", "As Estimate", "As Proforma Invoice", "As Credit Note", "As Purchase Order", "As Delivery Challan"];
 const InvoiceMoreMenu: React.FC<{ close: () => void; onAction: (a: string) => void }> = ({ close, onAction }) => {
   const [sub, setSub] = useState<null | "dup" | "credit">(null);
+  const dupRef = useRef<HTMLDivElement>(null);
+  const creditRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<number | null>(null);
   const item = "w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap";
   const run = (a: string) => { onAction(a); close(); };
+  const openSub = (s: "dup" | "credit") => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    setSub(s);
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setSub(null), 160);
+  };
   return (
     <div className="py-1 min-w-[190px]">
-      <button onClick={() => run("whatsapp")} className={item}>WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
-      <button onClick={() => run("packingSlip")} className={item}>Packing Slip</button>
-      <button onClick={() => run("deliveryNote")} className={item}>Delivery Note</button>
-      <div className="relative" onMouseEnter={() => setSub("dup")} onMouseLeave={() => setSub(null)}>
-        <button className={item}>Duplicate <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-        {sub === "dup" && (
-          <div className="absolute right-full top-0 mr-0.5 min-w-[190px] bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">
-            {DUP_TARGETS.map((t) => (
-              <button key={t} onClick={() => run("dup:" + t)} className={item}>{t}</button>
-            ))}
-          </div>
-        )}
+      <button type="button" onClick={() => run("whatsapp")} className={item}>WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
+      <button type="button" onClick={() => run("packingSlip")} className={item}>Packing Slip</button>
+      <button type="button" onClick={() => run("deliveryNote")} className={item}>Delivery Note</button>
+      <div
+        ref={dupRef}
+        className="relative"
+        onMouseEnter={() => openSub("dup")}
+        onMouseLeave={scheduleClose}
+      >
+        <button type="button" className={item}>Duplicate <ChevronRight className="w-4 h-4 text-gray-400" /></button>
+        <MenuSideFlyout
+          open={sub === "dup"}
+          anchorRef={dupRef}
+          onHoverChange={(h) => (h ? openSub("dup") : scheduleClose())}
+        >
+          {DUP_TARGETS.map((t) => (
+            <button key={t} type="button" onClick={() => run("dup:" + t)} className={item}>{t}</button>
+          ))}
+        </MenuSideFlyout>
       </div>
-      <div className="relative" onMouseEnter={() => setSub("credit")} onMouseLeave={() => setSub(null)}>
-        <button className={item}>Credit Notes <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-        {sub === "credit" && (
-          <div className="absolute right-full top-0 mr-0.5 min-w-[160px] bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">
-            <button onClick={() => run("dup:As Credit Note")} className={item}>Create New</button>
-          </div>
-        )}
+      <div
+        ref={creditRef}
+        className="relative"
+        onMouseEnter={() => openSub("credit")}
+        onMouseLeave={scheduleClose}
+      >
+        <button type="button" className={item}>Credit Notes <ChevronRight className="w-4 h-4 text-gray-400" /></button>
+        <MenuSideFlyout
+          open={sub === "credit"}
+          anchorRef={creditRef}
+          onHoverChange={(h) => (h ? openSub("credit") : scheduleClose())}
+        >
+          <button type="button" onClick={() => run("dup:As Credit Note")} className={item}>Create New</button>
+        </MenuSideFlyout>
       </div>
-      <button onClick={() => run("signature")} className={`${item} border-t border-gray-200`}>Signature Request</button>
-      <button onClick={() => run("activity")} className={item}>Activity Log</button>
-      <button onClick={() => run("trash")} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
+      <button type="button" onClick={() => run("signature")} className={`${item} border-t border-gray-200`}>Signature Request</button>
+      <button type="button" onClick={() => run("activity")} className={item}>Activity Log</button>
+      <button type="button" onClick={() => run("trash")} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
     </div>
   );
 };
