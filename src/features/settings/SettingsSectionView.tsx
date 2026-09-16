@@ -43,7 +43,7 @@ export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
     return <GenerateBarcodePanel />;
   }
 
-  return null;
+        return null;
 };
 
 export default SettingsSectionView;

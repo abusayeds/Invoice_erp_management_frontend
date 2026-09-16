@@ -18,10 +18,28 @@ import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney, db } from "@/lib/db";
 import { buildListSortParam } from "@/lib/listSort";
-import { fetchProducts, deleteProduct, type ProductListRow } from "@/services/productsApi";
+import {
+  fetchProducts,
+  deleteProduct,
+  deleteProducts,
+  archiveProduct,
+  archiveProducts,
+  unarchiveProduct,
+  restoreProduct,
+  duplicateProduct,
+  duplicateProducts,
+  mergeProducts,
+  uploadProductImage,
+  resolveProductImageUrl,
+  hasProductImage,
+  type ProductListRow,
+} from "@/services/productsApi";
+import { searchProductCategories } from "@/services/categoriesApi";
+import AsyncSearchSelect from "@/components/ui/AsyncSearchSelect";
 import { showToast } from "@/utils/toast";
 import { api } from "../../lib/api/client";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import {
   Search,
   Plus,
@@ -34,11 +52,13 @@ import {
   Trash2,
   Copy,
   Archive,
+  RotateCcw,
   Barcode,
   Upload,
   Image as ImageIcon,
   Sparkles,
   Layers,
+  Combine,
 } from "lucide-react";
 
 /* ── Types & data ──────────────────────────────────────────────── */
@@ -48,6 +68,7 @@ interface Product {
   image?: string | null;
   name: string;
   category: string;
+  categoryId: string;
   note: string;
   price: string;
   stock: number | null;
@@ -70,6 +91,7 @@ const mapProductRow = (row: ProductListRow): Product => ({
   image: row.image,
   name: row.name,
   category: row.category,
+  categoryId: row.categoryId,
   note: row.note,
   price: money(row.price),
   stock: row.stock,
@@ -141,6 +163,49 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
   );
 };
 
+/* ── Merge Products modal ──────────────────────────────────────── */
+const MergeProductsModal: React.FC<{
+  items: Product[];
+  onClose: () => void;
+  onMerge: (survivorBackendId: string) => void;
+}> = ({ items, onClose, onMerge }) => {
+  const [pick, setPick] = useState<string | null>(items[0]?.backendId ?? null);
+  return (
+    <Overlay onClose={onClose}>
+      <div className="w-full max-w-xl my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h3 className="text-base font-semibold text-gray-900">Merge Products</h3>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
+            <button
+              type="button"
+              disabled={!pick}
+              onClick={() => pick && onMerge(pick)}
+              className={`px-5 py-1.5 text-sm rounded-md font-medium ${!pick ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+            >
+              Merge
+            </button>
+          </div>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto">
+          {items.map((p) => (
+            <button key={p.id} type="button" onClick={() => setPick(p.backendId)} className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-200 hover:bg-gray-50 text-left">
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${pick === p.backendId ? "border-blue-600" : "border-gray-400"}`}>
+                {pick === p.backendId && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-gray-900 truncate">{p.name}</span>
+                {p.sku && p.sku !== "—" && <span className="block text-xs text-gray-500 truncate">SKU: {p.sku}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="px-5 py-3 text-xs text-gray-500 bg-gray-50">Select the product with which you wish to merge the rest of the products</div>
+      </div>
+    </Overlay>
+  );
+};
+
 /* ── Section header bar ─────────────────────────────────────────── */
 const SectionBar: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
   <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50 border-y border-gray-200">
@@ -178,6 +243,8 @@ interface StockRow { id: string; vendor: string; qty: number; unit: string; buyP
 
 const UpdateStockModal: React.FC<{ onClose: () => void; product: Product }> = ({ onClose, product }) => {
   const vendors = useCollection<any>("vendors", "name");
+  const dbProducts = useCollection<any>("products");
+  const localProductId = dbProducts.find((p) => String(p._id) === product.backendId)?.id as number | undefined;
   const metaKey = `stock:updates:${product.id}`;
   const [rows, setRows] = useState<StockRow[]>([]);
   useEffect(() => {
@@ -225,15 +292,18 @@ const UpdateStockModal: React.FC<{ onClose: () => void; product: Product }> = ({
       subTotal: total, tax: 0, total, amountPaid: 0, amountDue: total, notes: `Auto-generated by Update Stock (${product.name})`,
     })) as number;
     // bump the product's stock
-    await repo.update("products", product.id, { stock: (product.stock ?? 0) + qtyN, buyPrice: priceN, unit });
+    if (localProductId != null) {
+      await repo.update("products", localProductId, { stock: (product.stock ?? 0) + qtyN, buyPrice: priceN, unit });
+    }
     saveRows([...rows, { id: Math.random().toString(36).slice(2, 8), vendor: vendorName, qty: qtyN, unit, buyPrice: priceN, poId }]);
     showToast(`Stock updated — Purchase Order #${n} generated`, "success");
     setVendorQuery(""); setVendorId(null); setQty("1");
   };
 
   const removeRow = async (row: StockRow) => {
-    const current = (await repo.getOne("products", product.id))?.stock ?? 0;
-    await repo.update("products", product.id, { stock: Math.max(0, current - row.qty) });
+    if (localProductId == null) return;
+    const current = (await repo.getOne("products", localProductId))?.stock ?? 0;
+    await repo.update("products", localProductId, { stock: Math.max(0, current - row.qty) });
     if (row.poId) await repo.remove("purchaseOrders", row.poId);
     saveRows(rows.filter((r) => r.id !== row.id));
     showToast("Stock entry removed", "info");
@@ -304,40 +374,26 @@ const UpdateStockModal: React.FC<{ onClose: () => void; product: Product }> = ({
 };
 
 /* ── Product form sections (shared by Edit / Add Variation) ────── */
-/** Read a picked file, downscale to ≤400px and return a JPEG data URL
- *  (kept small so IndexedDB records stay light). */
-const readImageFile = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const img = new window.Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const max = 400;
-      const scale = Math.min(1, max / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(img.width * scale));
-      canvas.height = Math.max(1, Math.round(img.height * scale));
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
-    };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
-    img.src = url;
-  });
-
 const ImageBlock: React.FC<{
   editable?: boolean;
   image?: string | null;
-  onChange?: (dataUrl: string | null) => void;
+  onChange?: (pathOrUrl: string | null) => void;
 }> = ({ editable, image, onChange }) => {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const displaySrc = image?.startsWith("data:") ? image : resolveProductImageUrl(image);
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file
     if (!f) return;
+    setUploading(true);
     try {
-      onChange?.(await readImageFile(f));
+      const { path } = await uploadProductImage(f);
+      onChange?.(path);
     } catch {
-      showToast("Could not read that image", "error");
+      showToast("Could not upload that image", "error");
+    } finally {
+      setUploading(false);
     }
   };
   return (
@@ -345,12 +401,12 @@ const ImageBlock: React.FC<{
       <div className="relative">
         <button
           type="button"
-          disabled={!editable}
+          disabled={!editable || uploading}
           onClick={() => fileRef.current?.click()}
           title={editable ? "Choose product photo" : undefined}
           className={`w-20 h-20 rounded-md border border-gray-300 bg-blue-50 flex items-center justify-center text-blue-500 overflow-hidden ${editable ? "hover:border-blue-400 cursor-pointer" : "cursor-default"}`}
         >
-          {image ? <img src={image} alt="Product" className="w-full h-full object-cover" /> : <ImageIcon className="w-7 h-7" />}
+          {hasProductImage(image) && displaySrc ? <img src={displaySrc} alt="Product" className="w-full h-full object-cover" /> : <ImageIcon className="w-7 h-7" />}
         </button>
         {editable && image && (
           <button type="button" title="Remove photo" onClick={() => onChange?.(null)} className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-gray-600 text-white flex items-center justify-center hover:bg-red-500"><X className="w-3 h-3" /></button>
@@ -359,7 +415,7 @@ const ImageBlock: React.FC<{
       {editable && (
         <>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} />
-          <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50"><Upload className="w-4 h-4" /> Upload Photo</button>
+          <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 disabled:opacity-60"><Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Upload Photo"}</button>
           <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50"><Sparkles className="w-4 h-4" /> Generate Image with AI</button>
         </>
       )}
@@ -413,6 +469,7 @@ const ProductForm: React.FC<{ mode: "create" | "edit" | "variation"; product?: P
   const isVariation = mode === "variation";
   const [name, setName] = useState(product?.name ?? "");
   const [category, setCategory] = useState(product && product.category !== "No Category" ? product.category : "");
+  const [categoryId, setCategoryId] = useState(product?.categoryId || "");
   const [sku, setSku] = useState(product && product.sku !== "—" ? product.sku : "");
   const [qty, setQty] = useState(product?.qty ?? "1");
   const [unit, setUnit] = useState(product?.unit ?? "box");
@@ -429,25 +486,33 @@ const ProductForm: React.FC<{ mode: "create" | "edit" | "variation"; product?: P
   const [toBilled, setToBilled] = useState(product?.toBilled ?? "0.00");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // suggestion sources: local Dexie collections + system-setup API categories
-  const dbCategories = useCollection<any>("categories", "name");
   const dbUnits = useCollection<any>("units", "name");
   const dbTaxes = useCollection<any>("taxes", "name");
-  const [apiCategories, setApiCategories] = useState<string[]>([]);
-  useEffect(() => {
-    // system setup categories: [{ _id, category }]
-    api.get<any[]>("/category/all")
-      .then((d) => setApiCategories((d || []).map((c: any) => c.category ?? c.name).filter(Boolean)))
-      .catch(() => {}); // offline/front-end-only → local list still works
-  }, []);
-  const categoryOptions = useMemo(
-    () => [...new Set([...apiCategories, ...dbCategories.map((c) => c.name).filter(Boolean)])].sort((a, b) => a.localeCompare(b)),
-    [apiCategories, dbCategories],
-  );
   const unitOptions = useMemo(() => dbUnits.map((u) => u.name).filter(Boolean), [dbUnits]);
   const taxOptions = dbTaxes.length > 0 ? dbTaxes : taxList.map((name) => ({ name }));
 
-  const handleSave = () => { onSave?.({ name, category, sku, qty, unit, buyPrice, sellPrice, note, image, buyTax, sellTax, onHand, committed, available, toInvoiced, toBilled }); onClose(); };
+  const handleSave = () => {
+    onSave?.({
+      name,
+      category,
+      categoryId,
+      sku,
+      qty,
+      unit,
+      buyPrice,
+      sellPrice,
+      note,
+      image,
+      buyTax,
+      sellTax,
+      onHand,
+      committed,
+      available,
+      toInvoiced,
+      toBilled,
+    });
+    onClose();
+  };
   const body = (
     <>
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
@@ -464,7 +529,21 @@ const ProductForm: React.FC<{ mode: "create" | "edit" | "variation"; product?: P
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-5 px-6 py-5">
         <div className="space-y-5">
           {!isVariation && <FloatField label="Product Name *" value={name} onChange={setName} placeholder="Product Name" />}
-          {!isVariation && <SuggestField label="Category" value={category} onChange={setCategory} options={categoryOptions} />}
+          {!isVariation && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
+              <AsyncSearchSelect
+                value={categoryId}
+                displayName={category}
+                placeholder="Search category..."
+                onSearch={searchProductCategories}
+                onChange={(id, opt) => {
+                  setCategoryId(id);
+                  setCategory(opt?.name || "");
+                }}
+              />
+            </div>
+          )}
           <FloatField label="SKU" value={sku} onChange={setSku} placeholder="SKU" icon={<Barcode className="w-4 h-4" />} />
           {isVariation && <FloatField label="Variant Size" placeholder="Variant Size" />}
         </div>
@@ -546,7 +625,8 @@ export const Product: React.FC = () => {
   const [sortBy, setSortBy] = useState("Created On");
   const [sortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilterId, setCategoryFilterId] = useState("");
+  const [categoryFilterLabel, setCategoryFilterLabel] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -564,20 +644,23 @@ export const Product: React.FC = () => {
 
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm">(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 350);
     return () => window.clearTimeout(t);
   }, [searchInput]);
-  useEffect(() => { setPage(1); }, [sortBy, statusFilter, categoryFilter]);
+  useEffect(() => { setPage(1); }, [sortBy, statusFilter, categoryFilterId]);
 
   const { data: listData } = useQuery({
-    queryKey: ["products-list", page, search, sortBy, sortDir, statusFilter],
+    queryKey: ["products-list", page, search, sortBy, sortDir, statusFilter, categoryFilterId],
     queryFn: () => fetchProducts({
       page,
       limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(productSortField(sortBy), sortDir),
+      category: categoryFilterId || undefined,
       isDeleted: statusFilter === "Trash" || undefined,
       isArchive: statusFilter === "Archived" || undefined,
     }),
@@ -586,11 +669,7 @@ export const Product: React.FC = () => {
   });
   const listPagination = listData?.pagination;
   const products: Product[] = useMemo(
-    () => (listData?.rows ?? []).map(mapProductRow).filter((row) => !categoryFilter || row.category === categoryFilter),
-    [listData?.rows, categoryFilter],
-  );
-  const categoryList = useMemo(
-    () => [...new Set((listData?.rows ?? []).map((r) => r.category).filter((c) => c && c !== "No Category"))],
+    () => (listData?.rows ?? []).map(mapProductRow),
     [listData?.rows],
   );
 
@@ -610,13 +689,92 @@ export const Product: React.FC = () => {
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
   const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
+  const checkedBackendIds = useMemo(
+    () => products.filter((p) => checked.has(p.id)).map((p) => p.backendId),
+    [products, checked],
+  );
+  const checkedItems = useMemo(
+    () => products.filter((p) => checked.has(p.id)),
+    [products, checked],
+  );
+  const invalidateProductsList = () => void queryClient.invalidateQueries({ queryKey: ["products-list"] });
+  const bulkDisabled = checked.size === 0;
+  const bulkBtnClass = (disabled: boolean) =>
+    `w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 ${disabled ? "opacity-40 pointer-events-none" : ""}`;
+
+  const bulkMerge = async (survivorId: string) => {
+    const mergedIds = checkedBackendIds.filter((id) => id !== survivorId);
+    try {
+      await mergeProducts(survivorId, mergedIds);
+      invalidateProductsList();
+      exitSelect();
+      setSelAction(null);
+      setMergeTargetId(null);
+      showToast("Products merged", "success");
+    } catch {
+      showToast("Merge failed", "error");
+    }
+  };
+
+  const handleBulkArchiveOrRestore = async () => {
+    if (bulkDisabled) {
+      showToast(statusFilter === "Trash" ? "Select products to restore" : statusFilter === "Archived" ? "Select products to unarchive" : "Select products to archive", "warning");
+      return;
+    }
+    try {
+      if (statusFilter === "Trash") {
+        await Promise.all(checkedBackendIds.map(restoreProduct));
+        showToast("Products restored", "success");
+      } else if (statusFilter === "Archived") {
+        await Promise.all(checkedBackendIds.map(unarchiveProduct));
+        showToast("Products unarchived", "success");
+      } else {
+        await archiveProducts(checkedBackendIds);
+        showToast("Products archived", "success");
+      }
+      invalidateProductsList();
+      exitSelect();
+    } catch {
+      showToast(statusFilter === "Trash" ? "Restore failed" : "Archive failed", "error");
+    }
+  };
+
+  const handleBulkDuplicate = async () => {
+    if (bulkDisabled) {
+      showToast("Select products to duplicate", "warning");
+      return;
+    }
+    try {
+      await duplicateProducts(checkedBackendIds);
+      invalidateProductsList();
+      exitSelect();
+      showToast("Products duplicated", "success");
+    } catch {
+      showToast("Duplicate failed", "error");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (bulkDisabled) {
+      showToast("Select products to delete", "warning");
+      return;
+    }
+    try {
+      await deleteProducts(checkedBackendIds);
+      invalidateProductsList();
+      exitSelect();
+      showToast("Products deleted", "success");
+    } catch {
+      showToast("Delete failed", "error");
+    }
+  };
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!categoryFilter;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!categoryFilterId;
   if (!selected && mode !== "create" && !hasActiveFilters) return <ListEmptyState title="No products yet" onCreate={() => setMode("create")} createLabel="New Product" />;
 
   return (
@@ -627,9 +785,22 @@ export const Product: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              {[Archive, Copy, Trash2].map((Ic, i) => (
-                <button key={i} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
-              ))}
+              <button
+                type="button"
+                title="Merge"
+                onClick={() => (checked.size < 2 ? showToast("Select at least two products to merge", "warning") : setSelAction("merge"))}
+                className={bulkBtnClass(checked.size < 2)}
+              >
+                <Combine className="w-4 h-4" />
+              </button>
+              {statusFilter === "Trash" ? (
+                <button type="button" title="Restore" onClick={handleBulkArchiveOrRestore} className={bulkBtnClass(bulkDisabled)}><RotateCcw className="w-4 h-4" /></button>
+              ) : (
+                <button type="button" title={statusFilter === "Archived" ? "Unarchive" : "Archive"} onClick={handleBulkArchiveOrRestore} className={bulkBtnClass(bulkDisabled)}><Archive className="w-4 h-4" /></button>
+              )}
+              <button type="button" title="Duplicate" onClick={handleBulkDuplicate} className={bulkBtnClass(bulkDisabled)}><Copy className="w-4 h-4" /></button>
+              <button type="button" title="Delete" onClick={handleBulkDelete} className={bulkBtnClass(bulkDisabled)}><Trash2 className="w-4 h-4" /></button>
+              <button type="button" title="Done" onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Check className="w-4 h-4" /></button>
             </div>
           </div>
         ) : (
@@ -663,16 +834,19 @@ export const Product: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Category{categoryFilter ? ` | ${categoryFilter}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
-            {(close) => (
-              <>
-                <button onClick={() => { setCategoryFilter(null); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All {categoryFilter === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-                {categoryList.map((c) => (
-                  <button key={c} onClick={() => { setCategoryFilter(c); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c} {categoryFilter === c && <Check className="w-4 h-4 text-blue-600" />}</button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <div className="min-w-[180px] flex-1 max-w-xs">
+            <AsyncSearchSelect
+              value={categoryFilterId}
+              displayName={categoryFilterLabel}
+              placeholder="All categories"
+              onSearch={searchProductCategories}
+              onChange={(id, opt) => {
+                setCategoryFilterId(id);
+                setCategoryFilterLabel(opt?.name || "");
+              }}
+              className="text-xs"
+            />
+          </div>
         </div>
 
         {/* rows */}
@@ -721,9 +895,9 @@ export const Product: React.FC = () => {
           </div>
         </section>
       ) : mode === "create" ? (
-        <ProductForm mode="create" title="Create Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("products", { name: d.name || "Untitled", category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled, taxId: 1, status: "Active" }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
+        <ProductForm mode="create" title="Create Product" onClose={() => setMode("view")} onSave={async (d) => { await repo.add("products", { name: d.name || "Untitled", category: d.category, categoryId: d.categoryId || "", sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled, taxId: 1, status: "Active" }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
       ) : mode === "edit" && selected ? (
-        <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { if (selectedLocal?.id != null) await repo.update("products", selectedLocal.id, { name: d.name, category: d.category, sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
+        <ProductForm mode="edit" product={selected} title="Edit Product" onClose={() => setMode("view")} onSave={async (d) => { if (selectedLocal?.id != null) await repo.update("products", selectedLocal.id, { name: d.name, category: d.category, categoryId: d.categoryId || "", sku: d.sku, note: d.note, image: d.image ?? null, price: parseMoney(d.sellPrice), buyPrice: parseMoney(d.buyPrice), stock: parseMoney(d.qty) || 0, qty: parseMoney(d.qty) || 1, unit: d.unit, buyTax: d.buyTax, sellTax: d.sellTax, onHand: d.onHand, committed: d.committed, available: d.available, toInvoiced: d.toInvoiced, toBilled: d.toBilled }); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); }} />
       ) : selected ? (
         <section className="module-detail-panel custom-scrollbar">
           {/* detail header */}
@@ -737,9 +911,40 @@ export const Product: React.FC = () => {
                 {(close) => (
                   <>
                     <button onClick={() => { setModal("variation"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Layers className="w-4 h-4 text-gray-400" /> Add Variation</button>
-                    <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</button>
-                    <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"><Archive className="w-4 h-4" /> Archive</button>
-                    <button onClick={async () => { if (selected?.backendId) { await deleteProduct(selected.backendId); void queryClient.invalidateQueries({ queryKey: ["products-list"] }); } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
+                    <button
+                      onClick={async () => {
+                        if (!selected?.backendId) { close(); return; }
+                        try {
+                          await duplicateProduct(selected.backendId);
+                          invalidateProductsList();
+                          showToast("Product duplicated", "success");
+                        } catch {
+                          showToast("Duplicate failed", "error");
+                        }
+                        close();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                    ><Copy className="w-4 h-4 text-gray-400" /> Duplicate</button>
+                    <button
+                      onClick={async () => {
+                        if (!selected?.backendId) { close(); return; }
+                        try {
+                          if (statusFilter === "Archived") {
+                            await unarchiveProduct(selected.backendId);
+                            showToast("Product unarchived", "success");
+                          } else {
+                            await archiveProduct(selected.backendId);
+                            showToast("Product archived", "success");
+                          }
+                          invalidateProductsList();
+                        } catch {
+                          showToast("Archive failed", "error");
+                        }
+                        close();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"
+                    ><Archive className="w-4 h-4" /> {statusFilter === "Archived" ? "Unarchive" : "Archive"}</button>
+                    <button onClick={async () => { if (selected?.backendId) { try { await deleteProduct(selected.backendId); invalidateProductsList(); showToast("Product deleted", "success"); } catch { showToast("Delete failed", "error"); } } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
                   </>
                 )}
               </Dropdown>
@@ -801,6 +1006,20 @@ export const Product: React.FC = () => {
       {modal === "stock" && selected && <UpdateStockModal onClose={() => setModal(null)} product={selected} />}
       {modal === "variation" && selected && <ProductForm mode="variation" product={selected} title={selected.name} asModal onClose={() => setModal(null)} />}
       {modal === "settings" && <AppSettingsModal initialTab="Product" onClose={() => setModal(null)} />}
+      {(selAction === "merge" || selAction === "mergeConfirm") && (
+        <MergeProductsModal
+          items={checkedItems}
+          onClose={() => { setSelAction(null); setMergeTargetId(null); }}
+          onMerge={(id) => { setMergeTargetId(id); setSelAction("mergeConfirm"); }}
+        />
+      )}
+      {selAction === "mergeConfirm" && mergeTargetId != null && (
+        <ConfirmAlert
+          message="Are you sure want to merge these products?"
+          onNo={() => setSelAction("merge")}
+          onYes={() => void bulkMerge(mergeTargetId)}
+        />
+      )}
     </div>
   );
 };

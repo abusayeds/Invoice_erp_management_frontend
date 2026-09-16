@@ -57,7 +57,7 @@ export function AsyncSearchSelect({
       setLoading(true);
       try {
         const rows = await onSearch(q.trim());
-        if (id === reqId.current) setOptions(rows.filter((r) => r.id && r.name));
+        if (id === reqId.current) setOptions(rows.filter((r) => String(r.name || "").trim() !== ""));
       } catch {
         if (id === reqId.current) setOptions([]);
       } finally {
@@ -122,15 +122,15 @@ export function AsyncSearchSelect({
       </button>
 
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 overflow-hidden">
+        <div className="ua-dropdown-panel absolute left-0 right-0 top-full mt-1 rounded-md shadow-lg z-50 overflow-hidden">
           <div className="relative border-b border-gray-100">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type to search..."
-              className="w-full pl-9 pr-9 py-2 text-sm focus:outline-none"
+              placeholder="Search..."
+              className="keep-box ua-field w-full pl-9 pr-9 py-2 text-sm focus:outline-none"
             />
             {loading && (
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
@@ -147,7 +147,7 @@ export function AsyncSearchSelect({
                   setOpen(false);
                 }}
                 className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
-                  o.id === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                  o.id === value ? "bg-blue-50 text-blue-700" : "text-gray-900"
                 }`}
               >
                 {o.name}

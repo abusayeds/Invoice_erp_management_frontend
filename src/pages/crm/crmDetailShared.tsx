@@ -91,8 +91,7 @@ export const RichEditor: React.FC<{
     if (ref.current && ref.current.innerHTML !== value) {
       ref.current.innerHTML = value || "";
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [value]);
 
   const exec = (cmd: string, arg?: string) => {
     document.execCommand(cmd, false, arg);
@@ -156,23 +155,25 @@ export const RichEditor: React.FC<{
 };
 
 /* ── Searchable multi-select picker (Add Users/Products/Sources/Clients) ── */
+export type PickerOption = { id: string; name: string };
+
 export const AddPicker: React.FC<{
   title: string;
   label: string;
-  options: string[];
+  options: PickerOption[];
   existing: string[];
   onClose: () => void;
-  onAdd: (names: string[]) => void;
+  onAdd: (items: PickerOption[]) => void;
 }> = ({ title, label, options, existing, onClose, onAdd }) => {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const available = options.filter((o) => !existing.includes(o));
+  const available = options.filter((o) => !existing.includes(o.id));
   const filtered = available.filter((o) =>
-    o.toLowerCase().includes(query.toLowerCase()),
+    o.name.toLowerCase().includes(query.toLowerCase()),
   );
-  const toggle = (name: string) =>
+  const toggle = (id: string) =>
     setSelected((s) =>
-      s.includes(name) ? s.filter((x) => x !== name) : [...s, name],
+      s.includes(id) ? s.filter((x) => x !== id) : [...s, id],
     );
 
   return (
@@ -207,16 +208,16 @@ export const AddPicker: React.FC<{
               )}
               {filtered.map((o) => (
                 <label
-                  key={o}
+                  key={o.id}
                   className="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 cursor-pointer"
                 >
                   <input
                     type="checkbox"
-                    checked={selected.includes(o)}
-                    onChange={() => toggle(o)}
+                    checked={selected.includes(o.id)}
+                    onChange={() => toggle(o.id)}
                     className="accent-blue-600"
                   />
-                  {o}
+                  {o.name}
                 </label>
               ))}
             </div>
@@ -235,7 +236,8 @@ export const AddPicker: React.FC<{
                 showToast("Select at least one", "info");
                 return;
               }
-              onAdd(selected);
+              const picked = options.filter((o) => selected.includes(o.id));
+              onAdd(picked);
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >

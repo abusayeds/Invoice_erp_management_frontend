@@ -8,15 +8,17 @@
 
 import React, { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { money } from "@/lib/db";
+import { getToken } from "@/lib/api/tokenStore";
 import {
   posOrderStore,
-  SEED_POS_ORDERS,
   orderSubtotal,
   orderTax,
   orderTotal,
   warehouseShort,
 } from "@/lib/db/pos";
+import { fetchPosOrder } from "@/services/posOrdersApi";
 import { HrmBreadcrumb } from "../hrm/hrmShared";
 import { chip } from "../goal/goalShared";
 import { downloadTablePdf } from "../doubleEntry/deShared";
@@ -29,14 +31,22 @@ export const PosOrderDetail: React.FC = () => {
   const { id } = useParams();
   const orders = posOrderStore.use();
   useEffect(() => {
-    if (orders === null) posOrderStore.save(SEED_POS_ORDERS);
+    if (orders === null) void posOrderStore.save([]);
   }, [orders]);
 
-  const order = (orders || []).find((o) => o.id === id);
+  const useBackend = !!getToken();
+  const { data: apiOrder, isFetching } = useQuery({
+    queryKey: ["pos-order", id],
+    queryFn: () => fetchPosOrder(id!),
+    enabled: useBackend && !!id,
+    staleTime: 30_000,
+  });
+
+  const order = apiOrder ?? (orders || []).find((o) => o.id === id);
   if (!order) {
     return (
       <div className="module-page-shell flex items-center justify-center text-sm text-gray-500">
-        {orders === undefined ? "Loading..." : "POS sale not found."}
+        {orders === undefined || (useBackend && isFetching) ? "Loading..." : "POS sale not found."}
       </div>
     );
   }

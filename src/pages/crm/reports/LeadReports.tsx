@@ -63,54 +63,8 @@ interface PipelineData {
   color: string;
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const weeklyDataSeed: DayData[] = [
-  { day: "Monday", leads: 5, conversions: 2 },
-  { day: "Tuesday", leads: 7, conversions: 3 },
-  { day: "Wednesday", leads: 4, conversions: 1 },
-  { day: "Thursday", leads: 8, conversions: 4 },
-  { day: "Friday", leads: 6, conversions: 2 },
-  { day: "Saturday", leads: 3, conversions: 1 },
-  { day: "Sunday", leads: 3, conversions: 0 },
-];
-
-const monthlyDataSeed = [
-  { month: "Jan", leads: 65 },
-  { month: "Feb", leads: 75 },
-  { month: "Mar", leads: 82 },
-  { month: "Apr", leads: 70 },
-  { month: "May", leads: 88 },
-  { month: "Jun", leads: 92 },
-  { month: "Jul", leads: 78 },
-  { month: "Aug", leads: 85 },
-  { month: "Sep", leads: 80 },
-  { month: "Oct", leads: 72 },
-  { month: "Nov", leads: 68 },
-  { month: "Dec", leads: 90 },
-];
-
-const sourceDataSeed: SourceData[] = [
-  { name: "Referral Program", leads: 20 },
-  { name: "Trade Show Events", leads: 15 },
-  { name: "Partner Referral", leads: 12 },
-  { name: "Networking Events", leads: 10 },
-];
-
-const staffDataSeed: StaffData[] = [
-  { name: "John Smith", leads: 45, conversions: 28 },
-  { name: "Jane Doe", leads: 38, conversions: 22 },
-  { name: "Michael Brown", leads: 52, conversions: 31 },
-  { name: "Sarah Wilson", leads: 41, conversions: 24 },
-];
-
-const pipelineDataSeed: PipelineData[] = [
-  { name: "Marketing", value: 35, color: "#3b82f6" },
-  { name: "Lead Qualification", value: 28, color: "#10b981" },
-  { name: "Sales", value: 42, color: "#f59e0b" },
-];
-
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
+const PIE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
@@ -139,84 +93,117 @@ export const LeadReports: React.FC = () => {
   const [toDate, setToDate] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("February");
 
-  const [weeklyData, setWeeklyData] = useState(weeklyDataSeed);
-  const [monthlyData, setMonthlyData] = useState(monthlyDataSeed);
-  const [sourceData, setSourceData] = useState(sourceDataSeed);
-  const [staffData, setStaffData] = useState(staffDataSeed);
-  const [pipelineData, setPipelineData] = useState(pipelineDataSeed);
+  const [weeklyData, setWeeklyData] = useState<DayData[]>([]);
+  const [monthlyData, setMonthlyData] = useState<{ month: string; leads: number }[]>([]);
+  const [sourceData, setSourceData] = useState<SourceData[]>([]);
+  const [staffData, setStaffData] = useState<StaffData[]>([]);
+  const [pipelineData, setPipelineData] = useState<PipelineData[]>([]);
+  const [stageData, setStageData] = useState<PipelineData[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const PIE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
-
-  const load = useCallback((params?: Record<string, string>) => {
-    api
-      .get("/crm/reports/leads", { params })
-      .then((res: any) => {
-        const d = toObject<any>(res?.data ?? res) || {};
-        if (d.weeklyDetailed?.length)
-          setWeeklyData(d.weeklyDetailed.map((w: any) => ({ day: w.day, leads: Number(w.leads) || 0, conversions: Number(w.conversions) || 0 })));
-        if (d.monthly?.length) setMonthlyData(d.monthly.map((m: any) => ({ month: m.month, leads: Number(m.count) || 0 })));
-        if (d.sources?.length) setSourceData(d.sources.map((s: any) => ({ name: s.source, leads: Number(s.count) || 0 })));
-        if (d.staffDetailed?.length)
-          setStaffData(d.staffDetailed.map((s: any) => ({ name: s.name, leads: Number(s.leads) || 0, conversions: Number(s.conversions) || 0 })));
-        if (d.byStage?.length)
-          setPipelineData(
-            d.byStage.map((s: any, i: number) => ({ name: s.name, value: Number(s.count) || 0, color: PIE[i % PIE.length] })),
-          );
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async (params?: Record<string, string>) => {
+    setLoading(true);
+    try {
+      const res: any = await api.get("/crm/reports/leads", { params });
+      const d = toObject<any>(res?.data ?? res) || {};
+      setWeeklyData(
+        (d.weeklyDetailed ?? []).map((w: any) => ({
+          day: w.day,
+          leads: Number(w.leads) || 0,
+          conversions: Number(w.conversions) || 0,
+        })),
+      );
+      setMonthlyData(
+        (d.monthly ?? []).map((m: any) => ({
+          month: m.month,
+          leads: Number(m.count) || 0,
+        })),
+      );
+      setSourceData(
+        (d.sources ?? []).map((s: any) => ({
+          name: s.source,
+          leads: Number(s.count) || 0,
+        })),
+      );
+      setStaffData(
+        (d.staffDetailed ?? []).map((s: any) => ({
+          name: s.name,
+          leads: Number(s.leads) || 0,
+          conversions: Number(s.conversions) || 0,
+        })),
+      );
+      setPipelineData(
+        (d.pipeline ?? []).map((p: any, i: number) => ({
+          name: p.pipeline,
+          value: Number(p.total ?? p.count ?? p.leads) || 0,
+          color: PIE[i % PIE.length],
+        })),
+      );
+      setStageData(
+        (d.byStage ?? []).map((s: any, i: number) => ({
+          name: s.name,
+          value: Number(s.count) || 0,
+          color: PIE[i % PIE.length],
+        })),
+      );
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!fromDate || !toDate) {
       showToast("Please select both from and to dates", "info");
       return;
     }
-    load({ from_date: fromDate, to_date: toDate });
-    showToast("Report generated successfully!", "success");
+    const ok = await load({ from_date: fromDate, to_date: toDate });
+    if (ok) showToast("Report generated successfully!", "success");
+    else showToast("Failed to generate report", "error");
   };
+
+  const dateToolbar = (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleGenerate()}
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 disabled:opacity-60"
+        >
+          Generate
+        </button>
+      </div>
+    </div>
+  );
 
   // ─── General Report ────────────────────────────────────────────────────────
   const renderGeneralReport = () => (
     <div className="space-y-8">
-      {/* Date Range Picker */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              From Date
-            </label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              To Date
-            </label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            onClick={handleGenerate}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2"
-          >
-            Generate
-          </button>
-        </div>
-      </div>
-
       {/* This Week Leads & Conversions - Grouped Bar Chart */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-base font-semibold text-gray-900 mb-4">
@@ -309,6 +296,7 @@ export const LeadReports: React.FC = () => {
 
   // ─── Staff Report ──────────────────────────────────────────────────────────
   const renderStaffReport = () => (
+    <div className="space-y-6">
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <h3 className="text-base font-semibold text-gray-900 mb-4">
         Staff Performance
@@ -376,6 +364,21 @@ export const LeadReports: React.FC = () => {
         </div>
       </div>
     </div>
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <h4 className="text-sm font-medium text-gray-600 mb-3">Staff leads & conversions</h4>
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={staffData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
+          <YAxis />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend />
+          <Bar dataKey="leads" fill="#3b82f6" name="Leads" />
+          <Bar dataKey="conversions" fill="#10b981" name="Conversions" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+    </div>
   );
 
   // ─── Pipeline Report ───────────────────────────────────────────────────────
@@ -388,7 +391,7 @@ export const LeadReports: React.FC = () => {
         {/* Horizontal Bar Chart for Pipeline */}
         <div>
           <h4 className="text-sm font-medium text-gray-600 mb-3">
-            Leads by Pipeline Stage
+            Leads by Pipeline
           </h4>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart
@@ -407,7 +410,7 @@ export const LeadReports: React.FC = () => {
         {/* Pie Chart */}
         <div>
           <h4 className="text-sm font-medium text-gray-600 mb-3">
-            Proportion by Stage
+            Proportion by Pipeline
           </h4>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
@@ -436,6 +439,20 @@ export const LeadReports: React.FC = () => {
           </ResponsiveContainer>
         </div>
       </div>
+      {stageData.length > 0 && (
+        <div className="mt-8">
+          <h4 className="text-sm font-medium text-gray-600 mb-3">Stage distribution</h4>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart layout="vertical" data={stageData} margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="name" type="category" width={120} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" fill="#8b5cf6" name="Leads" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
       {/* Stage Cards */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         {pipelineData.map((stage) => (
@@ -527,6 +544,7 @@ export const LeadReports: React.FC = () => {
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-full mx-auto">
+          {dateToolbar}
           {activeTab === "general" && renderGeneralReport()}
           {activeTab === "staff" && renderStaffReport()}
           {activeTab === "pipeline" && renderPipelineReport()}

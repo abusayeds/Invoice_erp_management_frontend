@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
@@ -12,6 +12,10 @@ import {
   CreatePlusButton,
   searchAwardTypes,
   searchEmployees,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "./hrmShared";
 import {
   Search,
@@ -98,13 +102,13 @@ type SortDir = "asc" | "desc";
 export const Awards: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove } = useResourceData(awardHooks, {
     seed: [],
-    params: { page: 1, limit: 100 },
+    params: listParams,
   });
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("awardDate");
@@ -128,7 +132,7 @@ export const Awards: React.FC = () => {
     awardTypeLabel: "",
     awardDate: "",
     description: "",
-    certificate: null as File | null,
+    certificatePath: "",
     certificateName: "",
   });
 
@@ -146,17 +150,12 @@ export const Awards: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredAwards = useMemo(() => {
     let result = [...items];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.employee.toLowerCase().includes(q) ||
-          a.awardType.toLowerCase().includes(q),
-      );
-    }
 
     if (awardTypeFilter !== "All") {
       result = result.filter((a) => a.awardType === awardTypeFilter);
@@ -173,7 +172,7 @@ export const Awards: React.FC = () => {
       return 0;
     });
     return result;
-  }, [items, searchQuery, awardTypeFilter, sortField, sortDir]);
+  }, [items, awardTypeFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredAwards.length / perPage);
   const paginatedAwards = filteredAwards.slice(
@@ -191,7 +190,7 @@ export const Awards: React.FC = () => {
       awardTypeLabel: "",
       awardDate: "",
       description: "",
-      certificate: null,
+      certificatePath: "",
       certificateName: "",
     });
   };
@@ -211,8 +210,8 @@ export const Awards: React.FC = () => {
       awardTypeLabel: award.awardType,
       awardDate: award.awardDate,
       description: award.description,
-      certificate: null,
-      certificateName: award.certificate,
+      certificatePath: award.certificate,
+      certificateName: hrmFileLabel(award.certificate),
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -226,16 +225,6 @@ export const Awards: React.FC = () => {
   const openDeleteModal = (award: Award) => {
     setSelectedAward(award);
     setShowDeleteModal(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setAwardFormData({
-        ...awardFormData,
-        certificate: e.target.files[0],
-        certificateName: e.target.files[0].name,
-      });
-    }
   };
 
   const handleSaveAward = async () => {
@@ -256,12 +245,15 @@ export const Awards: React.FC = () => {
       return;
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
       employee_id: awardFormData.employee,
       award_type_id: awardFormData.awardType,
       award_date: awardFormData.awardDate,
       description: awardFormData.description,
     };
+    if (awardFormData.certificatePath) {
+      payload.certificate = awardFormData.certificatePath;
+    }
 
     try {
       if (isEditing && selectedAward) {
@@ -289,14 +281,6 @@ export const Awards: React.FC = () => {
       } catch {
         showToast("Delete failed.", "error");
       }
-    }
-  };
-
-  const handleViewCertificate = (certificate: string) => {
-    if (certificate) {
-      showToast(`Opening certificate: ${certificate}`, "info");
-    } else {
-      showToast("No certificate attached", "info");
     }
   };
 
@@ -429,29 +413,18 @@ export const Awards: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Certificate
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.png"
-                className="hidden"
-                id="certificate-upload"
-              />
-              <button
-                onClick={() =>
-                  document.getElementById("certificate-upload")?.click()
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <Upload className="w-4 h-4" />
-                Browse
-              </button>
-              {awardFormData.certificateName && (
-                <span className="text-sm text-green-600">
-                  {awardFormData.certificateName}
-                </span>
-              )}
-            </div>
+            <HrmFileUploadButton
+              inputId="award-certificate-upload"
+              path={awardFormData.certificatePath}
+              displayName={awardFormData.certificateName}
+              onUploaded={({ path, name }) =>
+                setAwardFormData({
+                  ...awardFormData,
+                  certificatePath: path,
+                  certificateName: name,
+                })
+              }
+            />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -527,21 +500,7 @@ export const Awards: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Certificate</p>
-                {selectedAward.certificate ? (
-                  <button
-                    onClick={() =>
-                      handleViewCertificate(selectedAward.certificate)
-                    }
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    <FileText className="w-4 h-4" />
-                    View Certificate
-                  </button>
-                ) : (
-                  <span className="text-sm text-gray-400">
-                    No certificate attached
-                  </span>
-                )}
+                <HrmDocumentLink path={selectedAward.certificate} />
               </div>
             </div>
           </div>
@@ -742,20 +701,8 @@ export const Awards: React.FC = () => {
                   <td className="px-4 py-3 text-gray-600">
                     {formatDate(award.awardDate)}
                   </td>
-                  <td className="px-4 py-3">
-                    {award.certificate ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewCertificate(award.certificate);
-                        }}
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <HrmDocumentLink path={award.certificate} className="max-w-[180px]" />
                   </td>
                   <td
                     className="px-4 py-3"

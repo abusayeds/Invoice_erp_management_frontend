@@ -7,20 +7,24 @@
  * rows are selected and emits a barcode-label PDF via jsPDF.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { money, useCollection } from "@/lib/db";
-import { POS_WAREHOUSES, code128Modules, warehouseShort } from "@/lib/db/pos";
+import { useQuery } from "@tanstack/react-query";
+import { money } from "@/lib/db";
+import { fetchProducts, resolveProductImageUrl, hasProductImage } from "@/services/productsApi";
+import { searchWarehouses } from "@/services/warehousesApi";
+import AsyncSearchSelect from "@/components/ui/AsyncSearchSelect";
+import { code128Modules, warehouseShort } from "@/lib/db/pos";
 import { HrmBreadcrumb } from "../hrm/hrmShared";
 import { showToast } from "../../utils/toast";
 import { QrCode, Package, Search, Download } from "lucide-react";
 
 interface ProductRow {
-  id: number;
+  id: string;
   name: string;
   sku: string;
   price: number;
-  status: string;
+  image: string | null;
 }
 
 function BarcodeSvg({ sku }: { sku: string }) {
@@ -42,30 +46,72 @@ function BarcodeSvg({ sku }: { sku: string }) {
 
 export const PrintBarcode: React.FC = () => {
   const navigate = useNavigate();
-  const products = useCollection<ProductRow>("products");
-  const [warehouse, setWarehouse] = useState(POS_WAREHOUSES[0]);
+  const [warehouseId, setWarehouseId] = useState("");
+  const [warehouseName, setWarehouseName] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [copies, setCopies] = useState<Record<number, number>>({});
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copies, setCopies] = useState<Record<string, number>>({});
+  const [selectedRows, setSelectedRows] = useState<Record<string, ProductRow>>({});
 
-  const visible = useMemo(() => {
-    const q = search.toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q));
-  }, [products, search]);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const { data: listData } = useQuery({
+    queryKey: ["barcode-products", page, search],
+    queryFn: () => fetchProducts({ page, limit: 50, searchTerm: search || undefined, sort: "productName" }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+
+  const visible: ProductRow[] = useMemo(
+    () =>
+      (listData?.rows ?? []).map((r) => ({
+        id: r._id,
+        name: r.name,
+        sku: r.sku === "—" ? "" : r.sku,
+        price: r.price,
+        image: r.image,
+      })),
+    [listData?.rows],
+  );
+  const pagination = listData?.pagination;
 
   const allSelected = visible.length > 0 && visible.every((p) => selected.has(p.id));
-  const toggleAll = () =>
-    setSelected(allSelected ? new Set() : new Set(visible.map((p) => p.id)));
-  const toggle = (id: number) =>
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+      setSelectedRows({});
+    } else {
+      setSelected(new Set(visible.map((p) => p.id)));
+      setSelectedRows(Object.fromEntries(visible.map((p) => [p.id, p])));
+    }
+  };
+  const toggle = (p: ProductRow) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(p.id)) {
+        next.delete(p.id);
+        setSelectedRows((m) => {
+          const copy = { ...m };
+          delete copy[p.id];
+          return copy;
+        });
+      } else {
+        next.add(p.id);
+        setSelectedRows((m) => ({ ...m, [p.id]: p }));
+      }
       return next;
     });
 
   const downloadPdf = async () => {
-    const rows = products.filter((p) => selected.has(p.id));
+    const rows = Object.values(selectedRows);
     if (rows.length === 0) return;
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF();
@@ -74,7 +120,7 @@ export const PrintBarcode: React.FC = () => {
     doc.text("Product Barcodes", 105, 14, { align: "center" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(warehouseShort(warehouse), 105, 20, { align: "center" });
+    doc.text(warehouseName ? warehouseShort(warehouseName) : "Warehouse", 105, 20, { align: "center" });
     let col = 0;
     let y = 32;
     for (const p of rows) {
@@ -134,21 +180,26 @@ export const PrintBarcode: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900">Product Barcode Generator</h3>
           </div>
           <div className="flex items-end gap-4 flex-wrap">
-            <div>
+            <div className="min-w-64">
               <label className="block text-xs font-medium text-gray-500 mb-1">Warehouse</label>
-              <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)} className="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white min-w-64">
-                {POS_WAREHOUSES.map((w) => (
-                  <option key={w}>{warehouseShort(w)}</option>
-                ))}
-              </select>
+              <AsyncSearchSelect
+                value={warehouseId}
+                displayName={warehouseName ? warehouseShort(warehouseName) : ""}
+                placeholder="Select warehouse"
+                onSearch={searchWarehouses}
+                onChange={(id, opt) => {
+                  setWarehouseId(id);
+                  setWarehouseName(opt?.name || "");
+                }}
+              />
             </div>
             <div className="flex-1 min-w-56">
               <label className="block text-xs font-medium text-gray-500 mb-1">Search Products</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search by name or SKU..."
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md"
                 />
@@ -190,12 +241,23 @@ export const PrintBarcode: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {visible.map((p) => (
+                {visible.map((p) => {
+                  const imgSrc = hasProductImage(p.image) ? resolveProductImageUrl(p.image) : "";
+                  return (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
-                      <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} aria-label={`Select ${p.name}`} className="w-4 h-4 accent-blue-600" />
+                      <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p)} aria-label={`Select ${p.name}`} className="w-4 h-4 accent-blue-600" />
                     </td>
-                    <td className="px-4 py-4 font-medium text-gray-900">{p.name}</td>
+                    <td className="px-4 py-4 font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        {imgSrc ? (
+                          <img src={imgSrc} alt="" className="w-8 h-8 rounded object-cover border border-gray-200" />
+                        ) : (
+                          <Package className="w-5 h-5 text-gray-300" />
+                        )}
+                        {p.name}
+                      </div>
+                    </td>
                     <td className="px-4 py-4 text-gray-600">{p.sku || "—"}</td>
                     <td className="px-4 py-4 font-medium text-blue-600">{money(p.price)}</td>
                     <td className="px-4 py-4"><BarcodeSvg sku={p.sku || String(p.id)} /></td>
@@ -213,13 +275,36 @@ export const PrintBarcode: React.FC = () => {
                       )}
                     </td>
                   </tr>
-                ))}
+                );})}
                 {visible.length === 0 && (
                   <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">No products found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          {pagination && pagination.totalPage > 1 && (
+            <div className="flex items-center justify-center gap-3 py-4 border-t border-gray-100 text-sm text-gray-600">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <span>
+                Page {pagination.currentPage} of {pagination.totalPage}
+              </span>
+              <button
+                type="button"
+                disabled={page >= pagination.totalPage}
+                onClick={() => setPage((p) => p + 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -58,5 +58,28 @@ export async function deleteService(id: string): Promise<void> {
 
 export async function deleteServices(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await Promise.all(ids.map((id) => deleteService(id)));
+  if (ids.length === 1) {
+    await deleteService(ids[0]);
+    return;
+  }
+  await api.raw.delete(`/service/${ids.join(",")}`);
+}
+
+export async function archiveService(id: string): Promise<void> {
+  await api.raw.patch(`/service/${id}`, { isArchive: true });
+}
+
+export async function archiveServices(ids: string[]): Promise<void> {
+  await Promise.all(ids.map(archiveService));
+}
+
+export async function unarchiveService(id: string): Promise<void> {
+  await api.raw.patch(`/service/${id}`, { isArchive: false });
+}
+
+export async function mergeServices(survivorId: string, mergedIds: string[]): Promise<void> {
+  await api.raw.post("/service/merge", {
+    survivor_id: survivorId,
+    merged_ids: mergedIds,
+  });
 }

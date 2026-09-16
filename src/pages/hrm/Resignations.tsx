@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
@@ -34,6 +34,10 @@ import {
   apiLabel as empApiLabel,
   employeeUserId,
   searchEmployees,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "./hrmShared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -107,13 +111,13 @@ type SortDir = "asc" | "desc";
 export const Resignations: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     resignationHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const resignations = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("resignationDate");
@@ -137,7 +141,7 @@ export const Resignations: React.FC = () => {
     lastWorkingDate: "",
     reason: "",
     description: "",
-    document: null as File | null,
+    documentPath: "",
     documentName: "",
   });
 
@@ -155,21 +159,15 @@ export const Resignations: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredResignations = useMemo(() => {
-    let result = [...resignations];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.employee.toLowerCase().includes(q) ||
-          r.reason.toLowerCase().includes(q),
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((r) => r.status === statusFilter);
-    }
+    let result =
+      statusFilter === "All"
+        ? [...resignations]
+        : resignations.filter((r) => r.status === statusFilter);
 
     result.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -182,7 +180,7 @@ export const Resignations: React.FC = () => {
       return 0;
     });
     return result;
-  }, [resignations, searchQuery, statusFilter, sortField, sortDir]);
+  }, [resignations, statusFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredResignations.length / perPage);
   const paginatedResignations = filteredResignations.slice(
@@ -192,16 +190,6 @@ export const Resignations: React.FC = () => {
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setResignationFormData({
-        ...resignationFormData,
-        document: e.target.files[0],
-        documentName: e.target.files[0].name,
-      });
-    }
-  };
-
   const resetResignationForm = () => {
     setResignationFormData({
       employee: "",
@@ -209,7 +197,7 @@ export const Resignations: React.FC = () => {
       lastWorkingDate: "",
       reason: "",
       description: "",
-      document: null,
+      documentPath: "",
       documentName: "",
     });
   };
@@ -228,8 +216,8 @@ export const Resignations: React.FC = () => {
       lastWorkingDate: resignation.lastWorkingDate,
       reason: resignation.reason,
       description: resignation.description,
-      document: null,
-      documentName: resignation.document,
+      documentPath: resignation.document,
+      documentName: hrmFileLabel(resignation.document),
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -272,12 +260,15 @@ export const Resignations: React.FC = () => {
       return;
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
       employee_id: resignationFormData.employee,
       last_working_date: resignationFormData.lastWorkingDate,
       reason: resignationFormData.reason,
       description: resignationFormData.description,
     };
+    if (resignationFormData.documentPath) {
+      payload.document = resignationFormData.documentPath;
+    }
 
     try {
       if (isEditing && selectedResignation) {
@@ -462,29 +453,18 @@ export const Resignations: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.png,.docx"
-                className="hidden"
-                id="document-upload"
-              />
-              <button
-                onClick={() =>
-                  document.getElementById("document-upload")?.click()
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <Upload className="w-4 h-4" />
-                Browse
-              </button>
-              {resignationFormData.documentName && (
-                <span className="text-sm text-green-600">
-                  {resignationFormData.documentName}
-                </span>
-              )}
-            </div>
+            <HrmFileUploadButton
+              inputId="resignation-document-upload"
+              path={resignationFormData.documentPath}
+              displayName={resignationFormData.documentName}
+              onUploaded={({ path, name }) =>
+                setResignationFormData({
+                  ...resignationFormData,
+                  documentPath: path,
+                  documentName: name,
+                })
+              }
+            />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -582,14 +562,10 @@ export const Resignations: React.FC = () => {
                 </p>
               </div>
             )}
-            {selectedResignation.document && (
-              <div>
-                <p className="text-xs text-gray-500">Document</p>
-                <button className="text-sm text-blue-600 hover:text-blue-700">
-                  {selectedResignation.document}
-                </button>
-              </div>
-            )}
+            <div>
+              <p className="text-xs text-gray-500">Document</p>
+              <HrmDocumentLink path={selectedResignation.document} />
+            </div>
           </div>
         )}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between gap-3">
@@ -860,12 +836,8 @@ export const Resignations: React.FC = () => {
                       {resignation.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {resignation.document ? (
-                      <FileText className="w-4 h-4 text-blue-500" />
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <HrmDocumentLink path={resignation.document} className="max-w-[180px]" />
                   </td>
                   <td
                     className="px-4 py-3"

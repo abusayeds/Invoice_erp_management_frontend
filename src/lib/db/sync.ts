@@ -193,8 +193,9 @@ const mapProduct: MapFn = (d) => ({
   note: str(d.description),
   price: num(d.pricing?.sellPrice ?? d.price),
   buyPrice: num(d.pricing?.buyPrice ?? d.buyPrice),
-  stock: num(d.stock?.quantity ?? d.quantity),
+  stock: num(d.stock?.onHandStock ?? d.stock?.quantity ?? d.quantity),
   unit: str(d.unitType ?? d.unit),
+  image: str(d.image) || null,
   taxId: 0,
   status: d.isDeleted ? "Inactive" : "Active",
 });
@@ -519,15 +520,20 @@ async function categoryIdByName(name: unknown): Promise<string | undefined> {
 }
 
 const reverseProduct = async (r: Record<string, any>) => {
-  const category = await categoryIdByName(r.category);
+  const category =
+    (r.categoryId ? String(r.categoryId) : "") ||
+    (await categoryIdByName(r.category)) ||
+    "";
+  const onHand = num(r.stock);
   return {
     productName: str(r.name),
     sku: str(r.sku),
     unitType: str(r.unit),
-    quantity: num(r.stock) || 1,
+    quantity: onHand || num(r.qty) || 1,
     description: str(r.note),
     pricing: { buyPrice: num(r.buyPrice), sellPrice: num(r.price) },
-    stock: { quantity: num(r.stock) },
+    stock: { onHandStock: onHand, availableForSale: onHand },
+    ...(r.image && !String(r.image).startsWith("data:") ? { image: str(r.image) } : {}),
     ...(category ? { category } : {}),
   };
 };
@@ -934,10 +940,28 @@ export function specFor(name: CollectionName): SyncSpec | undefined {
 
 // ── Read sync ────────────────────────────────────────────────────────────────
 
+async function fetchAllPaginatedDocs(url: string, pageSize = 1000): Promise<any[]> {
+  const out: any[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await api.raw.get(url, { params: { page, limit: pageSize } });
+    const body = res.data ?? {};
+    const batch = Array.isArray(body.data) ? body.data : toArray<any>(body);
+    out.push(...batch);
+    const pag = body.pagination;
+    const totalPage = Number(pag?.totalPage) || 1;
+    if (batch.length === 0 || page >= totalPage) break;
+    page += 1;
+  }
+  return out;
+}
+
 async function syncSpec(spec: SyncSpec): Promise<void> {
   try {
-    const res = await api.raw.get(spec.url);
-    const docs = toArray<any>(res.data);
+    const docs =
+      spec.collection === "products"
+        ? await fetchAllPaginatedDocs(spec.url)
+        : toArray<any>((await api.raw.get(spec.url)).data);
     const rows = docs.map((d) => {
       const _id = str(d._id ?? d.id);
       return { ...spec.map(d), _id, id: numericId(_id) };

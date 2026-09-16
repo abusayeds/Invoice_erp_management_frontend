@@ -20,7 +20,15 @@ import {
   type HrmDocument,
 } from "@/lib/db/hrm";
 import { employeeApi } from "@/services/hrm";
-import { Field, inputCls, selectCls, SearchSelect, HrmBreadcrumb } from "./hrmShared";
+import {
+  Field,
+  inputCls,
+  selectCls,
+  SearchSelect,
+  HrmBreadcrumb,
+  uploadHrmFile,
+  HrmDocumentLink,
+} from "./hrmShared";
 import { ArrowLeft, Plus, Trash2, Upload } from "lucide-react";
 
 const STEPS = ["Personal", "Employment", "Contact", "Banking", "Hours & Rates", "Documents"] as const;
@@ -406,9 +414,32 @@ const EmployeeCreate: React.FC = () => {
                           <input
                             type="file"
                             className="hidden"
-                            onChange={(e) => updateDocument(doc.id, { fileName: e.target.files?.[0]?.name || "" })}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!file) return;
+                              void uploadHrmFile(file)
+                                .then((up) =>
+                                  updateDocument(doc.id, {
+                                    fileName: up.name,
+                                    path: up.path,
+                                    url: up.url,
+                                  }),
+                                )
+                                .catch((err: unknown) =>
+                                  showToast(
+                                    err instanceof Error ? err.message : "Upload failed",
+                                    "error",
+                                  ),
+                                );
+                            }}
                           />
                         </label>
+                        {doc.path ? (
+                          <div className="mt-2">
+                            <HrmDocumentLink path={doc.path} />
+                          </div>
+                        ) : null}
                       </Field>
                     </div>
                     <div className="flex justify-end mt-3">

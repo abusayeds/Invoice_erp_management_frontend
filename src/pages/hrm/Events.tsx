@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
@@ -31,6 +31,7 @@ import {
   looksLikeId,
   searchEventTypes,
   searchDepartments,
+  useHrmSearchListParams,
 } from "./hrmShared";
 import { eventHooks, hrmStatusActions } from "@/services/hrm";
 
@@ -153,13 +154,13 @@ const timeOptions = Array.from({ length: 48 }, (_, i) => {
 export const Events: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     eventHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const events = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("startDate");
@@ -204,24 +205,15 @@ export const Events: React.FC = () => {
     setCurrentPage(1);
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
   const filteredEvents = useMemo(() => {
-    let result = [...events];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.eventType.toLowerCase().includes(q) ||
-          e.location.toLowerCase().includes(q),
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((e) => e.status === statusFilter);
-    }
+    let result =
+      statusFilter === "All" ? [...events] : events.filter((e) => e.status === statusFilter);
 
     result.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -234,7 +226,7 @@ export const Events: React.FC = () => {
       return 0;
     });
     return result;
-  }, [events, searchQuery, statusFilter, sortField, sortDir]);
+  }, [events, statusFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredEvents.length / perPage);
   const paginatedEvents = filteredEvents.slice(

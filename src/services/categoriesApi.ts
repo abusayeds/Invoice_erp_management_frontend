@@ -86,9 +86,17 @@ function mapExpense(doc: any): SettingsCategory {
 }
 
 /** Product / item categories (used by Products module). */
-export async function fetchProductCategories(): Promise<SettingsCategory[]> {
-  const data = await api.get<any[]>("/category/all");
+export async function fetchProductCategories(searchTerm?: string): Promise<SettingsCategory[]> {
+  const data = await api.get<any[]>("/category/all", {
+    params: searchTerm?.trim() ? { searchTerm: searchTerm.trim() } : undefined,
+  });
   return Array.isArray(data) ? data.map(mapProduct) : [];
+}
+
+/** AsyncSearchSelect helper — backend searchTerm on `/category/all`. */
+export async function searchProductCategories(query: string): Promise<{ id: string; name: string }[]> {
+  const rows = await fetchProductCategories(query);
+  return rows.map((c) => ({ id: c.id, name: c.name }));
 }
 
 export async function fetchProductCategory(id: string): Promise<SettingsCategory | null> {

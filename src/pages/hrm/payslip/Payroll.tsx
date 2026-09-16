@@ -7,11 +7,13 @@
  * per-employee salary structures.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { money } from "@/lib/db";
-import { usePayrolls, savePayrolls, type PayrollRecord } from "@/lib/db/hrm";
+import { type PayrollRecord } from "@/lib/db/hrm";
+import { useResourceData } from "@/hooks/useResourceData";
+import { payrollHooks } from "@/services/hrm";
 import {
   Chip,
   Field,
@@ -20,6 +22,7 @@ import {
   CreatePlusButton,
   AsyncSearchSelect,
   searchBankAccounts,
+  useHrmSearchListParams,
 } from "../hrmShared";
 import { payrollApi } from "@/services/hrm";
 import {
@@ -36,6 +39,54 @@ import {
 
 type SortField = "title" | "frequency" | "periodStart" | "periodEnd" | "payDate" | "status";
 
+function hday(v: unknown): string {
+  if (!v) return "";
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function mapPayrollFromApi(d: any): PayrollRecord {
+  const ba = d.bank_account_id;
+  const bankAccountId =
+    typeof ba === "object" && ba ? String(ba._id ?? ba.id ?? "") : ba ? String(ba) : undefined;
+  const bankAccount =
+    typeof ba === "object" && ba ? String(ba.account_name || ba.bank_name || "") : "";
+  const entries = Array.isArray(d.entries) ? d.entries : [];
+  return {
+    id: String(d._id ?? d.id ?? ""),
+    title: d.title || "",
+    frequency: d.payroll_frequency === "weekly" ? "Weekly" : "Monthly",
+    periodStart: hday(d.pay_period_start),
+    periodEnd: hday(d.pay_period_end),
+    payDate: hday(d.pay_date || d.pay_period_end),
+    bankAccountId: bankAccountId || undefined,
+    bankAccount: bankAccount || undefined,
+    notes: d.notes || "",
+    status: d.status === "completed" || d.is_payroll_paid === "paid" ? "Completed" : "Draft",
+    totalNet: d.total_net_pay != null ? Number(d.total_net_pay) : undefined,
+    employeeCount:
+      d.employee_count != null
+        ? Number(d.employee_count)
+        : entries.length > 0
+          ? entries.length
+          : 0,
+    paid: [],
+    excluded: [],
+  };
+}
+
+function payrollToApi(p: Partial<PayrollRecord>) {
+  return {
+    title: p.title,
+    payroll_frequency: (p.frequency || "Monthly").toLowerCase(),
+    pay_period_start: p.periodStart ? new Date(p.periodStart).toISOString() : undefined,
+    pay_period_end: p.periodEnd ? new Date(p.periodEnd).toISOString() : undefined,
+    pay_date: p.payDate ? new Date(p.payDate).toISOString() : undefined,
+    notes: p.notes || "",
+    ...(p.bankAccountId ? { bank_account_id: p.bankAccountId } : {}),
+  };
+}
+
 const emptyDraft = () => ({
   id: "",
   title: "",
@@ -50,9 +101,13 @@ const emptyDraft = () => ({
 
 export const Payroll: React.FC = () => {
   const navigate = useNavigate();
-  const payrolls = usePayrolls();
-
   const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
+  const { items: raw, create, update, remove, refetch } = useResourceData(payrollHooks, {
+    seed: [],
+    params: listParams,
+  });
+  const list = useMemo(() => raw.map(mapPayrollFromApi), [raw]);
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -63,22 +118,19 @@ export const Payroll: React.FC = () => {
   const [draft, setDraft] = useState(emptyDraft());
   const [deleteTarget, setDeleteTarget] = useState<PayrollRecord | null>(null);
 
-  const list = payrolls || [];
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    const rows = list.filter(
-      (p) =>
-        (statusFilter === "All" || p.status === statusFilter) &&
-        p.title.toLowerCase().includes(q),
-    );
+    const rows = list.filter((p) => statusFilter === "All" || p.status === statusFilter);
     rows.sort((a, b) => {
       const va = String(a[sortField] ?? "");
       const vb = String(b[sortField] ?? "");
       return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });
     return rows;
-  }, [list, searchQuery, statusFilter, sortField, sortAsc]);
+  }, [list, statusFilter, sortField, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -107,17 +159,10 @@ export const Payroll: React.FC = () => {
       notes: draft.notes,
     };
     if (modal === "edit") {
-      await savePayrolls(list.map((p) => (p.id === draft.id ? { ...p, ...patch } : p)));
+      await update(draft.id, payrollToApi(patch));
       showToast("Payroll updated successfully", "success");
     } else {
-      const rec: PayrollRecord = {
-        ...patch,
-        id: `local_${Date.now()}`,
-        status: "Draft",
-        paid: [],
-        excluded: [],
-      };
-      await savePayrolls([rec, ...list]);
+      await create(payrollToApi(patch));
       showToast("Payroll created successfully", "success");
     }
     setModal(null);
@@ -130,7 +175,7 @@ export const Payroll: React.FC = () => {
     }
     try {
       await payrollApi.run(p.id);
-      await savePayrolls(list);
+      await refetch();
       showToast("Payroll run completed", "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Couldn't run payroll";
@@ -140,7 +185,7 @@ export const Payroll: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await savePayrolls(list.filter((p) => p.id !== deleteTarget.id));
+    await remove(deleteTarget.id);
     showToast("Payroll deleted successfully", "success");
     setDeleteTarget(null);
   };

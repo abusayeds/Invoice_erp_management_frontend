@@ -15,12 +15,14 @@ import { toArray } from "@/services/_http";
 /* ── types ─────────────────────────────────────────────────────── */
 
 export interface PosItem {
-  productId: number;
+  /** Backend product Mongo _id (or legacy seed id as string). */
+  productId: string;
   name: string;
   sku: string;
   qty: number;
   price: number;
   taxRate: number; // percent
+  image?: string | null;
 }
 
 export interface PosOrder {
@@ -28,8 +30,11 @@ export interface PosOrder {
   number: string; // #POS00040
   date: string; // yyyy-mm-dd
   customer: string;
+  customerId?: string;
   warehouse: string;
+  warehouseId?: string;
   bankAccount: string;
+  bankAccountId?: string;
   items: PosItem[];
   discount: number;
   status: "Completed";
@@ -49,15 +54,18 @@ const ymd = (v: unknown): string => {
 };
 
 /** Backend POS order → the UI PosOrder shape. `id` carries the Mongo _id. */
-const mapPosOrder = (d: any): PosOrder => ({
+export const mapPosOrder = (d: any): PosOrder => ({
   id: String(d._id ?? d.id ?? ""),
   number: String(d.order_number ?? ""),
   date: ymd(d.date ?? d.createdAt),
   customer: String(d.customer_name ?? "Walk-in Customer"),
+  customerId: d.customer_id ? String(d.customer_id) : undefined,
   warehouse: String(d.warehouse ?? ""),
+  warehouseId: d.warehouse_id ? String(d.warehouse_id) : undefined,
   bankAccount: String(d.bank_account ?? ""),
+  bankAccountId: d.bank_account_id ? String(d.bank_account_id) : undefined,
   items: (d.items ?? []).map((i: any) => ({
-    productId: Number(i.product_id_num) || 0,
+    productId: String(i.product_id ?? i.product_id_num ?? ""),
     name: String(i.name ?? ""),
     sku: String(i.sku ?? ""),
     qty: Number(i.quantity) || 0,
@@ -69,15 +77,21 @@ const mapPosOrder = (d: any): PosOrder => ({
   createdAt: new Date(d.createdAt ?? d.date ?? Date.now()).getTime(),
 });
 
+const mongoId = (v?: string) => (v && /^[a-f0-9]{24}$/i.test(v) ? v : undefined);
+
 /** UI PosOrder → backend create body. */
-const reversePosOrder = (o: PosOrder) => ({
+export const reversePosOrder = (o: PosOrder) => ({
   order_number: o.number,
   customer_name: o.customer,
+  ...(mongoId(o.customerId) ? { customer_id: mongoId(o.customerId) } : {}),
   warehouse: o.warehouse,
+  ...(mongoId(o.warehouseId) ? { warehouse_id: mongoId(o.warehouseId) } : {}),
   bank_account: o.bankAccount,
+  ...(mongoId(o.bankAccountId) ? { bank_account_id: mongoId(o.bankAccountId) } : {}),
   discount: o.discount || 0,
   date: new Date(o.date + "T00:00:00").toISOString(),
   items: o.items.map((i) => ({
+    ...(mongoId(i.productId) ? { product_id: i.productId } : {}),
     name: i.name,
     sku: i.sku,
     quantity: i.qty,
@@ -99,8 +113,17 @@ export const posOrderStore = {
   hydrate: async () => {
     if (!getToken()) return;
     try {
-      const res = await api.raw.get("/pos/order/all");
-      const rows = toArray<any>(res.data).map(mapPosOrder);
+      const rows: PosOrder[] = [];
+      let page = 1;
+      for (;;) {
+        const res = await api.raw.get("/pos/order/all", { params: { page, limit: 500 } });
+        const body = res.data ?? {};
+        const batch = Array.isArray(body.data) ? body.data : toArray<any>(body);
+        rows.push(...batch.map(mapPosOrder));
+        const totalPage = Number(body.pagination?.totalPage) || 1;
+        if (batch.length === 0 || page >= totalPage) break;
+        page += 1;
+      }
       await db.meta.put({ key: KEY, value: rows });
     } catch {
       /* keep whatever is cached locally */
@@ -125,12 +148,6 @@ export const posOrderStore = {
 
 /* ── catalogs / helpers ────────────────────────────────────────── */
 
-export const POS_WAREHOUSES = [
-  "Central Distribution Center - 1250 Industrial Blvd",
-  "West Coast Storage Facility",
-  "Midwest Regional Warehouse",
-];
-
 export const GST_RATE = 18;
 
 export const warehouseShort = (w: string) => w.split(" - ")[0];
@@ -149,58 +166,6 @@ export const nextPosNumber = (orders: PosOrder[]) => {
 };
 
 export const posUid = () => "pos" + Math.random().toString(36).slice(2, 8);
-
-/* ── seed orders (references/pos/pos order.png — sale numbers,
-   Walk-in customers and warehouses; line items use the products from
-   Items > Products, which is where POS products come from) ── */
-
-const I = (productId: number, name: string, sku: string, qty: number, price: number): PosItem => ({
-  productId,
-  name,
-  sku,
-  qty,
-  price,
-  taxRate: GST_RATE,
-});
-
-const O = (
-  n: number,
-  customer: string,
-  warehouse: string,
-  date: string,
-  items: PosItem[],
-  discount = 0,
-): PosOrder => ({
-  id: `seed${n}`,
-  number: `#POS${String(n).padStart(5, "0")}`,
-  date,
-  customer,
-  warehouse,
-  bankAccount: "Cash",
-  items,
-  discount,
-  status: "Completed",
-  createdAt: new Date(date + "T10:00:00").getTime() + n,
-});
-
-const CDC = POS_WAREHOUSES[0];
-const WCS = POS_WAREHOUSES[1];
-const MRW = POS_WAREHOUSES[2];
-
-export const SEED_POS_ORDERS: PosOrder[] = [
-  O(39, "Walk-in Customer", CDC, "2026-07-07", [I(4, "Widget A", "WID-A", 1, 45)]),
-  O(38, "Walk-in Customer", CDC, "2026-07-06", [I(6, "Gadget Pro", "GAD-PRO", 1, 160), I(2, "demo product", "DMO-01", 3, 12)]),
-  O(37, "Walk-in Customer", CDC, "2026-07-05", [I(5, "Widget B", "WID-B", 1, 65)]),
-  O(36, "Walk-in Customer", CDC, "2026-07-05", [I(4, "Widget A", "WID-A", 2, 45), I(5, "Widget B", "WID-B", 1, 65)]),
-  O(35, "Walk-in Customer", CDC, "2026-07-04", [I(2, "demo product", "DMO-01", 3, 12)]),
-  O(34, "bdcalling", CDC, "2026-07-03", [I(6, "Gadget Pro", "GAD-PRO", 5, 160), I(4, "Widget A", "WID-A", 4, 45)]),
-  O(33, "Walk-in Customer", CDC, "2026-07-02", [I(3, "Officiis ullam labor", "OFF-01", 1, 236), I(4, "Widget A", "WID-A", 2, 45)]),
-  O(32, "Walk-in Customer", CDC, "2026-07-01", [I(4, "Widget A", "WID-A", 1, 45)]),
-  O(31, "Walk-in Customer", CDC, "2026-06-29", [I(6, "Gadget Pro", "GAD-PRO", 2, 160)]),
-  O(30, "Walk-in Customer", MRW, "2026-06-27", [I(3, "Officiis ullam labor", "OFF-01", 4, 236)]),
-  O(29, "rahim", WCS, "2026-06-24", [I(5, "Widget B", "WID-B", 6, 65)]),
-  O(28, "Walk-in Customer", CDC, "2026-06-20", [I(2, "demo product", "DMO-01", 10, 12), I(4, "Widget A", "WID-A", 1, 45)]),
-];
 
 /* ── barcode helper: real Code 128 (code set B) ─────────────────── */
 

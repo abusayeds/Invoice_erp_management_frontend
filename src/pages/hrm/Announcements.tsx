@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
@@ -13,6 +13,7 @@ import {
   CreatePlusButton,
   searchAnnouncementCategories,
   searchDepartments,
+  useHrmSearchListParams,
 } from "./hrmShared";
 import {
   Search,
@@ -123,13 +124,13 @@ const priorities = ["High", "Medium", "Low"] as const;
 export const Announcements: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     announcementHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const announcements = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("startDate");
@@ -171,20 +172,14 @@ export const Announcements: React.FC = () => {
     setCurrentPage(1);
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
   const filteredAnnouncements = useMemo(() => {
     let result = [...announcements];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.category.toLowerCase().includes(q) ||
-          a.approvedBy.toLowerCase().includes(q),
-      );
-    }
 
     if (statusFilter !== "All") {
       result = result.filter((a) => a.status === statusFilter);
@@ -205,14 +200,7 @@ export const Announcements: React.FC = () => {
       return 0;
     });
     return result;
-  }, [
-    announcements,
-    searchQuery,
-    statusFilter,
-    priorityFilter,
-    sortField,
-    sortDir,
-  ]);
+  }, [announcements, statusFilter, priorityFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredAnnouncements.length / perPage);
   const paginatedAnnouncements = filteredAnnouncements.slice(

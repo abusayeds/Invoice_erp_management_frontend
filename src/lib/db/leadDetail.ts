@@ -56,12 +56,19 @@ export interface LeadActivity {
   date: string;
 }
 
+export interface LeadFile {
+  id: string;
+  name: string;
+  url?: string;
+}
+
 export interface LeadDetailData {
   notes: string;
   tasks: LeadTask[];
   users: LeadUser[];
   products: LeadNamed[];
   sources: LeadNamed[];
+  files?: LeadFile[];
   calls: LeadCall[];
   emails: LeadEmail[];
   discussions: LeadDiscussion[];
@@ -121,6 +128,11 @@ export function leadDetailFromApi(l: any): LeadDetailData {
       message: d.message ?? "",
       date: stampOf(d.date ?? d.createdAt),
     })),
+    files: (l?.files || []).map((f: any) => ({
+      id: sid(f),
+      name: f.file_name ?? f.name ?? "",
+      url: f.file_path ?? f.url ?? f.path ?? "",
+    })).filter((f: LeadFile) => f.name || f.url),
     activity: [],
     clients: named(l?.assigned_clients ?? l?.clients),
     status: l?.status,
@@ -226,6 +238,41 @@ async function syncCrmDetail(
   }), true);
   syncSub("emails", prev.emails, next.emails, (e: LeadEmail) => ({ to: e.to, subject: e.subject, description: e.description }));
   syncSub("discussions", prev.discussions, next.discussions, (d: LeadDiscussion) => ({ comment: d.message }));
+
+  const syncRefs = (
+    prevArr: LeadNamed[],
+    nextArr: LeadNamed[],
+    assignPath: string,
+    deleteSegment: string,
+    bodyKey: string,
+  ) => {
+    const prevIds = new Set(prevArr.map((x) => x.id));
+    const nextIds = new Set(nextArr.map((x) => x.id));
+    for (const n of nextArr) {
+      if (!prevIds.has(n.id) && isBackendId(n.id)) {
+        jobs.push(api.raw.post(`${base}/${id}/${assignPath}`, { [bodyKey]: n.id }));
+      }
+    }
+    for (const p of prevArr) {
+      if (!nextIds.has(p.id) && isBackendId(p.id)) {
+        jobs.push(api.raw.delete(`${base}/${id}/${deleteSegment}/${p.id}`));
+      }
+    }
+  };
+
+  syncRefs(prev.users, next.users, "assign-users", "users", "user_id");
+  syncRefs(prev.products, next.products, "assign-products", "products", "product_id");
+  syncRefs(prev.sources, next.sources, "assign-sources", "sources", "source_id");
+  if (next.clients !== undefined || prev.clients !== undefined) {
+    syncRefs(prev.clients ?? [], next.clients ?? [], "assign-clients", "clients", "client_id");
+  }
+
+  syncSub(
+    "files",
+    prev.files ?? [],
+    next.files ?? [],
+    (f: LeadFile) => ({ file_name: f.name, file_path: f.url ?? "" }),
+  );
 
   await Promise.all(jobs);
 }

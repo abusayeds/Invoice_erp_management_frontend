@@ -5,11 +5,13 @@
  * in the Qayd blue theme. Shifts persist in meta row `hrm:shifts`.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
-import { useShifts, saveShifts, type Shift } from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "../hrmShared";
+import { type Shift } from "@/lib/db/hrm";
+import { useResourceData } from "@/hooks/useResourceData";
+import { shiftHooks } from "@/services/hrm";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton, useHrmSearchListParams } from "../hrmShared";
 import {
   Search,
   Filter,
@@ -28,6 +30,31 @@ import {
   Sun,
 } from "lucide-react";
 
+function mapShiftFromApi(d: any): Shift {
+  return {
+    id: String(d._id ?? d.id ?? ""),
+    name: d.shift_name || d.name || "",
+    start: d.start_time || "",
+    end: d.end_time || "",
+    breakStart: d.break_start_time || d.break_start || "",
+    breakEnd: d.break_end_time || d.break_end || "",
+    night: !!d.is_night_shift,
+    createdBy: "Company",
+    createdAt: String(d.createdAt ?? "").slice(0, 10),
+  };
+}
+
+function shiftToApi(s: Partial<Shift>) {
+  return {
+    shift_name: s.name,
+    start_time: s.start,
+    end_time: s.end,
+    break_start_time: s.breakStart,
+    break_end_time: s.breakEnd,
+    is_night_shift: !!s.night,
+  };
+}
+
 const emptyDraft = () => ({
   id: "",
   name: "",
@@ -40,9 +67,13 @@ const emptyDraft = () => ({
 
 export const Shifts: React.FC = () => {
   const navigate = useNavigate();
-  const shifts = useShifts();
-
   const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
+  const { items: raw, create, update, remove } = useResourceData(shiftHooks, {
+    seed: [],
+    params: listParams,
+  });
+  const list = useMemo(() => raw.map(mapShiftFromApi), [raw]);
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"list" | "grid">("list");
@@ -54,18 +85,17 @@ export const Shifts: React.FC = () => {
   const [viewShift, setViewShift] = useState<Shift | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Shift | null>(null);
 
-  const list = shifts || [];
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
     const rows = list.filter(
-      (s) =>
-        (nightFilter === "All" || (nightFilter === "Night" ? s.night : !s.night)) &&
-        s.name.toLowerCase().includes(q),
+      (s) => nightFilter === "All" || (nightFilter === "Night" ? s.night : !s.night),
     );
     rows.sort((a, b) => (sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)));
     return rows;
-  }, [list, searchQuery, nightFilter, sortAsc]);
+  }, [list, nightFilter, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -76,16 +106,10 @@ export const Shifts: React.FC = () => {
       return;
     }
     if (modal === "edit") {
-      await saveShifts(list.map((s) => (s.id === draft.id ? { ...s, ...draft } : s)));
+      await update(draft.id, shiftToApi(draft));
       showToast("Shift updated successfully", "success");
     } else {
-      const rec: Shift = {
-        ...draft,
-        id: `local_${Date.now()}`,
-        createdBy: "Company",
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      await saveShifts([...list, rec]);
+      await create(shiftToApi(draft));
       showToast("Shift created successfully", "success");
     }
     setModal(null);
@@ -93,7 +117,7 @@ export const Shifts: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await saveShifts(list.filter((s) => s.id !== deleteTarget.id));
+    await remove(deleteTarget.id);
     showToast("Shift deleted successfully", "success");
     setDeleteTarget(null);
   };

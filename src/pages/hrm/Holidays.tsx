@@ -8,13 +8,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
-import {
-  useHolidays,
-  saveHolidays,
-  useHolidayTypes,
-  type Holiday,
-} from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "./hrmShared";
+import { useHolidayTypes, type Holiday } from "@/lib/db/hrm";
+import { useResourceData } from "@/hooks/useResourceData";
+import { holidayHooks } from "@/services/hrm";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton, useHrmSearchListParams } from "./hrmShared";
 import {
   Search,
   Filter,
@@ -30,6 +27,26 @@ import {
   Globe,
   FileText,
 } from "lucide-react";
+
+function hday(v: unknown): string {
+  if (!v) return "";
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function mapHolidayFromApi(d: any): Holiday {
+  return {
+    id: String(d._id ?? d.id ?? ""),
+    name: d.name || "",
+    start: hday(d.start_date),
+    end: hday(d.end_date),
+    type: d.holiday_type_id?.holiday_type || "",
+    description: d.description || "",
+    paid: d.is_paid !== false,
+    syncGoogle: !!d.is_sync_google_calendar,
+    syncOutlook: !!d.is_sync_outlook_calendar,
+  };
+}
 
 const emptyDraft = () => ({
   id: "",
@@ -61,17 +78,35 @@ const yesNo = (v: boolean) => (
   </span>
 );
 
+function holidayToApi(
+  h: ReturnType<typeof emptyDraft>,
+  holidayTypes: { id: string; name: string }[],
+) {
+  const typeId = holidayTypes.find((t) => t.name === h.type)?.id;
+  return {
+    name: h.name,
+    start_date: h.start ? new Date(h.start).toISOString() : undefined,
+    end_date: h.end ? new Date(h.end).toISOString() : undefined,
+    holiday_type_id: typeId,
+    description: h.description,
+    is_paid: !!h.paid,
+    is_sync_google_calendar: !!h.syncGoogle,
+    is_sync_outlook_calendar: !!h.syncOutlook,
+  };
+}
+
 export const Holidays: React.FC = () => {
   const navigate = useNavigate();
-  const holidays = useHolidays();
   const holidayTypes = useHolidayTypes();
   const typeNames = (holidayTypes || []).map((t) => t.name).filter(Boolean);
-  useEffect(() => {
-  }, [holidays]);
-  useEffect(() => {
-  }, [holidayTypes]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
+  const { items: raw, create, update, remove } = useResourceData(holidayHooks, {
+    seed: [],
+    params: listParams,
+  });
+  const list = useMemo(() => raw.map(mapHolidayFromApi), [raw]);
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -82,18 +117,15 @@ export const Holidays: React.FC = () => {
   const [viewHoliday, setViewHoliday] = useState<Holiday | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Holiday | null>(null);
 
-  const list = holidays || [];
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    const rows = list.filter(
-      (h) =>
-        (typeFilter === "All" || h.type === typeFilter) &&
-        (h.name.toLowerCase().includes(q) || h.type.toLowerCase().includes(q)),
-    );
+    const rows = list.filter((h) => typeFilter === "All" || h.type === typeFilter);
     rows.sort((a, b) => (sortAsc ? a.start.localeCompare(b.start) : b.start.localeCompare(a.start)));
     return rows;
-  }, [list, searchQuery, typeFilter, sortAsc]);
+  }, [list, typeFilter, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -103,11 +135,12 @@ export const Holidays: React.FC = () => {
       showToast("Please fill all required fields", "error");
       return;
     }
+    const types = holidayTypes || [];
     if (modal === "edit") {
-      await saveHolidays(list.map((h) => (h.id === draft.id ? { ...h, ...draft } : h)));
+      await update(draft.id, holidayToApi(draft, types));
       showToast("Holiday updated successfully", "success");
     } else {
-      await saveHolidays([{ ...draft, id: "h" + Math.random().toString(36).slice(2, 8) }, ...list]);
+      await create(holidayToApi(draft, types));
       showToast("Holiday created successfully", "success");
     }
     setModal(null);
@@ -115,7 +148,7 @@ export const Holidays: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await saveHolidays(list.filter((h) => h.id !== deleteTarget.id));
+    await remove(deleteTarget.id);
     showToast("Holiday deleted successfully", "success");
     setDeleteTarget(null);
   };

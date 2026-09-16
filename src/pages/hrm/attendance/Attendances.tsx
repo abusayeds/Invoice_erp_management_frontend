@@ -15,6 +15,7 @@ import {
   HrmBreadcrumb,
   IdSearchSelect,
   CreatePlusButton,
+  useDebouncedValue,
 } from "../hrmShared";
 import {
   Search,
@@ -137,6 +138,7 @@ export const Attendances: React.FC = () => {
   const navigate = useNavigate();
   const now = new Date();
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -167,6 +169,7 @@ export const Attendances: React.FC = () => {
         year: applied.year,
         month: applied.month,
         employee_id: applied.employee || undefined,
+        searchTerm: debouncedSearch || undefined,
       });
       setEmployees(data.employees || []);
       setCells((data.cells as Record<string, GridCell>) || {});
@@ -177,7 +180,7 @@ export const Attendances: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [applied]);
+  }, [applied, debouncedSearch]);
 
   useEffect(() => {
     void reload();
@@ -193,14 +196,15 @@ export const Attendances: React.FC = () => {
     return n;
   }, [applied.year, applied.month, daysInMonth]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
   const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     return employees.filter(
-      (e) =>
-        (!applied.employee || e.employee_user_id === applied.employee) &&
-        (!q || e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)),
+      (e) => !applied.employee || e.employee_user_id === applied.employee,
     );
-  }, [employees, searchQuery, applied.employee]);
+  }, [employees, applied.employee]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const visible = filtered.slice((page - 1) * perPage, page * perPage);

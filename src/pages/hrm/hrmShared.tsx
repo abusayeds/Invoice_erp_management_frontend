@@ -5,14 +5,45 @@
  * initials avatar, field wrapper and chip helpers. Qayd blue theme.
  */
 
-import React, { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus, Search } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Plus, Search, FileText, Upload } from "lucide-react";
 import { getList, toArray } from "@/services/_http";
 import { employeesService } from "@/services/hrm";
 import type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
+import { api } from "@/lib/api/client";
+import { BACKEND_BASE_URL } from "@/lib/env";
+import { showToast } from "@/utils/toast";
 
 const HRM_BASE = "/hrm";
 const HRM_SETUP = `${HRM_BASE}/setup`;
+
+/** Debounce input before sending `searchTerm` to list APIs. */
+export function useDebouncedValue<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+/** Standard HRM list query: page 1, limit, optional debounced searchTerm. */
+export function useHrmSearchListParams(
+  searchQuery: string,
+  limit = 100,
+  extra?: Record<string, unknown>,
+) {
+  const debounced = useDebouncedValue(searchQuery.trim(), 300);
+  return useMemo(
+    () => ({
+      page: 1,
+      limit,
+      ...(debounced ? { searchTerm: debounced } : {}),
+      ...extra,
+    }),
+    [debounced, limit, extra],
+  );
+}
 
 /* ── initials avatar ───────────────────────────────────────────── */
 
@@ -446,15 +477,15 @@ export function IdSearchSelect({
         <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
       </button>
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 overflow-hidden">
+        <div className="ua-dropdown-panel absolute left-0 right-0 top-full mt-1 rounded-md shadow-lg z-50 overflow-hidden">
           <div className="relative border-b border-gray-100">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type to search..."
-              className="w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
+              placeholder="Search..."
+              className="keep-box ua-field w-full pl-9 pr-3 py-2 text-sm focus:outline-none"
             />
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
@@ -467,7 +498,7 @@ export function IdSearchSelect({
                   setOpen(false);
                 }}
                 className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
-                  o.id === value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                  o.id === value ? "bg-blue-50 text-blue-700" : "text-gray-900"
                 }`}
               >
                 {o.name}
@@ -485,3 +516,158 @@ export function IdSearchSelect({
 
 export { AsyncSearchSelect } from "@/components/ui/AsyncSearchSelect";
 export type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
+
+/* ── HRM file upload (API path strings) ───────────────────────────
+ * RULE: Any HRM file upload MUST go through uploadHrmFile and persist
+ * the returned path; always render with HrmDocumentLink. */
+
+/** Treat empty / placeholder / non-path values as "no document". */
+export function hasHrmDocument(value: unknown): boolean {
+  const src = String(value ?? "").trim();
+  if (!src) return false;
+  if (/^\{\{.*\}\}$/.test(src)) return false;
+  if (/^(null|undefined|n\/a|none|-)$/i.test(src)) return false;
+  if (src.includes("file_path_or_url")) return false;
+  return true;
+}
+
+export async function uploadHrmFile(file: File): Promise<{ path: string; name: string; url: string }> {
+  const formData = new FormData();
+  formData.append("files", file);
+  const uploadRes = await api.raw.post("/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  const data = uploadRes.data?.data ?? uploadRes.data;
+  const row = Array.isArray(data) ? data[0] : data;
+  const path = String(row?.file_path || row?.path || "");
+  if (!path) throw new Error("Upload did not return a file path");
+  const name = String(row?.file_name || file.name);
+  // Prefer server absolute `url` when present; else resolve path for this app.
+  const url = String(row?.url || "").trim() || resolveHrmFileUrl(path);
+  return { path, name, url };
+}
+
+/**
+ * Resolve a stored upload path for browser open.
+ * - Absolute http(s)/blob → as-is
+ * - Dev: root-relative `/files/...` (Vite proxies `/files` → backend)
+ * - Prod: `${BACKEND_BASE_URL}/files/...` (host root — never `/api/v1`)
+ */
+export function resolveHrmFileUrl(value: unknown): string {
+  const src = String(value ?? "").trim();
+  if (!hasHrmDocument(src)) return "";
+  if (/^(https?:|data:|blob:)/i.test(src)) return src;
+  const pathPart = src.startsWith("/") ? src : `/${src.replace(/^\/+/, "")}`;
+  if (import.meta.env.DEV) return pathPart;
+  return `${BACKEND_BASE_URL}${pathPart}`;
+}
+
+export function hrmFileLabel(pathOrName: string): string {
+  if (!hasHrmDocument(pathOrName)) return "";
+  try {
+    const part = pathOrName.split("?")[0].split("#")[0];
+    const base = part.split("/").pop() || pathOrName;
+    return decodeURIComponent(base);
+  } catch {
+    return pathOrName;
+  }
+}
+
+/** Icon-only document control — no path text. Empty → N/A. */
+export function HrmDocumentLink({
+  path,
+  className = "",
+  title,
+}: {
+  path?: string | null;
+  className?: string;
+  title?: string;
+}) {
+  if (!hasHrmDocument(path)) {
+    return <span className={`text-sm text-gray-400 ${className}`}>N/A</span>;
+  }
+  const href = resolveHrmFileUrl(path);
+  const tip = title || hrmFileLabel(String(path)) || "View document";
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={tip}
+      aria-label={tip}
+      className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 ${className}`}
+    >
+      <FileText className="w-4 h-4" />
+    </a>
+  );
+}
+
+export function HrmFileUploadButton({
+  path,
+  displayName,
+  onUploaded,
+  inputId = "hrm-file-upload",
+  disabled,
+  className = "",
+}: {
+  path?: string;
+  displayName?: string;
+  onUploaded: (v: { path: string; name: string }) => void;
+  inputId?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const attached = hasHrmDocument(path);
+  const label =
+    displayName && hasHrmDocument(displayName) && !displayName.includes("/files/")
+      ? displayName
+      : attached
+        ? "File attached"
+        : "";
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploaded = await uploadHrmFile(file);
+      onUploaded({ path: uploaded.path, name: uploaded.name });
+      showToast("File uploaded", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex gap-2 items-center">
+        <input
+          value={label}
+          readOnly
+          placeholder="No file chosen"
+          className={`flex-1 ${inputCls} bg-white`}
+        />
+        <label
+          className={`px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 flex items-center gap-1.5 shrink-0 ${
+            disabled || uploading ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-gray-50"
+          }`}
+        >
+          <Upload className="w-4 h-4" />
+          {uploading ? "Uploading…" : "Browse"}
+          <input
+            type="file"
+            className="hidden"
+            id={inputId}
+            disabled={disabled || uploading}
+            onChange={(e) => void onFileChange(e)}
+          />
+        </label>
+        {attached ? <HrmDocumentLink path={path} /> : <span className="text-sm text-gray-400 shrink-0">N/A</span>}
+      </div>
+    </div>
+  );
+}

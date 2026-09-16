@@ -41,7 +41,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const inputId = id || name;
 
     const selectClasses = [
-      "select select-bordered w-full",
+      "keep-box ua-field select select-bordered w-full",
       error ? "select-error" : "",
       className,
     ]

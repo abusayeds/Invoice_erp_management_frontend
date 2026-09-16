@@ -17,8 +17,19 @@ import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney } from "@/lib/db";
 import { buildListSortParam } from "@/lib/listSort";
-import { fetchServices, deleteService, type ServiceListRow } from "@/services/servicesApi";
+import {
+  fetchServices,
+  deleteService,
+  deleteServices,
+  archiveService,
+  archiveServices,
+  unarchiveService,
+  mergeServices,
+  type ServiceListRow,
+} from "@/services/servicesApi";
+import { showToast } from "@/utils/toast";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import {
   Search,
   Plus,
@@ -130,22 +141,35 @@ const FloatField: React.FC<{ label?: string; value?: string; placeholder?: strin
 );
 
 /* ── Merge Services modal ──────────────────────────────────────── */
-const MergeModal: React.FC<{ onClose: () => void; items: Service[] }> = ({ onClose, items }) => {
-  const [pick, setPick] = useState<number | null>(items[0]?.id ?? null);
+const MergeModal: React.FC<{
+  items: Service[];
+  onClose: () => void;
+  onMerge: (survivorBackendId: string) => void;
+}> = ({ items, onClose, onMerge }) => {
+  const [pick, setPick] = useState<string | null>(items[0]?.backendId ?? null);
   return (
     <Overlay onClose={onClose}>
       <div className="w-full max-w-xl my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <h3 className="text-base font-semibold text-gray-900">Merge Services</h3>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={onClose} className="px-5 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-medium">Merge</button>
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
+            <button
+              type="button"
+              disabled={!pick}
+              onClick={() => pick && onMerge(pick)}
+              className={`px-5 py-1.5 text-sm rounded-md font-medium ${!pick ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+            >
+              Merge
+            </button>
           </div>
         </div>
-        <div>
+        <div className="max-h-[50vh] overflow-y-auto">
           {items.map((s) => (
-            <button key={s.id} onClick={() => setPick(s.id)} className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-200 hover:bg-gray-50 text-left">
-              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${pick === s.id ? "border-blue-600" : "border-gray-400"}`}>{pick === s.id && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}</span>
+            <button key={s.id} type="button" onClick={() => setPick(s.backendId)} className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-200 hover:bg-gray-50 text-left">
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${pick === s.backendId ? "border-blue-600" : "border-gray-400"}`}>
+                {pick === s.backendId && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+              </span>
               <span className="text-sm font-semibold text-gray-900">{s.name}</span>
             </button>
           ))}
@@ -232,6 +256,8 @@ export const Services: React.FC = () => {
     }
   }, [openCreateFromNav, location.pathname, navigate]);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeConfirm, setMergeConfirm] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
@@ -279,6 +305,65 @@ export const Services: React.FC = () => {
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
   const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
+  const checkedBackendIds = useMemo(
+    () => services.filter((s) => checked.has(s.id)).map((s) => s.backendId),
+    [services, checked],
+  );
+  const invalidateServicesList = () => void queryClient.invalidateQueries({ queryKey: ["services-list"] });
+  const bulkDisabled = checked.size === 0;
+  const bulkBtnClass = (disabled: boolean) =>
+    `w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 ${disabled ? "opacity-40 pointer-events-none" : ""}`;
+
+  const handleBulkArchive = async () => {
+    if (bulkDisabled) {
+      showToast(statusFilter === "Archived" ? "Select services to unarchive" : "Select services to archive", "warning");
+      return;
+    }
+    try {
+      if (statusFilter === "Archived") {
+        await Promise.all(checkedBackendIds.map(unarchiveService));
+        showToast("Services unarchived", "success");
+      } else {
+        await archiveServices(checkedBackendIds);
+        showToast("Services archived", "success");
+      }
+      invalidateServicesList();
+      exitSelect();
+    } catch {
+      showToast("Archive failed", "error");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (bulkDisabled) {
+      showToast("Select services to delete", "warning");
+      return;
+    }
+    try {
+      await deleteServices(checkedBackendIds);
+      invalidateServicesList();
+      exitSelect();
+      showToast("Services deleted", "success");
+    } catch {
+      showToast("Delete failed", "error");
+    }
+  };
+
+  const bulkMerge = async (survivorId: string) => {
+    const mergedIds = checkedBackendIds.filter((id) => id !== survivorId);
+    try {
+      await mergeServices(survivorId, mergedIds);
+      invalidateServicesList();
+      exitSelect();
+      setMergeOpen(false);
+      setMergeConfirm(false);
+      setMergeTargetId(null);
+      showToast("Services merged", "success");
+    } catch {
+      showToast("Merge failed", "error");
+    }
+  };
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
     document.addEventListener("keydown", h);
@@ -296,9 +381,9 @@ export const Services: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              <button onClick={() => checked.size > 0 && setMergeOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Merge"><Combine className="w-4 h-4" /></button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Archive"><Archive className="w-4 h-4" /></button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Delete"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => (checked.size < 2 ? showToast("Select at least two services to merge", "warning") : setMergeOpen(true))} className={bulkBtnClass(checked.size < 2)} title="Merge"><Combine className="w-4 h-4" /></button>
+              <button type="button" title={statusFilter === "Archived" ? "Unarchive" : "Archive"} onClick={handleBulkArchive} className={bulkBtnClass(bulkDisabled)}><Archive className="w-4 h-4" /></button>
+              <button type="button" title="Delete" onClick={handleBulkDelete} className={bulkBtnClass(bulkDisabled)}><Trash2 className="w-4 h-4" /></button>
               <button onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Done"><Check className="w-4 h-4" /></button>
             </div>
           </div>
@@ -384,8 +469,26 @@ export const Services: React.FC = () => {
                 {(close) => (
                   <>
                     <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</button>
-                    <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"><Archive className="w-4 h-4" /> Archive</button>
-                    <button onClick={async () => { if (selected?.backendId) { await deleteService(selected.backendId); void queryClient.invalidateQueries({ queryKey: ["services-list"] }); } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
+                    <button
+                      onClick={async () => {
+                        if (!selected?.backendId) { close(); return; }
+                        try {
+                          if (statusFilter === "Archived") {
+                            await unarchiveService(selected.backendId);
+                            showToast("Service unarchived", "success");
+                          } else {
+                            await archiveService(selected.backendId);
+                            showToast("Service archived", "success");
+                          }
+                          invalidateServicesList();
+                        } catch {
+                          showToast("Archive failed", "error");
+                        }
+                        close();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"
+                    ><Archive className="w-4 h-4" /> {statusFilter === "Archived" ? "Unarchive" : "Archive"}</button>
+                    <button onClick={async () => { if (selected?.backendId) { try { await deleteService(selected.backendId); invalidateServicesList(); showToast("Service deleted", "success"); } catch { showToast("Delete failed", "error"); } } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
                   </>
                 )}
               </Dropdown>
@@ -423,7 +526,20 @@ export const Services: React.FC = () => {
       ) : null}
 
       {/* ════════ MODALS ════════ */}
-      {mergeOpen && <MergeModal onClose={() => setMergeOpen(false)} items={checkedItems.length ? checkedItems : services.slice(0, 2)} />}
+      {(mergeOpen || mergeConfirm) && (
+        <MergeModal
+          items={checkedItems}
+          onClose={() => { setMergeOpen(false); setMergeConfirm(false); setMergeTargetId(null); }}
+          onMerge={(id) => { setMergeTargetId(id); setMergeOpen(false); setMergeConfirm(true); }}
+        />
+      )}
+      {mergeConfirm && mergeTargetId != null && (
+        <ConfirmAlert
+          message="Are you sure want to merge these services?"
+          onNo={() => { setMergeConfirm(false); setMergeOpen(true); }}
+          onYes={() => void bulkMerge(mergeTargetId)}
+        />
+      )}
       {settingsOpen && <AppSettingsModal initialTab="Service" onClose={() => setSettingsOpen(false)} />}
     </div>
   );

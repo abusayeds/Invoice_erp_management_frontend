@@ -1,7 +1,42 @@
 /** Products list — backend pagination via /product/all */
 import { api } from "@/lib/api/client";
+import { BACKEND_BASE_URL } from "@/lib/env";
 import { fetchPaginatedList } from "./paginatedList";
 import type { TPartyPagination } from "./customerTypes";
+
+/** Treat empty / placeholder / non-path values as "no product image". */
+export function hasProductImage(value: unknown): boolean {
+  const src = String(value ?? "").trim();
+  if (!src) return false;
+  if (/^\{\{.*\}\}$/.test(src)) return false;
+  if (/^(null|undefined|n\/a|none|-)$/i.test(src)) return false;
+  if (src.includes("file_path_or_url")) return false;
+  return true;
+}
+
+/** Resolve stored upload path (same rules as HRM files). */
+export function resolveProductImageUrl(value: unknown): string {
+  const src = String(value ?? "").trim();
+  if (!hasProductImage(src)) return "";
+  if (/^(https?:|data:|blob:)/i.test(src)) return src;
+  const pathPart = src.startsWith("/") ? src : `/${src.replace(/^\/+/, "")}`;
+  if (import.meta.env.DEV) return pathPart;
+  return `${BACKEND_BASE_URL}${pathPart}`;
+}
+
+export async function uploadProductImage(file: File): Promise<{ path: string; url: string }> {
+  const formData = new FormData();
+  formData.append("files", file);
+  const uploadRes = await api.raw.post("/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  const data = uploadRes.data?.data ?? uploadRes.data;
+  const row = Array.isArray(data) ? data[0] : data;
+  const path = String(row?.file_path || row?.path || "");
+  if (!path) throw new Error("Upload did not return a file path");
+  const url = String(row?.url || "").trim() || resolveProductImageUrl(path);
+  return { path, url };
+}
 
 export type ProductListRow = {
   _id: string;
@@ -94,5 +129,53 @@ export async function deleteProduct(id: string): Promise<void> {
 
 export async function deleteProducts(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await Promise.all(ids.map((id) => deleteProduct(id)));
+  if (ids.length === 1) {
+    await deleteProduct(ids[0]);
+    return;
+  }
+  await api.raw.delete(`/product/delete/${ids.join(",")}`);
+}
+
+export async function archiveProduct(id: string): Promise<void> {
+  await api.raw.patch(`/product/update/${id}`, { isArchive: true });
+}
+
+export async function archiveProducts(ids: string[]): Promise<void> {
+  await Promise.all(ids.map(archiveProduct));
+}
+
+export async function unarchiveProduct(id: string): Promise<void> {
+  await api.raw.patch(`/product/update/${id}`, { isArchive: false });
+}
+
+export async function restoreProduct(id: string): Promise<void> {
+  await api.raw.patch(`/product/restore/${id}`);
+}
+
+export async function duplicateProduct(id: string): Promise<void> {
+  const doc = await api.get<any>(`/product/single/${id}`);
+  const body = {
+    productName: `${doc.productName || doc.name || "Product"} (Copy)`,
+    sku: doc.sku ? `${doc.sku}-COPY-${Date.now().toString(36).slice(-4)}` : undefined,
+    unitType: doc.unitType,
+    quantity: doc.quantity ?? 1,
+    description: doc.description,
+    image: doc.image,
+    category: doc.category?._id || doc.category,
+    tax: doc.tax?._id || doc.tax,
+    pricing: doc.pricing,
+    stock: doc.stock,
+  };
+  await api.raw.post(`/product/create`, body);
+}
+
+export async function duplicateProducts(ids: string[]): Promise<void> {
+  for (const id of ids) await duplicateProduct(id);
+}
+
+export async function mergeProducts(survivorId: string, mergedIds: string[]): Promise<void> {
+  await api.raw.post("/product/merge", {
+    survivor_id: survivorId,
+    merged_ids: mergedIds,
+  });
 }

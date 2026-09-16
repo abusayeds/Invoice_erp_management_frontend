@@ -4,11 +4,20 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
-import { AsyncSearchSelect, CreatePlusButton, searchDocumentCategories } from "./hrmShared";
+import {
+  AsyncSearchSelect,
+  CreatePlusButton,
+  searchDocumentCategories,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
+  resolveHrmFileUrl,
+} from "./hrmShared";
 import {
   Search,
   Edit,
@@ -21,7 +30,6 @@ import {
   X,
   Eye,
   FileText,
-  Upload,
   CheckCircle,
   Clock,
   File,
@@ -53,6 +61,7 @@ interface Document {
 
 function mapFromApi(p: any): Document {
   const dcRef = p.document_category_id;
+  const path = String(p.document ?? p.document_url ?? p.documentUrl ?? "");
   return {
     id: String(p.id ?? p._id ?? ""),
     title: p.title ?? "",
@@ -67,8 +76,8 @@ function mapFromApi(p: any): Document {
     uploadedBy: p.uploaded_by ?? p.uploadedBy ?? "",
     approvedBy: refLabel(p.approved_by ?? p.approvedBy),
     status: p.status ?? "Pending",
-    documentUrl: p.document_url ?? p.documentUrl ?? "",
-    fileName: p.file_name ?? p.fileName ?? "",
+    documentUrl: path,
+    fileName: p.file_name ?? p.fileName ?? hrmFileLabel(path),
     fileType: p.file_type ?? p.fileType ?? "",
     createdAt: (p.created_at ?? p.createdAt ?? "").slice(0, 10),
   };
@@ -100,13 +109,13 @@ const docFilterStatuses = ["All", "Approved", "Pending", "Rejected"];
 export const Documents: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     documentHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const documents = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("title");
@@ -131,7 +140,7 @@ export const Documents: React.FC = () => {
     documentCategoryLabel: "",
     description: "",
     effectiveDate: "",
-    document: null as File | null,
+    documentPath: "",
     fileName: "",
   });
 
@@ -149,22 +158,13 @@ export const Documents: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredDocuments = useMemo(() => {
-    let result = [...documents];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (d) =>
-          d.title.toLowerCase().includes(q) ||
-          d.documentCategory.toLowerCase().includes(q) ||
-          d.uploadedBy.toLowerCase().includes(q),
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((d) => d.status === statusFilter);
-    }
+    let result =
+      statusFilter === "All" ? [...documents] : documents.filter((d) => d.status === statusFilter);
 
     result.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -177,7 +177,7 @@ export const Documents: React.FC = () => {
       return 0;
     });
     return result;
-  }, [documents, searchQuery, statusFilter, sortField, sortDir]);
+  }, [documents, statusFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredDocuments.length / perPage);
   const paginatedDocuments = filteredDocuments.slice(
@@ -187,17 +187,6 @@ export const Documents: React.FC = () => {
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setDocumentFormData({
-        ...documentFormData,
-        document: file,
-        fileName: file.name,
-      });
-    }
-  };
-
   const resetDocumentForm = () => {
     setDocumentFormData({
       title: "",
@@ -205,7 +194,7 @@ export const Documents: React.FC = () => {
       documentCategoryLabel: "",
       description: "",
       effectiveDate: "",
-      document: null,
+      documentPath: "",
       fileName: "",
     });
   };
@@ -224,8 +213,8 @@ export const Documents: React.FC = () => {
       documentCategoryLabel: doc.documentCategory,
       description: doc.description,
       effectiveDate: doc.effectiveDate,
-      document: null,
-      fileName: doc.fileName,
+      documentPath: doc.documentUrl,
+      fileName: doc.fileName || hrmFileLabel(doc.documentUrl),
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -267,6 +256,10 @@ export const Documents: React.FC = () => {
       showToast("Please enter description", "info");
       return;
     }
+    if (!isEditing && !documentFormData.documentPath) {
+      showToast("Please upload a document", "info");
+      return;
+    }
 
     const toApi: Record<string, any> = {
       title: documentFormData.title,
@@ -274,8 +267,8 @@ export const Documents: React.FC = () => {
       description: documentFormData.description,
       effective_date: documentFormData.effectiveDate,
     };
-    if (documentFormData.document) {
-      toApi.document = documentFormData.document;
+    if (documentFormData.documentPath) {
+      toApi.document = documentFormData.documentPath;
     }
 
     try {
@@ -308,7 +301,9 @@ export const Documents: React.FC = () => {
   };
 
   const handleDownloadDocument = (doc: Document) => {
-    showToast(`Downloading ${doc.fileName}...`, "info");
+    const href = resolveHrmFileUrl(doc.documentUrl);
+    if (href) window.open(href, "_blank", "noopener,noreferrer");
+    else showToast("No document file available", "info");
   };
 
   const getStatusColor = (status: string) => {
@@ -469,29 +464,18 @@ export const Documents: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document *
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.png,.docx"
-                className="hidden"
-                id="document-upload"
-              />
-              <button
-                onClick={() =>
-                  document.getElementById("document-upload")?.click()
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <Upload className="w-4 h-4" />
-                Browse
-              </button>
-              {documentFormData.fileName && (
-                <span className="text-sm text-green-600">
-                  {documentFormData.fileName}
-                </span>
-              )}
-            </div>
+            <HrmFileUploadButton
+              inputId="hrm-documents-upload"
+              path={documentFormData.documentPath}
+              displayName={documentFormData.fileName}
+              onUploaded={({ path, name }) =>
+                setDocumentFormData({
+                  ...documentFormData,
+                  documentPath: path,
+                  fileName: name,
+                })
+              }
+            />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -586,18 +570,13 @@ export const Documents: React.FC = () => {
                 </p>
               </div>
             </div>
-            {selectedDocument.fileName && (
-              <div>
-                <p className="text-xs text-gray-500">Document</p>
-                <button
-                  onClick={() => handleDownloadDocument(selectedDocument)}
-                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
-                >
-                  {getFileIcon(selectedDocument.fileName)}
-                  {selectedDocument.fileName}
-                </button>
+            <div>
+              <p className="text-xs text-gray-500">Document</p>
+              <div className="flex items-center gap-2">
+                {selectedDocument.fileName ? getFileIcon(selectedDocument.fileName) : null}
+                <HrmDocumentLink path={selectedDocument.documentUrl} />
               </div>
-            )}
+            </div>
           </div>
         )}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between gap-3">

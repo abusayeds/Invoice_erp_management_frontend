@@ -2,23 +2,24 @@
  * File: src/pages/hrm/Employees.tsx
  * Manage Employees — list/grid view matching the ERPGO reference
  * (references/hrm/employee/employee tab.png) in the Qayd blue theme.
- * Data persisted in IndexedDB via the hrm meta store; create/edit happens on
- * the dedicated wizard page (EmployeeCreate.tsx).
+ * List is loaded from GET /hrm/employees with server-side search & pagination;
+ * create/edit happens on the dedicated wizard page (EmployeeCreate.tsx).
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import { money } from "@/lib/db";
 import {
-  useEmployees,
-  saveEmployees,
+  employeeBackendId,
+  fetchEmployeeListPage,
   type HrmEmployee,
 } from "@/lib/db/hrm";
-import { Avatar, Chip, HrmBreadcrumb, CreatePlusButton } from "./hrmShared";
+import { api } from "@/lib/api/client";
+import { getList } from "@/services/_http";
+import { Avatar, HrmBreadcrumb, CreatePlusButton, useDebouncedValue } from "./hrmShared";
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Filter,
@@ -34,13 +35,9 @@ type SortField = "employeeId" | "name" | "branch" | "department" | "designation"
 
 export const Employees: React.FC = () => {
   const navigate = useNavigate();
-  const employees = useEmployees();
-
-  // seed once when the store is empty
-  useEffect(() => {
-  }, [employees]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300);
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"list" | "grid">("list");
@@ -51,29 +48,78 @@ export const Employees: React.FC = () => {
   const [viewEmployee, setViewEmployee] = useState<HrmEmployee | null>(null);
   const [deleteEmployee, setDeleteEmployee] = useState<HrmEmployee | null>(null);
 
-  const list = employees || [];
+  const [list, setList] = useState<HrmEmployee[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [branchOptions, setBranchOptions] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getList("/hrm/setup/branches", { page: 1, limit: 200 }).then((rows) => {
+      if (cancelled) return;
+      setBranchOptions(
+        rows.map((b: any) => ({
+          id: String(b._id ?? b.id ?? ""),
+          name: String(b.branch_name ?? b.name ?? ""),
+        })).filter((b) => b.id && b.name),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const branchId = useMemo(() => {
+    if (branchFilter === "All") return undefined;
+    return branchOptions.find((b) => b.name === branchFilter)?.id;
+  }, [branchFilter, branchOptions]);
+
   const branches = useMemo(
-    () => Array.from(new Set(list.map((e) => e.branch))).sort(),
-    [list],
+    () => branchOptions.map((b) => b.name).sort(),
+    [branchOptions],
   );
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    const rows = list.filter(
-      (e) =>
-        (branchFilter === "All" || e.branch === branchFilter) &&
-        (e.name.toLowerCase().includes(q) || e.employeeId.toLowerCase().includes(q)),
-    );
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, branchFilter, perPage]);
+
+  const loadEmployees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { rows, total, totalPages: tp } = await fetchEmployeeListPage({
+        page,
+        limit: perPage,
+        searchTerm: debouncedSearch || undefined,
+        branch_id: branchId,
+      });
+      setList(rows);
+      setTotalResults(total);
+      setTotalPages(Math.max(1, tp));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't load employees";
+      showToast(msg, "error");
+      setList([]);
+      setTotalResults(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, perPage, debouncedSearch, branchId]);
+
+  useEffect(() => {
+    void loadEmployees();
+  }, [loadEmployees]);
+
+  const paginated = useMemo(() => {
+    const rows = [...list];
     rows.sort((a, b) => {
       const va = String(a[sortField] ?? "");
       const vb = String(b[sortField] ?? "");
       return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });
     return rows;
-  }, [list, searchQuery, branchFilter, sortField, sortAsc]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  }, [list, sortField, sortAsc]);
 
   const toggleSort = (f: SortField) => {
     if (sortField === f) setSortAsc(!sortAsc);
@@ -85,9 +131,20 @@ export const Employees: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deleteEmployee) return;
-    await saveEmployees(list.filter((e) => e.id !== deleteEmployee.id));
-    showToast("Employee deleted successfully", "success");
-    setDeleteEmployee(null);
+    const bid = employeeBackendId(deleteEmployee.id);
+    if (!bid) {
+      showToast("Missing employee id for delete", "error");
+      return;
+    }
+    try {
+      await api.raw.delete(`/hrm/employees/${bid}`);
+      showToast("Employee deleted successfully", "success");
+      setDeleteEmployee(null);
+      await loadEmployees();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't delete employee";
+      showToast(msg, "error");
+    }
   };
 
   const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
@@ -124,19 +181,10 @@ export const Employees: React.FC = () => {
                 type="text"
                 placeholder="Search Employees..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full sm:w-80 pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md"
               />
             </div>
-            <button
-              onClick={() => showToast("Search applied", "info")}
-              className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-            >
-              Search
-            </button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex border border-gray-300 rounded-md overflow-hidden">
@@ -157,10 +205,7 @@ export const Employees: React.FC = () => {
             </div>
             <select
               value={perPage}
-              onChange={(e) => {
-                setPerPage(Number(e.target.value));
-                setPage(1);
-              }}
+              onChange={(e) => setPerPage(Number(e.target.value))}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
             >
               <option value={5}>5 per page</option>
@@ -185,7 +230,6 @@ export const Employees: React.FC = () => {
                       key={b}
                       onClick={() => {
                         setBranchFilter(b);
-                        setPage(1);
                         setShowFilters(false);
                       }}
                       className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${branchFilter === b ? "text-blue-600 font-medium" : "text-gray-700"}`}
@@ -202,7 +246,9 @@ export const Employees: React.FC = () => {
 
       {/* body */}
       <div className="flex-1 overflow-auto">
-        {view === "list" ? (
+        {loading ? (
+          <div className="px-4 py-12 text-center text-gray-500 text-sm">Loading employees…</div>
+        ) : view === "list" ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[1000px]">
               <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
@@ -295,7 +341,7 @@ export const Employees: React.FC = () => {
       {/* footer / pagination */}
       <div className="bg-white border-t border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between text-sm">
         <span className="text-gray-500">
-          Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of {filtered.length} results
+          Showing {totalResults === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, totalResults)} of {totalResults} results
         </span>
         <div className="flex items-center gap-1">
           <button

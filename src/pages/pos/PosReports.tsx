@@ -8,10 +8,10 @@
 
 import React, { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { money, useCollection } from "@/lib/db";
+import { money } from "@/lib/db";
+import { getToken } from "@/lib/api/tokenStore";
 import {
   posOrderStore,
-  SEED_POS_ORDERS,
   PosOrder,
   orderTax,
   orderTotal,
@@ -104,8 +104,11 @@ function ReportShell({ title, children }: { title: string; children: React.React
 function useOrders(): PosOrder[] {
   const orders = posOrderStore.use();
   useEffect(() => {
-    if (orders === null) posOrderStore.save(SEED_POS_ORDERS);
+    if (orders === null) void posOrderStore.save([]);
   }, [orders]);
+  useEffect(() => {
+    if (getToken()) void posOrderStore.hydrate();
+  }, []);
   return useMemo(() => orders || [], [orders]);
 }
 
@@ -149,7 +152,6 @@ const tooltipStyle = { fontSize: 12, borderRadius: 8 };
 
 export const ProductReport: React.FC = () => {
   const orders = useOrders();
-  const products = useCollection<{ id: number }>("products");
 
   const perProduct = useMemo(() => {
     const map = new Map<string, { name: string; sku: string; qty: number; revenue: number; orders: number }>();
@@ -167,11 +169,12 @@ export const ProductReport: React.FC = () => {
 
   const totalRevenue = perProduct.reduce((s, p) => s + p.revenue, 0);
   const totalQty = perProduct.reduce((s, p) => s + p.qty, 0);
+  const distinctProducts = perProduct.length;
 
   return (
     <ReportShell title="Product Report">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard value={String(products.length)} label="Total Products" tone="blue" icon={Package} plain />
+        <StatCard value={String(distinctProducts)} label="Products Sold" tone="blue" icon={Package} plain />
         <StatCard value={money(totalRevenue)} label="Total Revenue" tone="green" icon={TrendingUp} plain />
         <StatCard value={String(totalQty)} label="Total Quantity" tone="purple" icon={Clock4} plain />
         <StatCard value={String(orders.length)} label="Total Orders" tone="orange" icon={BarChart3} plain />

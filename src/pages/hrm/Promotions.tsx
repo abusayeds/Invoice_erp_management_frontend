@@ -3,7 +3,7 @@
  * Manage Promotions — fully API-backed (no local/Dexie / hardcoded masters).
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import { useResourceData } from "@/hooks/useResourceData";
@@ -23,6 +23,10 @@ import {
   searchBranches,
   searchDepartments,
   searchDesignations,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "./hrmShared";
 import {
   Search,
@@ -34,7 +38,6 @@ import {
   X,
   Play,
   Sparkles,
-  Upload,
   UserRound,
   Calendar,
   Briefcase,
@@ -73,6 +76,7 @@ const emptyDraft = () => ({
   effectiveDate: "",
   reason: "",
   document: "",
+  documentName: "",
 });
 
 function refName(v: any, keys: string[]): string {
@@ -117,13 +121,13 @@ function mapFromApi(p: any): PromotionRow {
 
 export const Promotions: React.FC = () => {
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove } = useResourceData(promotionHooks, {
     seed: [],
-    params: { page: 1, limit: 100 },
+    params: listParams,
   });
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -134,14 +138,14 @@ export const Promotions: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<PromotionRow | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return items.filter(
-      (p) =>
-        (statusFilter === "All" || p.status === statusFilter) &&
-        (p.employee.toLowerCase().includes(q) || p.designation.toLowerCase().includes(q)),
-    );
-  }, [items, searchQuery, statusFilter]);
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
+
+  const filtered = useMemo(
+    () => items.filter((p) => statusFilter === "All" || p.status === statusFilter),
+    [items, statusFilter],
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -153,7 +157,7 @@ export const Promotions: React.FC = () => {
     }
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, string> = {
         employee_id: draft.employeeId,
         current_branch_id: draft.branchId,
         current_department_id: draft.departmentId,
@@ -161,6 +165,7 @@ export const Promotions: React.FC = () => {
         effective_date: draft.effectiveDate,
         reason: draft.reason || "Promotion request",
       };
+      if (draft.document) payload.document = draft.document;
       if (modal === "edit" && draft.id) {
         await update(draft.id, payload);
         showToast("Promotion updated successfully", "success");
@@ -337,6 +342,7 @@ export const Promotions: React.FC = () => {
                             effectiveDate: p.effectiveDate,
                             reason: p.reason,
                             document: p.document || "",
+                            documentName: hrmFileLabel(p.document || ""),
                           });
                           setModal("edit");
                         }}
@@ -496,13 +502,14 @@ export const Promotions: React.FC = () => {
                 </div>
               </Field>
               <Field label="Document">
-                <label className="flex gap-2">
-                  <input value={draft.document} readOnly placeholder="Select Document" className={`flex-1 ${inputCls} bg-white cursor-pointer`} />
-                  <span className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 flex items-center gap-1.5 cursor-pointer hover:bg-gray-50">
-                    <Upload className="w-4 h-4" /> Browse
-                  </span>
-                  <input type="file" className="hidden" onChange={(e) => setDraft({ ...draft, document: e.target.files?.[0]?.name || "" })} />
-                </label>
+                <HrmFileUploadButton
+                  inputId="promotion-document-upload"
+                  path={draft.document}
+                  displayName={draft.documentName}
+                  onUploaded={({ path, name }) =>
+                    setDraft({ ...draft, document: path, documentName: name })
+                  }
+                />
               </Field>
             </div>
             <div className="px-6 pb-5 flex justify-end gap-3">
@@ -592,6 +599,10 @@ export const Promotions: React.FC = () => {
                 <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
                   <p className="text-sm font-medium text-gray-500 mb-1">Reason for Promotion</p>
                   <p className="text-sm text-gray-700">{viewPromotion.reason}</p>
+                </div>
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Document</p>
+                  <HrmDocumentLink path={viewPromotion.document} />
                 </div>
                 {viewPromotion.approvedBy && (
                   <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">

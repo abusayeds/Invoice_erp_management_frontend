@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
@@ -15,6 +15,7 @@ import {
   apiLabel as empApiLabel,
   searchEmployees,
   searchDocuments,
+  useHrmSearchListParams,
 } from "./hrmShared";
 import {
   Search,
@@ -106,13 +107,13 @@ const ackFilterStatuses = ["All", "Acknowledged", "Pending"];
 export const Acknowledgments: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     acknowledgmentHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const acknowledgments = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("employee");
@@ -152,22 +153,15 @@ export const Acknowledgments: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredAcknowledgments = useMemo(() => {
-    let result = [...acknowledgments];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.employee.toLowerCase().includes(q) ||
-          a.document.toLowerCase().includes(q) ||
-          a.assignedBy.toLowerCase().includes(q),
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((a) => a.status === statusFilter);
-    }
+    let result =
+      statusFilter === "All"
+        ? [...acknowledgments]
+        : acknowledgments.filter((a) => a.status === statusFilter);
 
     result.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -180,7 +174,7 @@ export const Acknowledgments: React.FC = () => {
       return 0;
     });
     return result;
-  }, [acknowledgments, searchQuery, statusFilter, sortField, sortDir]);
+  }, [acknowledgments, statusFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredAcknowledgments.length / perPage);
   const paginatedAcknowledgments = filteredAcknowledgments.slice(

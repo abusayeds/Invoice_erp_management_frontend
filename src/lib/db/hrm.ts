@@ -17,6 +17,7 @@ import { numericId } from "./sync";
 import { api } from "@/lib/api/client";
 import { getToken as getHrmToken } from "@/lib/api/tokenStore";
 import { toArray } from "@/services/_http";
+import { fetchPaginatedList } from "@/services/paginatedList";
 
 /* ── backend reference lookups (name → _id) for writes ─────────── */
 const holidayTypeNameToId = new Map<string, string>();
@@ -38,6 +39,9 @@ export interface HrmDocument {
   id: string;
   type: string;
   fileName: string;
+  /** Server path from /upload — use with resolveHrmFileUrl / HrmDocumentLink */
+  path?: string;
+  url?: string;
 }
 
 export interface HrmEmployee {
@@ -246,7 +250,7 @@ export function employeeBackendId(uiId: number): string | undefined {
   return empNumToBackendId.get(uiId);
 }
 
-function mapEmployee(d: any): HrmEmployee {
+export function mapEmployee(d: any): HrmEmployee {
   const backendId = String(d._id);
   const num = numericId(backendId);
   empNumToBackendId.set(num, backendId);
@@ -294,6 +298,19 @@ async function _fetchEmployees(): Promise<HrmEmployee[]> {
   })().finally(() => { _empInFlight = null; });
   return _empInFlight;
 }
+export async function fetchEmployeeListPage(params: {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+  branch_id?: string;
+}): Promise<{ rows: HrmEmployee[]; total: number; totalPages: number }> {
+  const { rows, pagination } = await fetchPaginatedList<any>("/hrm/employees", params);
+  const mapped = rows.map(mapEmployee);
+  const total = pagination.totalData ?? mapped.length;
+  const totalPages = Math.max(1, pagination.totalPage ?? Math.ceil(total / (params.limit || 10)));
+  return { rows: mapped, total, totalPages };
+}
+
 export function useEmployees(): HrmEmployee[] | null | undefined {
   const [, force] = useReactState(0);
   useReactEffect(() => {

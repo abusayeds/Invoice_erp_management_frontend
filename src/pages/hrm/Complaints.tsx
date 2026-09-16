@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
 import {
@@ -12,6 +12,10 @@ import {
   CreatePlusButton,
   searchEmployees,
   searchComplaintTypes,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "./hrmShared";
 import {
   Search,
@@ -26,7 +30,6 @@ import {
   Eye,
   User,
   FileText,
-  Upload,
   CheckCircle,
   AlertCircle,
   Clock,
@@ -161,13 +164,13 @@ type SortDir = "asc" | "desc";
 export const Complaints: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     complaintHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const items = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("complaintDate");
@@ -196,7 +199,7 @@ export const Complaints: React.FC = () => {
     subject: "",
     description: "",
     complaintDate: "",
-    document: null as File | null,
+    documentPath: "",
     documentName: "",
   });
 
@@ -214,23 +217,12 @@ export const Complaints: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredComplaints = useMemo(() => {
-    let result = [...items];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.employee.toLowerCase().includes(q) ||
-          c.againstEmployee.toLowerCase().includes(q) ||
-          c.complaintType.toLowerCase().includes(q) ||
-          c.subject.toLowerCase().includes(q),
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((c) => c.status === statusFilter);
-    }
+    let result = statusFilter === "All" ? [...items] : items.filter((c) => c.status === statusFilter);
 
     result.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -243,7 +235,7 @@ export const Complaints: React.FC = () => {
       return 0;
     });
     return result;
-  }, [items, searchQuery, statusFilter, sortField, sortDir]);
+  }, [items, statusFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredComplaints.length / perPage);
   const paginatedComplaints = filteredComplaints.slice(
@@ -252,16 +244,6 @@ export const Complaints: React.FC = () => {
   );
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setComplaintFormData({
-        ...complaintFormData,
-        document: e.target.files[0],
-        documentName: e.target.files[0].name,
-      });
-    }
-  };
 
   const resetComplaintForm = () => {
     setComplaintFormData({
@@ -274,7 +256,7 @@ export const Complaints: React.FC = () => {
       subject: "",
       description: "",
       complaintDate: "",
-      document: null,
+      documentPath: "",
       documentName: "",
     });
   };
@@ -297,8 +279,8 @@ export const Complaints: React.FC = () => {
       subject: complaint.subject,
       description: complaint.description,
       complaintDate: complaint.complaintDate,
-      document: null,
-      documentName: complaint.document,
+      documentPath: complaint.document,
+      documentName: hrmFileLabel(complaint.document),
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -354,8 +336,8 @@ export const Complaints: React.FC = () => {
       description: complaintFormData.description,
       complaint_date: complaintFormData.complaintDate,
     };
-    if (complaintFormData.document) {
-      toApi.document = complaintFormData.document;
+    if (complaintFormData.documentPath) {
+      toApi.document = complaintFormData.documentPath;
     }
 
     try {
@@ -581,29 +563,18 @@ export const Complaints: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.png,.docx"
-                className="hidden"
-                id="document-upload"
-              />
-              <button
-                onClick={() =>
-                  document.getElementById("document-upload")?.click()
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <Upload className="w-4 h-4" />
-                Browse
-              </button>
-              {complaintFormData.documentName && (
-                <span className="text-sm text-green-600">
-                  {complaintFormData.documentName}
-                </span>
-              )}
-            </div>
+            <HrmFileUploadButton
+              inputId="complaint-document-upload"
+              path={complaintFormData.documentPath}
+              displayName={complaintFormData.documentName}
+              onUploaded={({ path, name }) =>
+                setComplaintFormData({
+                  ...complaintFormData,
+                  documentPath: path,
+                  documentName: name,
+                })
+              }
+            />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -714,15 +685,10 @@ export const Complaints: React.FC = () => {
                 </div>
               </div>
             )}
-            {selectedComplaint.document && (
-              <div>
-                <p className="text-xs text-gray-500">Document</p>
-                <button className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                  <FileText className="w-4 h-4" />
-                  {selectedComplaint.document}
-                </button>
-              </div>
-            )}
+            <div>
+              <p className="text-xs text-gray-500">Document</p>
+              <HrmDocumentLink path={selectedComplaint.document} />
+            </div>
           </div>
         )}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between gap-3">
@@ -984,12 +950,8 @@ export const Complaints: React.FC = () => {
                       {complaint.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {complaint.document ? (
-                      <FileText className="w-4 h-4 text-blue-500" />
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <HrmDocumentLink path={complaint.document} className="max-w-[180px]" />
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {formatDate(complaint.complaintDate)}

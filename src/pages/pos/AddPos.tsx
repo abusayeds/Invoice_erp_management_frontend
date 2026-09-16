@@ -9,15 +9,21 @@
  * stock is decremented in the products collection.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { money, useCollection, repo } from "@/lib/db";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { money } from "@/lib/db";
+import { getToken } from "@/lib/api/tokenStore";
+import { fetchProducts, resolveProductImageUrl, hasProductImage } from "@/services/productsApi";
+import { fetchCustomers } from "@/services/customersApi";
+import { searchProductCategories } from "@/services/categoriesApi";
+import { searchWarehouses } from "@/services/warehousesApi";
+import AsyncSearchSelect from "@/components/ui/AsyncSearchSelect";
+import type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
 import {
   posOrderStore,
-  SEED_POS_ORDERS,
   PosOrder,
   PosItem,
-  POS_WAREHOUSES,
   GST_RATE,
   orderSubtotal,
   orderTax,
@@ -26,7 +32,7 @@ import {
   posUid,
   warehouseShort,
 } from "@/lib/db/pos";
-import { BANK_ACCOUNTS } from "@/lib/db/hrm";
+import { searchBankAccounts } from "@/pages/hrm/hrmShared";
 import { showToast } from "../../utils/toast";
 import {
   Home,
@@ -46,52 +52,100 @@ import {
 
 const QAYD_ADDRESS = ["B-102, Orbit Heights, Lakeview Lane", "Ahmedabad, Gujarat", "India - 380015"];
 
-interface ProductRow {
-  id: number;
+const WALK_IN: AsyncOption = { id: "", name: "Walk-in Customer" };
+
+async function searchPosCustomers(q: string): Promise<AsyncOption[]> {
+  const term = q.trim().toLowerCase();
+  const showWalkIn =
+    !term || term.includes("walk") || "walk-in customer".includes(term) || term.startsWith("walk-in");
+  const { rows } = await fetchCustomers({ page: 1, limit: 50, searchTerm: q.trim() || undefined });
+  const opts = rows.map((c) => ({ id: c._id, name: c.name }));
+  return showWalkIn ? [WALK_IN, ...opts] : opts;
+}
+
+interface CatalogProduct {
+  id: string;
   name: string;
   sku: string;
-  category: string;
+  categoryId: string;
   price: number;
   stock: number;
-  status: string;
-  image?: string | null;
+  image: string | null;
 }
 
 export const AddPos: React.FC = () => {
   const navigate = useNavigate();
-  const products = useCollection<ProductRow>("products");
-  const customers = useCollection<{ id: number; name: string }>("customers");
+  const queryClient = useQueryClient();
   const orders = posOrderStore.use();
   useEffect(() => {
-    if (orders === null) posOrderStore.save(SEED_POS_ORDERS);
+    if (orders === null) void posOrderStore.save([]);
   }, [orders]);
+  useEffect(() => {
+    if (getToken()) void posOrderStore.hydrate();
+  }, []);
 
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [customer, setCustomer] = useState("Walk-in Customer");
-  const [warehouse, setWarehouse] = useState(POS_WAREHOUSES[0]);
-  const [bankAccount, setBankAccount] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [categoryLabel, setCategoryLabel] = useState("");
+  const [catalogPage, setCatalogPage] = useState(1);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setCatalogPage(1);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const { data: catalogData, isFetching: catalogLoading } = useQuery({
+    queryKey: ["pos-product-catalog", catalogPage, search, categoryId],
+    queryFn: () =>
+      fetchProducts({
+        page: catalogPage,
+        limit: 24,
+        searchTerm: search || undefined,
+        category: categoryId || undefined,
+        sort: "productName",
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 10_000,
+  });
+
+  const catalog: CatalogProduct[] = useMemo(
+    () =>
+      (catalogData?.rows ?? []).map((r) => ({
+        id: r._id,
+        name: r.name,
+        sku: r.sku === "—" ? "" : r.sku,
+        categoryId: r.categoryId,
+        price: r.price,
+        stock: r.stock ?? 0,
+        image: r.image,
+      })),
+    [catalogData?.rows],
+  );
+
+  const catalogById = useMemo(() => new Map(catalog.map((p) => [p.id, p])), [catalog]);
+  const catalogPagination = catalogData?.pagination;
+  const [customerId, setCustomerId] = useState("");
+  const [customerName, setCustomerName] = useState(WALK_IN.name);
+  const [warehouseId, setWarehouseId] = useState("");
+  const [warehouseName, setWarehouseName] = useState("");
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [bankAccountLabel, setBankAccountLabel] = useState("");
   const [sku, setSku] = useState("");
   const [cart, setCart] = useState<PosItem[]>([]);
   const [discount, setDiscount] = useState(0);
   const [modal, setModal] = useState<"payment" | "receipt" | null>(null);
   const [receipt, setReceipt] = useState<PosOrder | null>(null);
 
-  const categories = useMemo(
-    () => ["All", ...Array.from(new Set(products.map((p) => p.category).filter(Boolean)))],
-    [products],
+  const stockFor = useCallback(
+    (productId: string) => catalogById.get(productId)?.stock ?? 0,
+    [catalogById],
   );
-  const visible = useMemo(() => {
-    const q = search.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.status !== "Inactive" &&
-        (category === "All" || p.category === category) &&
-        (p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q)),
-    );
-  }, [products, search, category]);
 
-  const addToCart = (p: ProductRow) => {
+  const addToCart = (p: CatalogProduct) => {
     if ((p.stock ?? 0) <= 0) {
       showToast(`${p.name} is out of stock`, "error");
       return;
@@ -99,33 +153,65 @@ export const AddPos: React.FC = () => {
     setCart((prev) => {
       const found = prev.find((i) => i.productId === p.id);
       if (found) {
-        if (found.qty >= p.stock) {
-          showToast(`Only ${p.stock} in stock for ${p.name}`, "error");
+        const maxStock = stockFor(p.id) || p.stock;
+        if (found.qty >= maxStock) {
+          showToast(`Only ${maxStock} in stock for ${p.name}`, "error");
           return prev;
         }
         return prev.map((i) => (i.productId === p.id ? { ...i, qty: i.qty + 1 } : i));
       }
-      return [...prev, { productId: p.id, name: p.name, sku: p.sku || "", qty: 1, price: p.price, taxRate: GST_RATE }];
+      return [
+        ...prev,
+        {
+          productId: p.id,
+          name: p.name,
+          sku: p.sku || "",
+          qty: 1,
+          price: p.price,
+          taxRate: GST_RATE,
+          image: p.image,
+        },
+      ];
     });
   };
 
-  const addBySku = () => {
-    const p = products.find((x) => (x.sku || "").toLowerCase() === sku.trim().toLowerCase());
-    if (!p) {
-      showToast(`No product with SKU "${sku.trim()}"`, "error");
-      return;
+  const addBySku = async () => {
+    const term = sku.trim();
+    if (!term) return;
+    try {
+      const { rows } = await fetchProducts({ page: 1, limit: 20, searchTerm: term });
+      const p = rows.find((x) => (x.sku || "").toLowerCase() === term.toLowerCase()) ?? rows[0];
+      if (!p) {
+        showToast(`No product with SKU "${term}"`, "error");
+        return;
+      }
+      addToCart({
+        id: p._id,
+        name: p.name,
+        sku: p.sku === "—" ? "" : p.sku,
+        categoryId: p.categoryId,
+        price: p.price,
+        stock: p.stock ?? 0,
+        image: p.image,
+      });
+      setSku("");
+    } catch {
+      showToast(`No product with SKU "${term}"`, "error");
     }
-    addToCart(p);
-    setSku("");
   };
 
-  const setQty = (productId: number, qty: number) => {
-    const p = products.find((x) => x.id === productId);
-    if (p && qty > p.stock) {
-      showToast(`Only ${p.stock} in stock for ${p.name}`, "error");
+  const setQty = (productId: string, qty: number) => {
+    const maxStock = stockFor(productId);
+    const p = catalogById.get(productId);
+    if (qty > 0 && maxStock > 0 && qty > maxStock) {
+      showToast(`Only ${maxStock} in stock for ${p?.name ?? "product"}`, "error");
       return;
     }
-    setCart((prev) => (qty <= 0 ? prev.filter((i) => i.productId !== productId) : prev.map((i) => (i.productId === productId ? { ...i, qty } : i))));
+    setCart((prev) =>
+      qty <= 0
+        ? prev.filter((i) => i.productId !== productId)
+        : prev.map((i) => (i.productId === productId ? { ...i, qty } : i)),
+    );
   };
 
   const draft = { items: cart, discount };
@@ -140,8 +226,12 @@ export const AddPos: React.FC = () => {
       showToast("Your cart is empty", "error");
       return;
     }
-    if (!bankAccount) {
+    if (!bankAccountLabel) {
       showToast("Select a bank account first", "error");
+      return;
+    }
+    if (!warehouseName) {
+      showToast("Select a warehouse first", "error");
       return;
     }
     setModal("payment");
@@ -152,19 +242,20 @@ export const AddPos: React.FC = () => {
       id: posUid(),
       number: posNumber,
       date: today,
-      customer,
-      warehouse,
-      bankAccount,
+      customer: customerName || WALK_IN.name,
+      customerId: customerId || undefined,
+      warehouse: warehouseName,
+      warehouseId: warehouseId || undefined,
+      bankAccount: bankAccountLabel,
+      bankAccountId: bankAccountId || undefined,
       items: cart,
       discount,
       status: "Completed",
       createdAt: Date.now(),
     };
     await posOrderStore.create(order);
-    for (const i of cart) {
-      const p = products.find((x) => x.id === i.productId);
-      if (p) await repo.update("products", p.id, { stock: Math.max(0, (p.stock ?? 0) - i.qty) });
-    }
+    void queryClient.invalidateQueries({ queryKey: ["pos-product-catalog"] });
+    void queryClient.invalidateQueries({ queryKey: ["products-list"] });
     setReceipt(order);
     setModal("receipt");
     setCart([]);
@@ -184,19 +275,32 @@ export const AddPos: React.FC = () => {
           </button>
           <div className="relative flex-1 min-w-40">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className={`${inputCls} w-full pl-9`} />
+            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search products..." className={`${inputCls} w-full pl-9`} />
           </div>
-          <select value={customer} onChange={(e) => setCustomer(e.target.value)} className={`${inputCls} min-w-40`}>
-            <option>Walk-in Customer</option>
-            {customers.map((c) => (
-              <option key={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)} className={`${inputCls} min-w-52`}>
-            {POS_WAREHOUSES.map((w) => (
-              <option key={w}>{w}</option>
-            ))}
-          </select>
+          <div className="w-full max-w-[11rem]">
+            <AsyncSearchSelect
+              value={customerId}
+              displayName={customerName}
+              placeholder="Walk-in Customer"
+              onSearch={searchPosCustomers}
+              onChange={(id, opt) => {
+                setCustomerId(id);
+                setCustomerName(opt?.name || WALK_IN.name);
+              }}
+            />
+          </div>
+          <div className="w-full max-w-[14rem]">
+            <AsyncSearchSelect
+              value={warehouseId}
+              displayName={warehouseName ? warehouseShort(warehouseName) : ""}
+              placeholder="Warehouse"
+              onSearch={searchWarehouses}
+              onChange={(id, opt) => {
+                setWarehouseId(id);
+                setWarehouseName(opt?.name || "");
+              }}
+            />
+          </div>
           <div className="relative min-w-44">
             <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -209,32 +313,37 @@ export const AddPos: React.FC = () => {
           </div>
         </div>
 
-        {/* category chips */}
-        <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center gap-2 flex-wrap">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`px-4 py-1.5 text-sm font-medium rounded-lg border ${
-                category === c ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
+        {/* category — searchable API dropdown */}
+        <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="w-full max-w-xs">
+            <AsyncSearchSelect
+              value={categoryId}
+              displayName={categoryLabel}
+              placeholder="All categories"
+              onSearch={searchProductCategories}
+              onChange={(id, opt) => {
+                setCategoryId(id);
+                setCategoryLabel(opt?.name || "");
+                setCatalogPage(1);
+              }}
+            />
+          </div>
         </div>
 
         {/* grid */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-            {visible.map((p) => (
+            {catalog.map((p) => {
+              const imgSrc = hasProductImage(p.image) ? resolveProductImageUrl(p.image) : "";
+              return (
               <button
                 key={p.id}
+                type="button"
                 onClick={() => addToCart(p)}
                 className="bg-white rounded-xl border border-gray-200 hover:border-blue-400 hover:shadow-md text-left overflow-hidden transition-all"
               >
                 <div className="h-36 bg-gray-50 flex items-center justify-center overflow-hidden">
-                  {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <Package className="w-12 h-12 text-blue-200" />}
+                  {imgSrc ? <img src={imgSrc} alt={p.name} className="w-full h-full object-cover" /> : <Package className="w-12 h-12 text-blue-200" />}
                 </div>
                 <div className="p-3">
                   <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
@@ -247,10 +356,33 @@ export const AddPos: React.FC = () => {
                   </div>
                 </div>
               </button>
-            ))}
+            );})}
           </div>
-          {visible.length === 0 && (
+          {catalog.length === 0 && !catalogLoading && (
             <div className="text-center text-sm text-gray-400 py-16">No products match your search.</div>
+          )}
+          {catalogPagination && catalogPagination.totalPage > 1 && (
+            <div className="flex items-center justify-center gap-3 py-4 text-sm text-gray-600">
+              <button
+                type="button"
+                disabled={catalogPage <= 1}
+                onClick={() => setCatalogPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <span>
+                Page {catalogPagination.currentPage} of {catalogPagination.totalPage}
+              </span>
+              <button
+                type="button"
+                disabled={catalogPage >= catalogPagination.totalPage}
+                onClick={() => setCatalogPage((p) => p + 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -261,12 +393,16 @@ export const AddPos: React.FC = () => {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Bank Account <span className="text-red-500">*</span>
           </label>
-          <select value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} className={`${inputCls} w-full`}>
-            <option value="">Select Bank Account</option>
-            {BANK_ACCOUNTS.map((b) => (
-              <option key={b}>{b}</option>
-            ))}
-          </select>
+          <AsyncSearchSelect
+            value={bankAccountId}
+            displayName={bankAccountLabel}
+            placeholder="Select Bank Account"
+            onSearch={searchBankAccounts}
+            onChange={(id, opt) => {
+              setBankAccountId(id);
+              setBankAccountLabel(opt?.name || "");
+            }}
+          />
         </div>
         <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 mt-2">
           <div className="flex items-center gap-2">
@@ -300,8 +436,9 @@ export const AddPos: React.FC = () => {
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 rounded-md bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
                     {(() => {
-                      const img = products.find((x) => x.id === i.productId)?.image;
-                      return img ? <img src={img} alt={i.name} className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-blue-300" />;
+                      const raw = i.image ?? catalogById.get(i.productId)?.image;
+                      const src = hasProductImage(raw) ? resolveProductImageUrl(raw) : "";
+                      return src ? <img src={src} alt={i.name} className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-blue-300" />;
                     })()}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -383,8 +520,8 @@ export const AddPos: React.FC = () => {
                 <div className="space-y-1.5">
                   <p><span className="text-gray-500">POS Number:</span> <span className="font-semibold text-gray-900">{posNumber}</span></p>
                   <p><span className="text-gray-500">Date:</span> <span className="text-gray-900">{today}</span></p>
-                  <p><span className="text-gray-500">Customer:</span> <span className="text-gray-900">{customer}</span></p>
-                  <p><span className="text-gray-500">Warehouse:</span> <span className="text-gray-900">{warehouseShort(warehouse)}</span></p>
+                  <p><span className="text-gray-500">Customer:</span> <span className="text-gray-900">{customerName}</span></p>
+                  <p><span className="text-gray-500">Warehouse:</span> <span className="text-gray-900">{warehouseShort(warehouseName)}</span></p>
                 </div>
                 <div className="text-right">
                   <p className="text-base font-bold text-gray-900">Qayd</p>

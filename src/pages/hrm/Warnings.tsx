@@ -4,7 +4,7 @@
  * Based on provided screenshots design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { refLabel } from "@/services/_http";
 import {
   AsyncSearchSelect,
@@ -13,6 +13,10 @@ import {
   apiLabel as empApiLabel,
   searchEmployees,
   searchWarningTypes,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "./hrmShared";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../utils/toast";
@@ -133,13 +137,13 @@ const severities = ["High", "Medium", "Low"] as const;
 export const Warnings: React.FC = () => {
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
   const { items: raw, create, update, remove, refetch } = useResourceData(
     warningHooks,
-    { seed: [], params: { page: 1, limit: 100 } },
+    { seed: [], params: listParams },
   );
   const warnings = useMemo(() => raw.map(mapFromApi), [raw]);
-
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("warningDate");
@@ -168,7 +172,7 @@ export const Warnings: React.FC = () => {
     severity: "Medium" as "High" | "Medium" | "Low",
     warningDate: "",
     description: "",
-    document: null as File | null,
+    documentPath: "",
     documentName: "",
   });
 
@@ -186,18 +190,12 @@ export const Warnings: React.FC = () => {
 
   // ─── Filtered & Sorted ─────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listParams.searchTerm]);
+
   const filteredWarnings = useMemo(() => {
     let result = [...warnings];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (w) =>
-          w.employee.toLowerCase().includes(q) ||
-          w.warningType.toLowerCase().includes(q) ||
-          w.subject.toLowerCase().includes(q),
-      );
-    }
 
     if (statusFilter !== "All") {
       result = result.filter((w) => w.status === statusFilter);
@@ -224,7 +222,7 @@ export const Warnings: React.FC = () => {
       return 0;
     });
     return result;
-  }, [warnings, searchQuery, statusFilter, severityFilter, sortField, sortDir]);
+  }, [warnings, statusFilter, severityFilter, sortField, sortDir]);
 
   const totalPages = Math.ceil(filteredWarnings.length / perPage);
   const paginatedWarnings = filteredWarnings.slice(
@@ -233,16 +231,6 @@ export const Warnings: React.FC = () => {
   );
 
   // ─── Form Helpers ───────────────────────────────────────────────────────────
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setWarningFormData({
-        ...warningFormData,
-        document: e.target.files[0],
-        documentName: e.target.files[0].name,
-      });
-    }
-  };
 
   const resetWarningForm = () => {
     setWarningFormData({
@@ -256,7 +244,7 @@ export const Warnings: React.FC = () => {
       severity: "Medium",
       warningDate: "",
       description: "",
-      document: null,
+      documentPath: "",
       documentName: "",
     });
   };
@@ -280,8 +268,8 @@ export const Warnings: React.FC = () => {
       severity: warning.severity,
       warningDate: warning.warningDate,
       description: warning.description,
-      document: null,
-      documentName: warning.document,
+      documentPath: warning.document,
+      documentName: hrmFileLabel(warning.document),
     });
     setIsEditing(true);
     setShowEditModal(true);
@@ -332,7 +320,7 @@ export const Warnings: React.FC = () => {
       return;
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
       employee_id: warningFormData.employee,
       warning_by: warningFormData.warningBy,
       warning_type_id: warningFormData.warningType,
@@ -341,6 +329,9 @@ export const Warnings: React.FC = () => {
       warning_date: warningFormData.warningDate,
       description: warningFormData.description,
     };
+    if (warningFormData.documentPath) {
+      payload.document = warningFormData.documentPath;
+    }
 
     try {
       if (isEditing && selectedWarning) {
@@ -606,29 +597,18 @@ export const Warnings: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Document
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.png,.docx"
-                className="hidden"
-                id="document-upload"
-              />
-              <button
-                onClick={() =>
-                  document.getElementById("document-upload")?.click()
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <Upload className="w-4 h-4" />
-                Browse
-              </button>
-              {warningFormData.documentName && (
-                <span className="text-sm text-green-600">
-                  {warningFormData.documentName}
-                </span>
-              )}
-            </div>
+            <HrmFileUploadButton
+              inputId="warning-document-upload"
+              path={warningFormData.documentPath}
+              displayName={warningFormData.documentName}
+              onUploaded={({ path, name }) =>
+                setWarningFormData({
+                  ...warningFormData,
+                  documentPath: path,
+                  documentName: name,
+                })
+              }
+            />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
@@ -734,15 +714,10 @@ export const Warnings: React.FC = () => {
                 </p>
               </div>
             )}
-            {selectedWarning.document && (
-              <div>
-                <p className="text-xs text-gray-500">Document</p>
-                <button className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                  <FileText className="w-4 h-4" />
-                  {selectedWarning.document}
-                </button>
-              </div>
-            )}
+            <div>
+              <p className="text-xs text-gray-500">Document</p>
+              <HrmDocumentLink path={selectedWarning.document} />
+            </div>
           </div>
         )}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between gap-3">
@@ -1070,12 +1045,8 @@ export const Warnings: React.FC = () => {
                       {warning.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {warning.document ? (
-                      <FileText className="w-4 h-4 text-blue-500" />
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <HrmDocumentLink path={warning.document} className="max-w-[180px]" />
                   </td>
                   <td
                     className="px-4 py-3"

@@ -2,7 +2,7 @@
  * Manage Leave Applications — API-backed via /hrm/leave.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
 import { useLeaveTypes, type LeaveApplication } from "@/lib/db/hrm";
@@ -14,6 +14,10 @@ import {
   CreatePlusButton,
   AsyncSearchSelect,
   employeeOption,
+  useHrmSearchListParams,
+  HrmDocumentLink,
+  HrmFileUploadButton,
+  hrmFileLabel,
 } from "../hrmShared";
 import { useResourceData } from "@/hooks/useResourceData";
 import {
@@ -23,7 +27,6 @@ import {
   leaveTypesService,
 } from "@/services/hrm";
 import { toArray } from "@/services/_http";
-import { api } from "@/lib/api/client";
 import {
   Search,
   Filter,
@@ -41,7 +44,6 @@ import {
   Calendar,
   CheckCircle,
   MessageSquare,
-  Upload,
 } from "lucide-react";
 
 type LeaveRow = LeaveApplication & {
@@ -100,15 +102,17 @@ const emptyDraft = () => ({
   end: "",
   reason: "",
   document: "",
-  attachmentUrl: "",
+  documentName: "",
 });
 
 export const LeaveApplications: React.FC = () => {
   const navigate = useNavigate();
   const leaveTypes = useLeaveTypes();
+  const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery, 200);
   const { items: raw, create, update, remove, refetch } = useResourceData(leaveHooks, {
     seed: [],
-    params: { page: 1, limit: 200 },
+    params: listParams,
   });
   const list = useMemo(() => raw.map((r) => mapFromApi(r as Record<string, unknown>)), [raw]);
   const types = leaveTypes || [];
@@ -130,7 +134,6 @@ export const LeaveApplications: React.FC = () => {
       .filter((o) => o.id && o.name);
   }, []);
 
-  const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -142,35 +145,6 @@ export const LeaveApplications: React.FC = () => {
   const [actionComment, setActionComment] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<LeaveRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-
-  const uploadAttachment = async (file: File) => {
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("files", file);
-      const uploadRes = await api.raw.post("/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const path =
-        uploadRes.data?.data?.file_path ||
-        uploadRes.data?.data?.path ||
-        (Array.isArray(uploadRes.data?.data) ? uploadRes.data.data[0]?.file_path : undefined);
-      if (!path) throw new Error("Upload did not return a file path");
-      setDraft((prev) => ({
-        ...prev,
-        document: file.name,
-        attachmentUrl: String(path),
-      }));
-      showToast("Attachment uploaded", "success");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Couldn't upload attachment";
-      showToast(msg, "error");
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const typeOf = (a: LeaveRow) => {
     const fromRow =
       a.leaveTypeColor != null
@@ -179,14 +153,14 @@ export const LeaveApplications: React.FC = () => {
     return fromRow || types.find((t) => t.id === a.leaveTypeId || t.name === a.leaveType);
   };
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return list.filter(
-      (a) =>
-        (statusFilter === "All" || a.status === statusFilter) &&
-        (a.employee.toLowerCase().includes(q) || a.leaveType.toLowerCase().includes(q)),
-    );
-  }, [list, searchQuery, statusFilter]);
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
+
+  const filtered = useMemo(
+    () => list.filter((a) => statusFilter === "All" || a.status === statusFilter),
+    [list, statusFilter],
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -205,9 +179,7 @@ export const LeaveApplications: React.FC = () => {
         end_date: draft.end,
         reason: draft.reason,
       };
-      if (draft.attachmentUrl) payload.attachment = draft.attachmentUrl;
-      else if (draft.document && (draft.document.includes("/") || draft.document.startsWith("http")))
-        payload.attachment = draft.document;
+      if (draft.document) payload.attachment = draft.document;
       if (modal === "edit" && draft.id) {
         await update(draft.id, payload);
         showToast("Leave application updated successfully", "success");
@@ -361,17 +333,8 @@ export const LeaveApplications: React.FC = () => {
                     <td className="px-4 py-3.5 text-gray-600">{a.days}</td>
                     <td className="px-4 py-3.5"><Chip label={a.status} /></td>
                     <td className="px-4 py-3.5 text-gray-600">{a.appliedOn}</td>
-                    <td className="px-4 py-3.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          showToast("Document preview coming soon", "info");
-                        }}
-                        className="p-1 text-blue-500 hover:text-blue-700"
-                        title={a.document || "Document"}
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
+                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                      <HrmDocumentLink path={a.document} className="max-w-[160px]" />
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
@@ -399,7 +362,7 @@ export const LeaveApplications: React.FC = () => {
                                   end: a.end,
                                   reason: a.reason,
                                   document: a.document || "",
-                                  attachmentUrl: a.document || "",
+                                  documentName: hrmFileLabel(a.document || ""),
                                 });
                                 setModal("edit");
                               }}
@@ -508,27 +471,14 @@ export const LeaveApplications: React.FC = () => {
                 </div>
               </Field>
               <Field label="Attachment">
-                <div className="flex gap-2">
-                  <input
-                    value={draft.document}
-                    readOnly
-                    placeholder="Select Attachment..."
-                    className={`flex-1 ${inputCls} bg-white`}
-                  />
-                  <label className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 flex items-center gap-1.5 cursor-pointer hover:bg-gray-50 shrink-0">
-                    <Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Browse"}
-                    <input
-                      type="file"
-                      className="hidden"
-                      disabled={uploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void uploadAttachment(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                </div>
+                <HrmFileUploadButton
+                  inputId="leave-attachment-upload"
+                  path={draft.document}
+                  displayName={draft.documentName}
+                  onUploaded={({ path, name }) =>
+                    setDraft({ ...draft, document: path, documentName: name })
+                  }
+                />
               </Field>
             </div>
             <div className="px-6 pb-5 flex justify-end gap-3">
@@ -605,6 +555,10 @@ export const LeaveApplications: React.FC = () => {
               <div className="mt-4">
                 <div className="flex items-center gap-1.5 text-gray-500 mb-1.5 text-sm"><MessageSquare className="w-4 h-4" /> Approver Comment</div>
                 <div className="bg-blue-50/60 border border-blue-100 rounded-lg px-4 py-3 text-sm text-gray-700">{viewApp.comment || "-"}</div>
+              </div>
+              <div className="mt-4">
+                <div className="flex items-center gap-1.5 text-gray-500 mb-1.5 text-sm"><FileText className="w-4 h-4" /> Attachment</div>
+                <HrmDocumentLink path={viewApp.document} />
               </div>
             </div>
           </div>

@@ -171,7 +171,7 @@ export const attendancesService = makeResource<Attendance>({ list: `${BASE}/atte
 export const attendanceHooks = createResourceHooks("hrm-attendances", attendancesService);
 
 export const attendanceApi = {
-  grid: (params: { year: number; month: number; employee_id?: string }) =>
+  grid: (params: { year: number; month: number; employee_id?: string; searchTerm?: string }) =>
     getOne<{
       year: number;
       month: number;

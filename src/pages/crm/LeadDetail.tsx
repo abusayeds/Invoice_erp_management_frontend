@@ -12,7 +12,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { showToast } from "../../utils/toast";
-import { useCollection } from "../../lib/db";
+import { toArray } from "@/services/_http";
+import { fetchCrmUsers, fetchCrmSources } from "@/services/crmApi";
 import type { Lead } from "./Leads";
 import {
   useLeadDetail,
@@ -32,9 +33,7 @@ import {
   AddPicker,
   uid,
   nowStamp,
-  USER_CATALOG,
-  SOURCE_CATALOG,
-  PRODUCT_CATALOG,
+  type PickerOption,
 } from "./crmDetailShared";
 import {
   ArrowLeft,
@@ -147,11 +146,34 @@ export const LeadDetail: React.FC = () => {
     ...base.activity,
   ];
 
-  const productCatalog = useCollection<any>("products", "name");
-  const productOptions = useMemo(() => {
-    const fromDb = productCatalog.map((p) => p.name).filter(Boolean);
-    return Array.from(new Set([...fromDb, ...PRODUCT_CATALOG]));
-  }, [productCatalog]);
+  const [userOptions, setUserOptions] = useState<PickerOption[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<PickerOption[]>([]);
+  const [productOptions, setProductOptions] = useState<PickerOption[]>([]);
+  useEffect(() => {
+    void fetchCrmUsers().then((rows) =>
+      setUserOptions(rows.map((u) => ({ id: u._id, name: u.name }))),
+    );
+    void fetchCrmSources().then((rows) =>
+      setSourceOptions(rows.map((s) => ({ id: s._id, name: s.name }))),
+    );
+    void api.raw
+      .get("/product/all", { params: { page: 1, limit: 200 } })
+      .then((res) => {
+        const rows = toArray<any>(res.data);
+        setProductOptions(
+          rows
+            .map((p) => ({
+              id: String(p._id),
+              name: String(p.productName ?? p.name ?? ""),
+            }))
+            .filter((p) => p.id && p.name),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const files = data.files ?? [];
 
   const [activeTab, setActiveTab] = useState("General");
   const [notes, setNotes] = useState<string>("");
@@ -272,19 +294,53 @@ export const LeadDetail: React.FC = () => {
   // ── Users / Products / Sources ──
   const addNamed = (
     key: "users" | "products" | "sources",
-    names: string[],
+    items: PickerOption[],
     activityLabel: string,
     activityKind: LeadActivity["kind"],
   ) => {
-    const items: LeadNamed[] = names.map((n) => ({ id: uid(), name: n }));
+    const existingIds = new Set((data[key] as LeadNamed[]).map((x) => x.id));
+    const toAdd: LeadNamed[] = items
+      .filter((i) => /^[a-f0-9]{24}$/i.test(i.id) && !existingIds.has(i.id))
+      .map((i) => ({ id: i.id, name: i.name }));
+    if (toAdd.length === 0) {
+      showToast("Select items from the list", "info");
+      return;
+    }
     commit({
       ...data,
-      [key]: [...data[key], ...items],
+      [key]: [...(data[key] as LeadNamed[]), ...toAdd],
       activity: logActivity(data, activityKind, activityLabel),
     } as LeadDetailData);
     setPickerModal(null);
     showToast("Added", "success");
   };
+
+  const onFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    e.target.value = "";
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+      const uploadRes = await api.raw.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const path =
+        uploadRes.data?.data?.file_path || uploadRes.data?.data?.path || "";
+      const newFile = { id: uid(), name: file.name, url: path };
+      commit({
+        ...data,
+        files: [...files, newFile],
+        activity: logActivity(data, "user", `Uploaded file ${file.name}`),
+      });
+      showToast("File added", "success");
+    } catch {
+      showToast("Upload failed", "error");
+    }
+  };
+
+  const removeFile = (fid: string) =>
+    commit({ ...data, files: files.filter((f) => f.id !== fid) });
   const removeNamed = (key: "users" | "products" | "sources", rid: string) =>
     commit({ ...data, [key]: (data[key] as LeadNamed[]).filter((x) => x.id !== rid) } as LeadDetailData);
 
@@ -377,6 +433,7 @@ export const LeadDetail: React.FC = () => {
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         {onAdd && (
           <button
+            type="button"
             onClick={onAdd}
             className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
           >
@@ -664,10 +721,62 @@ export const LeadDetail: React.FC = () => {
 
       case "Files":
         return (
-          <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
-            <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No files uploaded yet.</p>
-          </div>
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={onFilePick}
+            />
+            <SectionCard title="Files" onAdd={() => fileInputRef.current?.click()}>
+              <div className="overflow-x-auto border-t border-gray-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-5 py-3 text-left font-medium">File Name</th>
+                      <th className="px-5 py-3 text-left font-medium w-32">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {files.map((f) => (
+                      <tr key={f.id}>
+                        <td className="px-5 py-3 text-gray-900">
+                          {f.url ? (
+                            <a
+                              href={f.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {f.name}
+                            </a>
+                          ) : (
+                            f.name
+                          )}
+                        </td>
+                        <td className="px-5 py-3">
+                          <button
+                            type="button"
+                            onClick={() => removeFile(f.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {files.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="px-5 py-10 text-center text-gray-400">
+                          No files uploaded yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          </>
         );
 
       case "Calls":
@@ -794,10 +903,11 @@ export const LeadDetail: React.FC = () => {
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
                       activeTab === tab.id
-                        ? "bg-blue-50 text-blue-600 font-medium"
+                        ? "bg-blue-50 text-blue-600 font-medium ring-1 ring-blue-200"
                         : "text-gray-600 hover:bg-gray-50"
                     }`}
                   >
@@ -961,8 +1071,8 @@ export const LeadDetail: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 >
                   <option value="">Select assignee</option>
-                  {Array.from(new Set([...data.users.map((u) => u.name), ...USER_CATALOG])).map((n) => (
-                    <option key={n} value={n}>{n}</option>
+                  {data.users.map((u) => (
+                    <option key={u.id} value={u.name}>{u.name}</option>
                   ))}
                 </select>
               </div>
@@ -1094,10 +1204,10 @@ export const LeadDetail: React.FC = () => {
         <AddPicker
           title="Add Users"
           label="Select Users"
-          options={USER_CATALOG}
-          existing={data.users.map((u) => u.name)}
+          options={userOptions}
+          existing={data.users.map((u) => u.id)}
           onClose={() => setPickerModal(null)}
-          onAdd={(names) => addNamed("users", names, names.join(","), "user")}
+          onAdd={(items) => addNamed("users", items, items.map((i) => i.name).join(", "), "user")}
         />
       )}
       {pickerModal === "products" && (
@@ -1105,19 +1215,19 @@ export const LeadDetail: React.FC = () => {
           title="Add Products"
           label="Select Products"
           options={productOptions}
-          existing={data.products.map((p) => p.name)}
+          existing={data.products.map((p) => p.id)}
           onClose={() => setPickerModal(null)}
-          onAdd={(names) => addNamed("products", names, names.join(","), "products")}
+          onAdd={(items) => addNamed("products", items, items.map((i) => i.name).join(", "), "products")}
         />
       )}
       {pickerModal === "sources" && (
         <AddPicker
           title="Add Sources"
           label="Select Sources"
-          options={SOURCE_CATALOG}
-          existing={data.sources.map((s) => s.name)}
+          options={sourceOptions}
+          existing={data.sources.map((s) => s.id)}
           onClose={() => setPickerModal(null)}
-          onAdd={(names) => addNamed("sources", names, "Update Sources", "sources")}
+          onAdd={(items) => addNamed("sources", items, "Update Sources", "sources")}
         />
       )}
     </div>

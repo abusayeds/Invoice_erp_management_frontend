@@ -5,15 +5,13 @@
  * Leave types persist in meta row `hrm:leaveTypes`.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../../utils/toast";
-import {
-  useLeaveTypes,
-  saveLeaveTypes,
-  type LeaveType,
-} from "@/lib/db/hrm";
-import { Field, inputCls, HrmBreadcrumb, CreatePlusButton } from "../hrmShared";
+import { type LeaveType } from "@/lib/db/hrm";
+import { useResourceData } from "@/hooks/useResourceData";
+import { leaveTypeHooks } from "@/services/hrm";
+import { Field, inputCls, HrmBreadcrumb, CreatePlusButton, useHrmSearchListParams } from "../hrmShared";
 import {
   Search,
   Filter,
@@ -29,6 +27,27 @@ import {
   DollarSign,
   Palette,
 } from "lucide-react";
+
+function mapLeaveTypeFromApi(d: any): LeaveType {
+  return {
+    id: String(d._id ?? d.id ?? ""),
+    name: d.name || "",
+    maxDays: d.max_days_per_year ?? 0,
+    paid: d.is_paid !== false,
+    color: d.color || "#3B82F6",
+    description: d.description || "",
+  };
+}
+
+function leaveTypeToApi(t: ReturnType<typeof emptyDraft>) {
+  return {
+    name: t.name,
+    max_days_per_year: Number(t.maxDays) || 0,
+    is_paid: !!t.paid,
+    color: t.color,
+    description: t.description,
+  };
+}
 
 const emptyDraft = () => ({
   id: "",
@@ -47,9 +66,13 @@ const paidChip = (paid: boolean) => (
 
 export const LeaveTypes: React.FC = () => {
   const navigate = useNavigate();
-  const leaveTypes = useLeaveTypes();
-
   const [searchQuery, setSearchQuery] = useState("");
+  const listParams = useHrmSearchListParams(searchQuery);
+  const { items: raw, create, update, remove } = useResourceData(leaveTypeHooks, {
+    seed: [],
+    params: listParams,
+  });
+  const list = useMemo(() => raw.map(mapLeaveTypeFromApi), [raw]);
   const [perPage, setPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -60,18 +83,17 @@ export const LeaveTypes: React.FC = () => {
   const [viewType, setViewType] = useState<LeaveType | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeaveType | null>(null);
 
-  const list = leaveTypes || [];
+  useEffect(() => {
+    setPage(1);
+  }, [listParams.searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
     const rows = list.filter(
-      (t) =>
-        (paidFilter === "All" || (paidFilter === "Paid" ? t.paid : !t.paid)) &&
-        t.name.toLowerCase().includes(q),
+      (t) => paidFilter === "All" || (paidFilter === "Paid" ? t.paid : !t.paid),
     );
     rows.sort((a, b) => (sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)));
     return rows;
-  }, [list, searchQuery, paidFilter, sortAsc]);
+  }, [list, paidFilter, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -82,10 +104,10 @@ export const LeaveTypes: React.FC = () => {
       return;
     }
     if (modal === "edit") {
-      await saveLeaveTypes(list.map((t) => (t.id === draft.id ? { ...t, ...draft, maxDays: Number(draft.maxDays) } : t)));
+      await update(draft.id, leaveTypeToApi({ ...draft, maxDays: Number(draft.maxDays) }));
       showToast("Leave type updated successfully", "success");
     } else {
-      await saveLeaveTypes([...list, { ...draft, maxDays: Number(draft.maxDays), id: `local_${Date.now()}` }]);
+      await create(leaveTypeToApi({ ...draft, maxDays: Number(draft.maxDays) }));
       showToast("Leave type created successfully", "success");
     }
     setModal(null);
@@ -93,7 +115,7 @@ export const LeaveTypes: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await saveLeaveTypes(list.filter((t) => t.id !== deleteTarget.id));
+    await remove(deleteTarget.id);
     showToast("Leave type deleted successfully", "success");
     setDeleteTarget(null);
   };
