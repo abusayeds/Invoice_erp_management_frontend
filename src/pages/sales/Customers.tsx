@@ -87,6 +87,9 @@ import {
 import type { TBackendParty } from "@/services/customerTypes";
 import { buildListSortParam } from "@/lib/listSort";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
+import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
+import { createVendor } from "@/services/vendorsApi";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 const sortFields = ["Name", "First Name", "Last Name", "Created On", "Outstanding", "Total", "Due", "Paid"];
@@ -209,68 +212,6 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
     </div>
   );
 };
-
-/* ── Add Payment modal ─────────────────────────────────────────────── */
-const PaymentModal: React.FC<{ onClose: () => void; customer: string }> = ({ onClose, customer }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-lg my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-semibold text-gray-900">Add Payment</h3>
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Save &amp; Send</button>
-        </div>
-      </div>
-      <div className="p-5 space-y-4">
-        <div>
-          <label className="text-xs text-gray-500">Customer</label>
-          <input defaultValue={customer} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500">Date</label>
-            <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Type</label>
-            <select className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-              {["Cash", "Bank", "Card", "Cheque"].map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Amount</label>
-          <div className="flex items-center gap-2 mt-1">
-            <button className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap">Full Payment</button>
-            <input defaultValue="0.00" className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Notes</label>
-          <textarea rows={2} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Internal Notes</label>
-          <textarea rows={2} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Attachment</label>
-          <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-            <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-              <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span>
-              <span className="text-xs text-gray-600">Upload from Computer</span>
-            </button>
-            <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-              <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span>
-              <span className="text-xs text-gray-600">Upload from Document</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
 
 /* ── Statement config modal ────────────────────────────────────────── */
 const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ onClose, onGo }) => (
@@ -784,6 +725,12 @@ export const Customers: React.FC = () => {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
 
+  const { data: paymentMethodOptions = [] } = useQuery({
+    queryKey: ["payment-methods"],
+    queryFn: fetchPaymentMethods,
+    staleTime: 60_000,
+  });
+
   // Select first row on initial load
   useEffect(() => {
     if (!selectedId && rows.length > 0) setSelectedId(rows[0]._id);
@@ -816,7 +763,12 @@ export const Customers: React.FC = () => {
   /* ── Mutations ──────────────────────────────────── */
   const archiveMut = useMutation({
     mutationFn: (id: string) => archiveCustomer(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["customers"] }); showToast("Customer archived", "success"); },
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      setSelectedId((cur) => (cur === id ? "" : cur));
+      setEditMode(false);
+      showToast("Customer archived", "success");
+    },
     onError: () => showToast("Archive failed", "error"),
   });
 
@@ -927,7 +879,15 @@ export const Customers: React.FC = () => {
   const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
     if (!doc) return;
     if (target === "vendor") {
-      showToast("Duplicate as vendor not yet connected", "warning");
+      try {
+        const form = docToForm(doc);
+        form.name = `${form.name} (Copy)`;
+        const created = await createVendor(form);
+        showToast("Duplicated as vendor", "success");
+        navigate("/purchase/vendors", { state: { selectedId: created._id } });
+      } catch (e: any) {
+        showToast(e?.message || "Duplicate as vendor failed", "error");
+      }
       return;
     }
     setDupConfirm(target);
@@ -943,6 +903,15 @@ export const Customers: React.FC = () => {
       qc.invalidateQueries({ queryKey: ["customers"] });
       setSelectedId(created._id);
       showToast("Customer duplicated", "success");
+      if (target === "both") {
+        try {
+          const asVendor = await createVendor({ ...form, name: `${form.name}` });
+          showToast("Also duplicated as vendor", "success");
+          navigate("/purchase/vendors", { state: { selectedId: asVendor._id } });
+        } catch {
+          showToast("Customer copied; vendor copy failed", "warning");
+        }
+      }
     } catch {
       showToast("Duplicate failed", "error");
     }
@@ -1288,7 +1257,19 @@ export const Customers: React.FC = () => {
       )}
 
       {/* ════════ MODALS ════════ */}
-      {modal === "payment" && selected && <PaymentModal onClose={() => setModal(null)} customer={selected.name} />}
+      {modal === "payment" && selected && (
+        <InvoicePaymentsModal
+          open
+          invoice={null}
+          customerId={selected._id}
+          customerName={selected.name}
+          paymentMethods={paymentMethodOptions}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["customers"] });
+          }}
+        />
+      )}
       {modal === "statement" && <StatementModal onClose={() => setModal(null)} onGo={() => setModal("preview")} />}
       {modal === "preview" && selected && (
         <StatementPreview

@@ -1,6 +1,8 @@
-/** Vendors list — backend pagination via /vendor/all */
+/** Vendors — backend via /api/v1/vendor/* */
+import { api } from "@/lib/api/client";
 import { fetchPaginatedList } from "./paginatedList";
-import type { TPartyPagination } from "./customerTypes";
+import type { TPartyPagination, TBackendParty } from "./customerTypes";
+import { formToPayload, type CustomerFormData } from "./customersApi";
 
 export type VendorListRow = {
   _id: string;
@@ -47,4 +49,49 @@ export async function fetchVendors(params: {
     endDate: params.endDate || undefined,
   });
   return { rows: rows.map(mapVendor), pagination };
+}
+
+export async function fetchVendor(id: string): Promise<TBackendParty | null> {
+  try {
+    const res = await api.raw.get(`/vendor/single/${id}`);
+    return (res.data?.data ?? res.data) as TBackendParty;
+  } catch {
+    return null;
+  }
+}
+
+export async function createVendor(f: CustomerFormData | Record<string, unknown>): Promise<TBackendParty> {
+  const payload = "name" in f && "firstName" in f ? formToPayload(f as CustomerFormData) : f;
+  const res = await api.raw.post("/vendor/create", payload);
+  return (res.data?.data ?? res.data) as TBackendParty;
+}
+
+export async function updateVendor(id: string, f: CustomerFormData | Record<string, unknown>): Promise<TBackendParty> {
+  const base = "name" in f && "firstName" in f ? formToPayload(f as CustomerFormData) : f;
+  const res = await api.raw.post("/vendor/update", { ...base, _id: id });
+  return (res.data?.data ?? res.data) as TBackendParty;
+}
+
+export async function archiveVendor(id: string): Promise<void> {
+  await api.raw.post("/vendor/update", { _id: id, isArchive: true });
+}
+
+export async function archiveVendors(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => archiveVendor(id)));
+}
+
+export async function deleteVendor(id: string): Promise<void> {
+  await api.raw.delete(`/vendor/delete/${id}`);
+}
+
+export async function deleteVendors(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/vendor/delete/${ids.join(",")}`);
+}
+
+export async function mergeVendors(survivorId: string, mergedIds: string[]): Promise<void> {
+  await api.raw.post("/vendor/merge", {
+    survivor_id: survivorId,
+    merged_ids: mergedIds,
+  });
 }

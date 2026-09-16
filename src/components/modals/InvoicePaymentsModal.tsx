@@ -6,6 +6,7 @@ import { useCollection } from "@/lib/db";
 import type { BackendInvoiceDoc } from "@/services/invoicesApi";
 import {
   createInvoicePayment,
+  createPaymentReceived,
   deleteInvoicePayment,
   deletePaymentReceived,
   fetchInvoiceDirectPayments,
@@ -23,6 +24,9 @@ interface InvoicePaymentsModalProps {
   invoice: BackendInvoiceDoc | null;
   /** When set, payment form allocates one amount row per invoice (batch from list selection). */
   invoices?: BackendInvoiceDoc[];
+  /** Open from Customers page (no invoice) — list/create payments for this customer. */
+  customerId?: string;
+  customerName?: string;
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onSaved?: () => void;
@@ -166,6 +170,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   open,
   invoice,
   invoices: invoicesProp,
+  customerId: partyCustomerId,
+  customerName: partyCustomerName,
   paymentMethods,
   onClose,
   onSaved,
@@ -194,8 +200,14 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     return [];
   }, [invoice, invoicesProp]);
 
+  /** Customer page: no invoice docs — show this customer's payment history. */
+  const partyMode = paymentDocs.length === 0 && !!partyCustomerId;
+
   const paymentDocIds = useMemo(() => paymentDocs.map((doc) => doc._id).filter(Boolean), [paymentDocs]);
-  const paymentDocIdsKey = useMemo(() => paymentDocIds.slice().sort().join(","), [paymentDocIds]);
+  const paymentDocIdsKey = useMemo(
+    () => (partyMode ? `customer:${partyCustomerId}` : paymentDocIds.slice().sort().join(",")),
+    [partyMode, partyCustomerId, paymentDocIds],
+  );
 
   const allowedLocalInvoiceKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -212,8 +224,10 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     invoice?.customer_id && typeof invoice.customer_id === "object"
       ? text(invoice.customer_id._id)
       : text(invoice?.customer_id);
+  const resolvedCustomerId = partyCustomerId || invoiceCustomerId;
+  const displayCustomerName = partyCustomerName || customerName(invoice);
   const dueAmount = paymentDocs.reduce((sum, doc) => sum + dueOfInvoice(doc), 0);
-  const invoiceNumbersLabel = paymentDocs.map(invoiceNumberOf).join(", ");
+  const invoiceNumbersLabel = partyMode ? "—" : paymentDocs.map(invoiceNumberOf).join(", ");
   const totalLineAmount = useMemo(
     () => paymentDocs.reduce((sum, doc) => sum + Math.max(0, Number(lineAmounts[doc._id]) || 0), 0),
     [lineAmounts, paymentDocs],
@@ -226,8 +240,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
+    setCustomerId(resolvedCustomerId);
+    setCustomerQuery(displayCustomerName);
     setPaymentDate(todayInput());
     setPaymentSerial("");
     setMethod(preferredMethods[0] || "Cash");
@@ -236,11 +250,19 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setNotes("");
     setInternalNotes("");
     setEditingPaymentId(null);
-  }, [open, preferredMethods, dueAmount, invoiceId, paymentDocs]);
+  }, [open, preferredMethods, dueAmount, invoiceId, paymentDocs, resolvedCustomerId, displayCustomerName]);
 
   const { data: paymentsData, isFetching } = useQuery({
     queryKey: ["invoice-payments", paymentDocIdsKey],
     queryFn: async () => {
+      if (partyMode && partyCustomerId) {
+        const received = await fetchPaymentReceived({
+          customer_id: partyCustomerId,
+          limit: 100,
+          sort: "-date",
+        });
+        return { received: received.rows, direct: [] as BackendInvoicePaymentDoc[] };
+      }
       const perInvoice = await Promise.all(
         paymentDocIds.map(async (id) => {
           const [received, direct] = await Promise.all([
@@ -266,7 +288,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       });
       return { received: dedupedReceived, direct: dedupedDirect };
     },
-    enabled: open && paymentDocIds.length > 0,
+    enabled: open && (partyMode || paymentDocIds.length > 0),
     placeholderData: (prev) => prev,
   });
 
@@ -350,8 +372,11 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   }, []);
 
   const nextPaymentNumber = useMemo(
-    () => `PAY-${String(payments.filter((payment) => payment.source === "payment").length + 1).padStart(4, "0")}`,
-    [payments],
+    () =>
+      `PAY-${String(
+        (partyMode ? payments.length : payments.filter((payment) => payment.source === "payment").length) + 1,
+      ).padStart(4, "0")}`,
+    [payments, partyMode],
   );
 
   const selectedPayment = payments.find((payment) => payment.id === selectedPaymentId) ?? payments[0] ?? null;
@@ -371,12 +396,12 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setShowForm(true);
     setEditingPaymentId(null);
     setSelectedPaymentId("");
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
+    setCustomerId(resolvedCustomerId);
+    setCustomerQuery(displayCustomerName);
     setPaymentSerial(nextPaymentNumber);
     setMethod(preferredMethods[0] || "Cash");
     setLineAmounts(initLineAmountsForDocs(paymentDocs));
-    setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
+    setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : partyMode ? "0.00" : "0.00");
     setPaymentDate(todayInput());
     setNotes("");
     setInternalNotes("");
@@ -387,8 +412,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setEditingPaymentId(selectedPayment.id);
     setShowForm(true);
     setSelectedPaymentId(selectedPayment.id);
-    setCustomerId(invoiceCustomerId);
-    setCustomerQuery(customerName(invoice));
+    setCustomerId(resolvedCustomerId);
+    setCustomerQuery(displayCustomerName);
     setPaymentSerial(selectedPayment.serial);
     setPaymentDate(inputDateValue(selectedPayment.dateLabel));
     setMethod(selectedPayment.method || preferredMethods[0] || "Cash");
@@ -399,6 +424,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   const refreshPayments = async () => {
     await queryClient.invalidateQueries({ queryKey: ["invoice-payments", paymentDocIdsKey] });
+    await queryClient.invalidateQueries({ queryKey: ["payment-received-list"] });
     await Promise.all(
       paymentDocIds.map((id) =>
         queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", id] }),
@@ -409,11 +435,46 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const savePaymentMut = useMutation({
     mutationFn: async () => {
       const serial = text(paymentSerial) || nextPaymentNumber;
+      const sharedCustomer = customerId || resolvedCustomerId;
+
+      if (partyMode) {
+        const parsedAmount = Math.max(0, Number(amount) || 0);
+        if (!sharedCustomer) throw new Error("No customer");
+        if (parsedAmount <= 0) throw new Error("Enter a payment amount");
+        if (editingPaymentId) {
+          return updatePaymentReceived(editingPaymentId, {
+            customer_id: sharedCustomer,
+            payment_number: serial,
+            date: paymentDate,
+            payment_method: [method || "Cash"],
+            notes,
+            internal_notes: internalNotes,
+            total: parsedAmount,
+            sub_total: parsedAmount,
+            product: [],
+            service: [],
+          });
+        }
+        return createPaymentReceived({
+          customer_id: sharedCustomer,
+          customer_name: displayCustomerName || undefined,
+          payment_number: serial,
+          date: paymentDate,
+          payment_method: [method || "Cash"],
+          notes,
+          internal_notes: internalNotes,
+          product: [],
+          service: [],
+          sub_total: parsedAmount,
+          total: parsedAmount,
+        });
+      }
+
       if (editingPaymentId && selectedPayment && invoice) {
         const parsedAmount = Math.max(0, Number(amount) || 0);
         if (selectedPayment.source === "paymentReceived") {
           return updatePaymentReceived(editingPaymentId, {
-            customer_id: customerId || invoiceCustomerId || undefined,
+            customer_id: sharedCustomer || undefined,
             invoice_id: invoiceId || undefined,
             invoice_number: text(invoice.invoice_number) || undefined,
             payment_number: serial,
@@ -429,7 +490,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
           });
         }
         return updateInvoicePayment(editingPaymentId, {
-          customer_id: customerId || invoiceCustomerId,
+          customer_id: sharedCustomer,
           invoice_id: invoiceId,
           payment_number: serial,
           payment_date: paymentDate,
@@ -459,12 +520,12 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
         throw new Error("Enter a payment amount");
       }
 
-      const sharedCustomer = customerId || invoiceCustomerId || invoiceCustomerIdOf(paymentDocs[0]);
+      const customerForCreate = sharedCustomer || invoiceCustomerIdOf(paymentDocs[0]);
 
       return Promise.all(
         creates.map(({ doc, parsedAmount }, index) =>
           createInvoicePayment({
-            customer_id: sharedCustomer,
+            customer_id: customerForCreate,
             invoice_id: doc._id,
             payment_number: index === 0 ? serial : `${serial}-${index + 1}`,
             payment_date: paymentDate,
@@ -492,7 +553,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   const saveDisabled =
     savePaymentMut.isPending ||
-    (editingPaymentId ? !amount : totalLineAmount <= 0);
+    (partyMode || editingPaymentId ? !(Number(amount) > 0) : totalLineAmount <= 0);
 
   const deletePaymentMut = useMutation({
     mutationFn: async () => {
@@ -536,8 +597,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             <div class="row">
               <div>
                 <div style="font-size:20px; font-weight:700;">info</div>
-                <div>${customerName(invoice)}</div>
-                <div>${customerSubtitle(invoice) || ""}</div>
+                <div>${displayCustomerName}</div>
+                <div>${partyMode ? "" : customerSubtitle(invoice) || ""}</div>
               </div>
               <table>
                 <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
@@ -558,7 +619,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     if (mode === "email") {
       const subject = encodeURIComponent(title);
       const mailBody = encodeURIComponent(
-        `Customer: ${customerName(invoice)}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
+        `Customer: ${displayCustomerName}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
       );
       window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
       return;
@@ -575,7 +636,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     if (mode === "print") popup.print();
   };
 
-  if (!open || !invoice) return null;
+  if (!open || (!invoice && !partyMode)) return null;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
@@ -619,7 +680,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-gray-900">{customerName(invoice)}</div>
+                          <div className="truncate text-sm font-semibold text-gray-900">{displayCustomerName}</div>
                           <div className="mt-0.5 text-xs text-gray-500">{payment.serial}</div>
                           <div className="mt-0.5 truncate text-xs text-gray-500">{payment.notes || "No Notes"}</div>
                         </div>
@@ -640,7 +701,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
               <div className={`border-t px-4 py-3 text-center ${modalHeader}`}>
                 <div className="text-lg font-semibold text-gray-900">
-                  {currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice.currency))}
+                  {currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice?.currency))}
                 </div>
                 <div className="text-xs text-gray-500">
                   {payments.length} {payments.length === 1 ? "Payment" : "Payments"}
@@ -659,8 +720,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </button>
                       <button
                         onClick={() => {
-                          if (!invoiceCustomerId) {
-                            showToast("This invoice has no linked customer", "warning");
+                          if (!resolvedCustomerId && !customerId) {
+                            showToast("Select a customer", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
@@ -672,8 +733,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </button>
                       <button
                         onClick={() => {
-                          if (!invoiceCustomerId) {
-                            showToast("This invoice has no linked customer", "warning");
+                          if (!resolvedCustomerId && !customerId) {
+                            showToast("Select a customer", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
@@ -749,15 +810,17 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Amount</label>
-                        {editingPaymentId ? (
+                        {partyMode || editingPaymentId ? (
                           <div className="mt-1 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setAmount(dueOfInvoice(invoice!).toFixed(2))}
-                              className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-                            >
-                              Full Payment
-                            </button>
+                            {!partyMode && invoice && (
+                              <button
+                                type="button"
+                                onClick={() => setAmount(dueOfInvoice(invoice).toFixed(2))}
+                                className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                              >
+                                Full Payment
+                              </button>
+                            )}
                             <input
                               value={amount}
                               onChange={(e) => setAmount(e.target.value)}
@@ -798,7 +861,10 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </div>
                       <div className={`rounded-md border p-4 ${modalSection}`}>
                         <div className="text-sm text-gray-500">
-                          Outstanding Balance: <span className="font-semibold text-gray-900">{currencyLabel(dueAmount, text(invoice.currency))}</span>
+                          Outstanding Balance:{" "}
+                          <span className="font-semibold text-gray-900">
+                            {currencyLabel(dueAmount, text(invoice?.currency))}
+                          </span>
                         </div>
                       </div>
                       <div>
@@ -841,7 +907,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                 <div className="flex flex-1 flex-col overflow-y-auto bg-white">
                   <div className="flex h-12 items-center justify-between gap-3 border-b border-gray-300 bg-gray-100 px-6 pr-14">
                     <div className="min-w-0">
-                      <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">{customerName(invoice)}</h3>
+                      <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">{displayCustomerName}</h3>
                       {customerSubtitle(invoice) && <p className="truncate text-xs text-gray-500">{customerSubtitle(invoice)}</p>}
                     </div>
                     <div className="flex items-center gap-0.5">

@@ -111,3 +111,7 @@ export async function createVendorPayment(payload: {
   const res = await api.raw.post("/account/vendor-payments/create", payload);
   return (res.data?.data ?? res.data) as { _id: string };
 }
+
+export async function deleteVendorPayment(id: string): Promise<void> {
+  await api.raw.delete(`/account/vendor-payments/delete/${id}`);
+}

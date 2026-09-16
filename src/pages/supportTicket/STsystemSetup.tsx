@@ -15,8 +15,35 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api/client";
-import { toArray } from "@/services/_http";
+import { buildListSortParam } from "@/lib/listSort";
+import { showToast } from "../../utils/toast";
+import { inputCls } from "../hrm/hrmShared";
+import {
+  fetchTicketCategories,
+  createTicketCategory,
+  updateTicketCategory,
+  deleteTicketCategory,
+  fetchKnowledgeCategories,
+  createKnowledgeCategory,
+  updateKnowledgeCategory,
+  deleteKnowledgeCategory,
+  fetchCustomPages,
+  updateCustomPage,
+  fetchQuickLinks,
+  createQuickLink,
+  updateQuickLink,
+  deleteQuickLink,
+  getBrandSettings,
+  updateBrandSettings,
+  getTitleSections,
+  saveTitleSections,
+  getCtaSections,
+  saveCtaSections,
+  getSupportInformation,
+  saveSupportInformation,
+  getContactInformation,
+  saveContactInformation,
+} from "@/services/supportApi";
 import {
   Globe,
   Folder,
@@ -122,6 +149,52 @@ const SaveChangesBtn: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
   </button>
 );
 
+function SetupPager({
+  page,
+  setPage,
+  perPage,
+  setPerPage,
+  total,
+}: {
+  page: number;
+  setPage: (n: number) => void;
+  perPage: number;
+  setPerPage: (n: number) => void;
+  total: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  return (
+    <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
+      <span>
+        {total === 0 ? 0 : (page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
+      </span>
+      <div className="flex items-center gap-2">
+        <select
+          value={perPage}
+          onChange={(e) => {
+            setPerPage(Number(e.target.value));
+            setPage(1);
+          }}
+          className={`${inputCls} py-1 px-2 text-sm`}
+        >
+          <option value={5}>5</option>
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+        </select>
+        <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-2 py-1 border rounded disabled:opacity-40">
+          ‹
+        </button>
+        <span>
+          {page} / {totalPages}
+        </span>
+        <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-2 py-1 border rounded disabled:opacity-40">
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared: Delete Confirmation Modal ───────────────────────────────────────
 
 const DeleteModal: React.FC<{
@@ -166,27 +239,40 @@ const DeleteModal: React.FC<{
 
 const CategoriesPanel: React.FC = () => {
   const [items, setItems] = useState<Category[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#10b77f");
 
-  // Ticket categories (GET/POST/PATCH/DELETE /support/ticket-categories).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
   const load = useCallback(async () => {
     try {
-      const res = await api.raw.get("/support/ticket-categories/all");
-      setItems(
-        toArray<any>(res.data).map((d: any) => ({
-          id: String(d._id),
-          name: d.name ?? "",
-          color: d.color ?? "#6B7280",
-        })),
-      );
+      const { rows, pagination } = await fetchTicketCategories({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("name", "Ascending"),
+      });
+      setItems(rows.map((d) => ({ id: d.id, name: d.name, color: d.color })));
+      setTotal(pagination.totalData ?? rows.length);
     } catch {
       setItems([]);
+      setTotal(0);
     }
-  }, []);
+  }, [page, perPage, search]);
   useEffect(() => {
     load();
   }, [load]);
@@ -209,30 +295,35 @@ const CategoriesPanel: React.FC = () => {
     const wasEditing = editing;
     setModal(null);
     try {
-      if (wasEditing) {
-        await api.raw.patch(`/support/ticket-categories/${wasEditing.id}`, body);
-      } else {
-        await api.raw.post("/support/ticket-categories/create", body);
-      }
+      if (wasEditing) await updateTicketCategory(wasEditing.id, body);
+      else await createTicketCategory(body);
+      showToast(wasEditing ? "Category updated" : "Category created", "success");
       await load();
-    } catch {
-      /* leave list unchanged on failure */
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
     }
   };
   const handleDelete = async (c: Category) => {
-    setItems((p) => p.filter((x) => x.id !== c.id));
     setDeleting(null);
     try {
-      await api.raw.delete(`/support/ticket-categories/${c.id}`);
-    } catch {
-      load();
+      await deleteTicketCategory(c.id);
+      showToast("Category deleted", "success");
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
     }
   };
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Categories</h2>
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search categories…"
+          className={`${inputCls} w-56 py-1.5 text-sm`}
+        />
         <button
           onClick={openAdd}
           className="w-9 h-9 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md flex items-center justify-center"
@@ -289,6 +380,7 @@ const CategoriesPanel: React.FC = () => {
           </tbody>
         </table>
       </div>
+      <SetupPager page={page} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={total} />
 
       {/* Add/Edit Modal */}
       {modal && (
@@ -372,26 +464,39 @@ const CategoriesPanel: React.FC = () => {
 
 const KbCategoryPanel: React.FC = () => {
   const [items, setItems] = useState<KbCategory[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editing, setEditing] = useState<KbCategory | null>(null);
   const [deleting, setDeleting] = useState<KbCategory | null>(null);
   const [name, setName] = useState("");
 
-  // Knowledge categories (GET/POST/PATCH/DELETE /support/knowledge-categories).
-  // Stored field is `title`.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
   const load = useCallback(async () => {
     try {
-      const res = await api.raw.get("/support/knowledge-categories/all");
-      setItems(
-        toArray<any>(res.data).map((d: any) => ({
-          id: String(d._id),
-          name: d.title ?? d.name ?? "",
-        })),
-      );
+      const { rows, pagination } = await fetchKnowledgeCategories({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("title", "Ascending"),
+      });
+      setItems(rows.map((d) => ({ id: d.id, name: d.title })));
+      setTotal(pagination.totalData ?? rows.length);
     } catch {
       setItems([]);
+      setTotal(0);
     }
-  }, []);
+  }, [page, perPage, search]);
   useEffect(() => {
     load();
   }, [load]);
@@ -412,35 +517,37 @@ const KbCategoryPanel: React.FC = () => {
     const wasEditing = editing;
     setModal(null);
     try {
-      if (wasEditing) {
-        await api.raw.patch(
-          `/support/knowledge-categories/${wasEditing.id}`,
-          body,
-        );
-      } else {
-        await api.raw.post("/support/knowledge-categories/create", body);
-      }
+      if (wasEditing) await updateKnowledgeCategory(wasEditing.id, body);
+      else await createKnowledgeCategory(body);
+      showToast(wasEditing ? "Category updated" : "Category created", "success");
       await load();
-    } catch {
-      /* leave list unchanged on failure */
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
     }
   };
   const handleDelete = async (c: KbCategory) => {
-    setItems((p) => p.filter((x) => x.id !== c.id));
     setDeleting(null);
     try {
-      await api.raw.delete(`/support/knowledge-categories/${c.id}`);
-    } catch {
-      load();
+      await deleteKnowledgeCategory(c.id);
+      showToast("Category deleted", "success");
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || "Delete failed", "error");
     }
   };
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <h2 className="text-lg font-semibold text-gray-900">
           Knowledge Categories
         </h2>
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search…"
+          className={`${inputCls} w-56 py-1.5 text-sm`}
+        />
         <button
           onClick={openAdd}
           className="w-9 h-9 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md flex items-center justify-center"
@@ -486,6 +593,7 @@ const KbCategoryPanel: React.FC = () => {
           </tbody>
         </table>
       </div>
+      <SetupPager page={page} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={total} />
 
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -551,12 +659,9 @@ const BrandSettingsPanel: React.FC = () => {
   const [titleText, setTitleText] = useState("");
   const [footerText, setFooterText] = useState("");
 
-  // Brand settings (GET/PATCH /support/setup/brand-settings).
   useEffect(() => {
-    api.raw
-      .get("/support/setup/brand-settings")
-      .then((res) => {
-        const d = (res.data?.data ?? res.data) as any;
+    getBrandSettings()
+      .then((d: any) => {
         if (!d) return;
         setLogoName(d.logo_dark ?? "logo.png");
         setFaviconName(d.favicon ?? "favicon.png");
@@ -566,15 +671,18 @@ const BrandSettingsPanel: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  const save = () => {
-    api.raw
-      .patch("/support/setup/brand-settings", {
+  const save = async () => {
+    try {
+      await updateBrandSettings({
         logo_dark: logoName,
         favicon: faviconName,
         titleText,
         footerText,
-      })
-      .catch(() => {});
+      });
+      showToast("Brand settings saved", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    }
   };
 
   return (
@@ -678,26 +786,45 @@ const BrandSettingsPanel: React.FC = () => {
 
 const CustomPagesPanel: React.FC = () => {
   const [pages, setPages] = useState<CustomPage[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<CustomPage | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  // Custom pages (GET/PATCH /support/custom-pages).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
   const load = useCallback(async () => {
     try {
-      const res = await api.raw.get("/support/custom-pages/all");
+      const { rows, pagination } = await fetchCustomPages({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("title", "Ascending"),
+      });
       setPages(
-        toArray<any>(res.data).map((d: any) => ({
-          id: String(d._id),
+        rows.map((d: any) => ({
+          id: String(d._id ?? d.id),
           title: d.title ?? "",
           slug: d.slug ?? "",
-          status: "Enabled" as const,
+          status: d.status === false || d.is_active === false ? "Disabled" : "Enabled",
         })),
       );
+      setTotal(pagination.totalData ?? rows.length);
     } catch {
       setPages([]);
+      setTotal(0);
     }
-  }, []);
+  }, [page, perPage, search]);
   useEffect(() => {
     load();
   }, [load]);
@@ -712,19 +839,24 @@ const CustomPagesPanel: React.FC = () => {
     if (!editing) return;
     setModal(false);
     try {
-      await api.raw.patch(`/support/custom-pages/${editing.id}`, {
-        title: editTitle,
-      });
+      await updateCustomPage(editing.id, { title: editTitle });
+      showToast("Page updated", "success");
       await load();
-    } catch {
-      /* leave unchanged on failure */
+    } catch (e: any) {
+      showToast(e?.message || "Update failed", "error");
     }
   };
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Custom Pages</h2>
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search pages…"
+          className={`${inputCls} w-56 py-1.5 text-sm`}
+        />
         <button className="w-9 h-9 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md flex items-center justify-center">
           <Plus className="w-5 h-5" />
         </button>
@@ -780,6 +912,7 @@ const CustomPagesPanel: React.FC = () => {
           </tbody>
         </table>
       </div>
+      <SetupPager page={page} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={total} />
 
       {modal && editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -884,21 +1017,22 @@ const TitleSectionsPanel: React.FC = () => {
   const update = (key: string, field: "title" | "desc", val: string) =>
     setValues((p) => ({ ...p, [key]: { ...p[key], [field]: val } }));
 
-  // Title sections (GET/PATCH /support/setup/title-sections — free-form JSON).
   useEffect(() => {
-    api.raw
-      .get("/support/setup/title-sections")
-      .then((res) => {
-        const d = (res.data?.data ?? res.data) as any;
-        if (d && typeof d === "object")
-          setValues((p) => ({ ...p, ...d }));
+    getTitleSections()
+      .then((d: any) => {
+        if (d && typeof d === "object") setValues((p) => ({ ...p, ...d }));
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const save = () => {
-    api.raw.patch("/support/setup/title-sections", values).catch(() => {});
+  const save = async () => {
+    try {
+      await saveTitleSections(values);
+      showToast("Title sections saved", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    }
   };
 
   // Build pairs for 2-col layout
@@ -971,12 +1105,9 @@ const CtaSectionsPanel: React.FC = () => {
   const [faqTitle, setFaqTitle] = useState("");
   const [faqDesc, setFaqDesc] = useState("");
 
-  // CTA sections (GET/PATCH /support/setup/cta-sections — free-form JSON).
   useEffect(() => {
-    api.raw
-      .get("/support/setup/cta-sections")
-      .then((res) => {
-        const d = (res.data?.data ?? res.data) as any;
+    getCtaSections()
+      .then((d: any) => {
         if (!d || typeof d !== "object") return;
         setKbTitle(d.kb?.title ?? "");
         setKbDesc(d.kb?.desc ?? "");
@@ -986,13 +1117,16 @@ const CtaSectionsPanel: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  const save = () => {
-    api.raw
-      .patch("/support/setup/cta-sections", {
+  const save = async () => {
+    try {
+      await saveCtaSections({
         kb: { title: kbTitle, desc: kbDesc },
         faq: { title: faqTitle, desc: faqDesc },
-      })
-      .catch(() => {});
+      });
+      showToast("CTA sections saved", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    }
   };
 
   return (
@@ -1076,23 +1210,42 @@ interface QuickLink {
 
 const QuickLinksPanel: React.FC = () => {
   const [links, setLinks] = useState<QuickLink[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Quick links (GET/POST/PATCH/DELETE /support/quick-links). title=label, link=url.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
   const load = useCallback(async () => {
     try {
-      const res = await api.raw.get("/support/quick-links/all");
+      const { rows, pagination } = await fetchQuickLinks({
+        page,
+        limit: perPage,
+        searchTerm: search || undefined,
+        sort: buildListSortParam("order", "Ascending"),
+      });
       setLinks(
-        toArray<any>(res.data).map((d: any) => ({
-          id: String(d._id),
-          label: d.title ?? "",
-          url: d.link ?? "",
-          order: d.order ?? 0,
+        rows.map((d) => ({
+          id: d.id,
+          label: d.title,
+          url: d.link,
+          order: d.order,
         })),
       );
+      setTotal(pagination.totalData ?? rows.length);
     } catch {
       setLinks([]);
+      setTotal(0);
     }
-  }, []);
+  }, [page, perPage, search]);
   useEffect(() => {
     load();
   }, [load]);
@@ -1102,36 +1255,45 @@ const QuickLinksPanel: React.FC = () => {
 
   // Persist all rows: create new ones, update changed existing ones.
   const save = async () => {
-    for (let i = 0; i < links.length; i++) {
-      const l = links[i];
-      const body = { title: l.label, link: l.url, order: i };
-      try {
-        if (l.id) await api.raw.patch(`/support/quick-links/${l.id}`, body);
-        else if (l.label.trim() || l.url.trim())
-          await api.raw.post("/support/quick-links/create", body);
-      } catch {
-        /* skip a failed row */
+    try {
+      for (let i = 0; i < links.length; i++) {
+        const l = links[i];
+        const body = { title: l.label, link: l.url, order: (page - 1) * perPage + i };
+        if (l.id) await updateQuickLink(l.id, body);
+        else if (l.label.trim() || l.url.trim()) await createQuickLink(body);
       }
+      showToast("Quick links saved", "success");
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
     }
-    await load();
   };
 
   const removeRow = async (idx: number) => {
     const l = links[idx];
-    setLinks((p) => p.filter((_, i) => i !== idx));
     if (l.id) {
       try {
-        await api.raw.delete(`/support/quick-links/${l.id}`);
-      } catch {
-        load();
+        await deleteQuickLink(l.id);
+        showToast("Link removed", "success");
+        await load();
+      } catch (e: any) {
+        showToast(e?.message || "Delete failed", "error");
       }
+    } else {
+      setLinks((p) => p.filter((_, i) => i !== idx));
     }
   };
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="text-lg font-semibold text-gray-900">Quick Links</h2>
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search links…"
+          className={`${inputCls} w-56 py-1.5 text-sm`}
+        />
         <div className="flex gap-2">
           <button
             onClick={() =>
@@ -1179,6 +1341,7 @@ const QuickLinksPanel: React.FC = () => {
           </div>
         )}
       </div>
+      <SetupPager page={page} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={total} />
     </>
   );
 };
@@ -1212,12 +1375,9 @@ const SupportInfoPanel: React.FC = () => {
   });
   const [phone, setPhone] = useState("");
 
-  // Support information (GET/PATCH /support/setup/support-information).
   useEffect(() => {
-    api.raw
-      .get("/support/setup/support-information")
-      .then((res) => {
-        const d = (res.data?.data ?? res.data) as any;
+    getSupportInformation()
+      .then((d: any) => {
         if (!d || typeof d !== "object") return;
         setResponseTime(d.responseTime ?? "");
         setOpeningHours(d.openingHours ?? "");
@@ -1229,16 +1389,19 @@ const SupportInfoPanel: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  const save = () => {
-    api.raw
-      .patch("/support/setup/support-information", {
+  const save = async () => {
+    try {
+      await saveSupportInformation({
         responseTime,
         openingHours,
         closingHours,
         businessDays,
         phone,
-      })
-      .catch(() => {});
+      });
+      showToast("Support information saved", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    }
   };
 
   return (
@@ -1337,21 +1500,14 @@ const SupportInfoPanel: React.FC = () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ContactInfoPanel: React.FC = () => {
-  const [mapEmbed, setMapEmbed] = useState(
-    `<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d9581841.830083132!2d-14.999203219951713!3d54.103586639352952m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x25a3b1142c791a9%3A0xc4f8a0433288257a!2sUnited%20Kingdom!5e0!3m2!1sen!2sin!4v1762249682876!5m2!1sen!2sin" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`,
-  );
-  const [address, setAddress] = useState(
-    "350 Fifth Avenue, New York, NY 10118",
-  );
-  const [phone, setPhone] = useState("+1 (212) 736-3100");
-  const [email, setEmail] = useState("info@dashsupport.com");
+  const [mapEmbed, setMapEmbed] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
 
-  // Contact information (GET/PATCH /support/setup/contact-information).
   useEffect(() => {
-    api.raw
-      .get("/support/setup/contact-information")
-      .then((res) => {
-        const d = (res.data?.data ?? res.data) as any;
+    getContactInformation()
+      .then((d: any) => {
         if (!d || typeof d !== "object") return;
         if (d.mapEmbed !== undefined) setMapEmbed(d.mapEmbed);
         if (d.address !== undefined) setAddress(d.address);
@@ -1361,15 +1517,13 @@ const ContactInfoPanel: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  const save = () => {
-    api.raw
-      .patch("/support/setup/contact-information", {
-        mapEmbed,
-        address,
-        phone,
-        email,
-      })
-      .catch(() => {});
+  const save = async () => {
+    try {
+      await saveContactInformation({ mapEmbed, address, phone, email });
+      showToast("Contact information saved", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Save failed", "error");
+    }
   };
 
   return (

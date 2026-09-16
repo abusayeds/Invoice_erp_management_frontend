@@ -4,19 +4,33 @@
  * Left: vendor list (search, sort, status / created-on filters, selection).
  * Right: detail with Overview / Details / Settings tabs + action icons
  *        (edit, Add Payment $, Statement) and an inline Edit Vendor form.
- * Modals: Add Payment (with Bills picker), Statement config → white preview.
- * Backend not wired (per request) — data is hardcoded to match the design.
+ * Connected to backend via /api/v1/vendor/* (same party write shape as Customers).
  */
 
 import React, { useMemo, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
-import { createdOnToRange } from "@/services/customersApi";
-import { useQuery } from "@tanstack/react-query";
+import { createdOnToRange, createCustomer, type CustomerFormData } from "@/services/customersApi";
+import type { TBackendParty } from "@/services/customerTypes";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useCollection, repo, downloadDocPdf } from "@/lib/db";
-import { fetchVendors } from "@/services/vendorsApi";
+import { useCollection, downloadDocPdf } from "@/lib/db";
+import {
+  fetchVendors,
+  fetchVendor,
+  createVendor,
+  updateVendor,
+  archiveVendor,
+  archiveVendors,
+  deleteVendor,
+  deleteVendors,
+  mergeVendors,
+  type VendorListRow,
+} from "@/services/vendorsApi";
+import { fetchVendorPayments } from "@/services/vendorPaymentsApi";
+import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
+import { BillPaymentsModal } from "@/components/modals/BillPaymentsModal";
 import { buildListSortParam } from "@/lib/listSort";
 import { TabSlide } from "@/components/ui/TabSlide";
 import { RecentActivities } from "@/components/ui/RecentActivities";
@@ -34,7 +48,6 @@ import {
   Trash2,
   Copy,
   Mail,
-  Upload,
   X,
   Download,
   Printer,
@@ -47,36 +60,93 @@ import {
   Underline,
 } from "lucide-react";
 
-/* ── Data ──────────────────────────────────────────────────────── */
-interface Vendor {
-  id: number;
-  name: string;
-  contact: string;
-  amount: number;
-}
-
-const vendors: Vendor[] = [
-  { id: 1, name: "bipul company", contact: "bipul ali", amount: 0 },
-  { id: 2, name: "Est lorem ut maxime", contact: "", amount: 0 },
-  { id: 3, name: "Est officiis nihil", contact: "", amount: 0 },
-  { id: 4, name: "Ex aut sequi ad libe", contact: "", amount: 0 },
-  { id: 5, name: "Explicabo Doloremqu", contact: "", amount: 0 },
-  { id: 6, name: "khan", contact: "a b", amount: 22358.28 },
-  { id: 7, name: "mynul company", contact: "my", amount: 0 },
-  { id: 8, name: "Officiis ullam labor", contact: "", amount: 0 },
-  { id: 9, name: "SSE", contact: "Vandor 2", amount: 5425.12 },
-  { id: 10, name: "SST", contact: "Vendors 1", amount: 480.0 },
-  { id: 11, name: "Ut ut nulla voluptat", contact: "", amount: 0 },
-];
-
+/* ── Constants ─────────────────────────────────────────────────── */
 const sortFields = ["Name", "First Name", "Last Name", "Created On", "Payable", "Total", "Due", "Paid"];
 const createdOptions = ["All", "Today", "This Week", "This Month", "This Year"];
 const statusOptions = ["Active", "Archived", "Trash"] as const;
 const activityFilters = ["All", "Created", "Updated", "Archived", "Bill", "Expense", "Payment"];
+const VENDORS_LIST_KEY = "vendors-backend-list";
+
+type VendorRow = {
+  _id: string;
+  name: string;
+  contact: string;
+  amount: number;
+};
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Convert full TBackendParty doc → UI form initial state (same shape as Customers) */
+function docToForm(doc: TBackendParty): CustomerFormData {
+  const p = doc.businessProfile ?? {};
+  const billing = p.billing_address ?? {};
+  const shipping = p.shipping_address ?? {};
+  const [firstName = "", ...lastParts] = (doc.name ?? "").split(" ");
+  return {
+    name: p.companyName ?? "",
+    firstName,
+    lastName: lastParts.join(" "),
+    email: doc.email ?? "",
+    phone: p.business_phone ?? "",
+    mobile: doc.phone ?? "",
+    fax: p.fax ?? "",
+    homePhone: p.home_phone ?? "",
+    regNo: p.registration_number ?? "",
+    taxId: p.tax_number ?? "",
+    birthday: p.birthday ? String(p.birthday).slice(0, 10) : "",
+    anniversary: p.anniversary ? String(p.anniversary).slice(0, 10) : "",
+    bank: p.bank_details ?? "",
+    street1: billing.address_line_1 ?? "",
+    street2: billing.address_line_2 ?? "",
+    zip: billing.zip_code ?? "",
+    city: billing.city ?? "",
+    state: billing.state ?? "",
+    country: billing.country ?? "",
+    sameAsBilling: p.same_as_billing ?? false,
+    shipStreet1: shipping.address_line_1 ?? "",
+    shipStreet2: shipping.address_line_2 ?? "",
+    shipZip: shipping.zip_code ?? "",
+    shipCity: shipping.city ?? "",
+    shipState: shipping.state ?? "",
+    shipCountry: shipping.country ?? "",
+    currency: doc.currency ?? "$ USD",
+    defaultTaxService: "None",
+    defaultTaxProduct: "None",
+    hourlyRate: p.hourly_rate != null ? String(p.hourly_rate) : "",
+    paymentTerms: p.payment_terms ?? "Default Company",
+    openingBalance: p.opening_balance != null ? String(p.opening_balance) : "",
+    openingBalanceDate: p.opening_balance_date ? String(p.opening_balance_date).slice(0, 10) : "",
+    notes: p.notes ?? "",
+    paymentReminder: p.payment_reminder !== false,
+    isLoginRequired: p.is_login_required ?? false,
+  };
+}
+
+function emptyForm(): CustomerFormData {
+  return {
+    name: "", firstName: "", lastName: "", email: "",
+    phone: "", mobile: "", fax: "", homePhone: "", regNo: "", taxId: "",
+    birthday: "", anniversary: "", bank: "",
+    street1: "", street2: "", zip: "", city: "", state: "", country: "",
+    sameAsBilling: false,
+    shipStreet1: "", shipStreet2: "", shipZip: "", shipCity: "", shipState: "", shipCountry: "",
+    currency: "$ USD", defaultTaxService: "None", defaultTaxProduct: "None",
+    hourlyRate: "", paymentTerms: "Default Company",
+    openingBalance: "", openingBalanceDate: "", notes: "", paymentReminder: true,
+    isLoginRequired: false,
+  };
+}
+
+function mapListRow(row: VendorListRow): VendorRow {
+  return {
+    _id: row._id,
+    name: row.name,
+    contact: row.email || row.phone || "—",
+    amount: -(row.opening_balance || 0),
+  };
+}
 
 /* ── Detail "more" menu (Archive / Duplicate ▸ / Trash) ────────── */
 const DetailMoreMenu: React.FC<{
@@ -115,11 +185,11 @@ const DetailMoreMenu: React.FC<{
 
 /* ── Merge Vendors modal (mirrors the customers merge flow) ────── */
 const MergeVendorsModal: React.FC<{
-  vendors: { id: number; name: string; contact: string }[];
+  vendors: { _id: string; name: string; contact: string }[];
   onClose: () => void;
-  onMerge: (targetId: number) => void;
+  onMerge: (targetId: string) => void;
 }> = ({ vendors, onClose, onMerge }) => {
-  const [targetId, setTargetId] = useState<number | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(null);
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", h);
@@ -143,9 +213,9 @@ const MergeVendorsModal: React.FC<{
         </div>
         <div className="divide-y divide-gray-200 max-h-[50vh] overflow-y-auto custom-scrollbar">
           {vendors.map((c) => (
-            <button key={c.id} onClick={() => setTargetId(c.id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50">
-              <span className={`w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center ${targetId === c.id ? "border-blue-600" : "border-gray-400"}`}>
-                {targetId === c.id && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+            <button key={c._id} onClick={() => setTargetId(c._id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50">
+              <span className={`w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center ${targetId === c._id ? "border-blue-600" : "border-gray-400"}`}>
+                {targetId === c._id && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-gray-900 truncate">{c.name}</span>
@@ -173,104 +243,6 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onMouseDown={onClose}>
       <div onMouseDown={(e) => e.stopPropagation()} className="w-full flex justify-center">{children}</div>
     </div>
-  );
-};
-
-/* ── Bills picker (opened from Add Payment) ────────────────────── */
-const BillsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-xl my-12 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: 360 }}>
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-        <h3 className="text-base font-semibold text-gray-900">Bills</h3>
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Done</button>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center text-sm text-gray-400">No Records</div>
-      <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-200 bg-gray-50">
-        <span className="w-5 h-5 flex-shrink-0 rounded-[5px] border border-gray-400" />
-        <div className="flex-1 text-center">
-          <div className="text-sm font-semibold text-gray-900">$0.00 <span className="text-gray-500 font-normal">Due</span></div>
-          <div className="text-xs text-gray-500">0 Bills</div>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
-
-/* ── Add Payment modal ─────────────────────────────────────────── */
-const PaymentModal: React.FC<{ onClose: () => void; vendor: string }> = ({ onClose, vendor }) => {
-  const [billsOpen, setBillsOpen] = useState(false);
-  return (
-    <Overlay onClose={onClose}>
-      <div className="w-full max-w-lg my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className="text-base font-semibold text-gray-900">Add Payment</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
-            <button onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Save &amp; Send</button>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-xs text-gray-500">Payment #</label>
-            <input defaultValue="998" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Vendor *</label>
-            <input defaultValue={vendor} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500">Payment date *</label>
-              <input type="date" defaultValue="2026-06-21" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Type *</label>
-              <select className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white text-gray-500">
-                {["Type", "Cash", "Bank", "Card", "Cheque"].map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Amount</label>
-            <div className="flex items-center gap-2 mt-1">
-              <button className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap">Full Payment</button>
-              <input defaultValue="0.00" className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white text-right" />
-            </div>
-            <div className="text-xs text-gray-400 text-right mt-1">$0.00 Due</div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Notes</label>
-            <textarea rows={2} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Internal Notes</label>
-            <textarea rows={2} placeholder="Internal Notes" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Attachment</label>
-            <div className="mt-1 grid grid-cols-2 border border-gray-200 rounded-md divide-x divide-gray-200">
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><Upload className="w-4 h-4" /></span>
-                <span className="text-xs text-gray-600">Upload from Computer</span>
-              </button>
-              <button className="flex flex-col items-center gap-2 py-4 hover:bg-gray-50">
-                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-4 h-4" /></span>
-                <span className="text-xs text-gray-600">Upload from Document</span>
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between border-t border-gray-200 pt-3">
-            <span className="text-sm font-medium text-gray-800">Bills</span>
-            <button onClick={() => setBillsOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Pencil className="w-4 h-4" /></button>
-          </div>
-        </div>
-      </div>
-      {billsOpen && <BillsModal onClose={() => setBillsOpen(false)} />}
-    </Overlay>
   );
 };
 
@@ -372,7 +344,7 @@ const Toggle: React.FC<{ on: boolean; onChange: () => void }> = ({ on, onChange 
   </button>
 );
 
-/* ── Vendor form (inline right panel — Create & Edit, per reference) ── */
+/* ── Vendor form (inline right panel — Create & Edit) ───────────── */
 const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
 const VField: React.FC<{
   label: string;
@@ -395,18 +367,14 @@ const VField: React.FC<{
   </div>
 );
 
-interface AddrForm { street1: string; street2: string; zip: string; city: string; state: string; country: string }
-const emptyAddr = (a?: Partial<AddrForm>): AddrForm => ({
-  street1: a?.street1 || "", street2: a?.street2 || "", zip: a?.zip || "",
-  city: a?.city || "", state: a?.state || "", country: a?.country || "",
-});
-
 const VendorForm: React.FC<{
   title: string;
-  initial?: any; // existing vendor DB record for edit; omit for create
+  doc: TBackendParty | null;
   onClose: () => void;
-  onSaved: (id: number) => void;
-}> = ({ title, initial, onClose, onSaved }) => {
+  onSaved: (id: string) => void;
+}> = ({ title, doc, onClose, onSaved }) => {
+  const qc = useQueryClient();
+  const isCreate = doc === null;
   const [tab, setTab] = useState<"Details" | "Settings">("Details");
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
   const switchTab = (t: "Details" | "Settings") => {
@@ -414,91 +382,58 @@ const VendorForm: React.FC<{
     setTabDir(t === "Settings" ? "right" : "left");
     setTab(t);
   };
-  const init = initial || {};
-  const contactParts = (init.contact || "").split(" ");
-  const [sameAsBilling, setSameAsBilling] = useState(!!init.sameAsBilling);
-  const [f, setF] = useState({
-    name: init.name || "",
-    firstName: init.firstName ?? (contactParts[0] || ""),
-    lastName: init.lastName ?? (contactParts.slice(1).join(" ") || ""),
-    email: init.email || "",
-    regNo: init.regNo || "",
-    taxId: init.taxId || "",
-    businessPhone: init.businessPhone || init.phone || "",
-    fax: init.fax || "",
-    mobile: init.mobile || "",
-    homePhone: init.homePhone || "",
-    birthday: init.birthday || "",
-    anniversary: init.anniversary || "",
-    bankDetails: init.bankDetails || "",
-    currency: init.currency || "$ USD",
-    paymentTerms: init.paymentTerms || "Default Company",
-  });
-  const [billing, setBilling] = useState<AddrForm>(emptyAddr(init.billing));
-  const [shipping, setShipping] = useState<AddrForm>(emptyAddr(init.shipping));
-  const [reminder, setReminder] = useState(init.reminder ?? true);
-  const [contactLogin, setContactLogin] = useState(init.contactLogin ?? false);
-  const upd = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [f, setF] = useState<CustomerFormData>(() => (doc ? docToForm(doc) : emptyForm()));
+  const [sameAsBilling, setSameAsBilling] = useState(!!f.sameAsBilling);
+  const set = (k: keyof CustomerFormData, v: any) => setF((p) => ({ ...p, [k]: v }));
 
-  const save = async () => {
-    const contact = `${f.firstName} ${f.lastName}`.trim();
-    const name = f.name.trim() || contact;
-    if (!name) { showToast("Enter a company or contact name", "warning"); return; }
-    const ship = sameAsBilling ? { ...billing } : shipping;
-    const data = {
-      name, contact, subtitle: contact,
-      firstName: f.firstName.trim(), lastName: f.lastName.trim(),
-      email: f.email.trim(),
-      regNo: f.regNo.trim(), taxId: f.taxId.trim(),
-      phone: f.businessPhone.trim(), businessPhone: f.businessPhone.trim(), fax: f.fax.trim(),
-      mobile: f.mobile.trim(), homePhone: f.homePhone.trim(),
-      birthday: f.birthday, anniversary: f.anniversary,
-      billing, shipping: ship, sameAsBilling,
-      bankDetails: f.bankDetails,
-      currency: f.currency, paymentTerms: f.paymentTerms,
-      reminder, contactLogin,
-    };
-    let id: number;
-    if (init.id != null) {
-      await repo.update("vendors", init.id, data);
-      id = init.id;
-      showToast("Vendor updated", "success");
-    } else {
-      id = await repo.add("vendors", { ...data, payable: 0, status: "Active" });
+  const createMut = useMutation({
+    mutationFn: (data: CustomerFormData) => createVendor(data),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: [VENDORS_LIST_KEY] });
       showToast("Vendor created", "success");
-    }
-    onSaved(id);
-    onClose();
+      onSaved(String(created._id));
+      onClose();
+    },
+    onError: (err: any) => showToast(err?.message ?? "Failed to create vendor", "error"),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: CustomerFormData) => updateVendor(doc!._id, data),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: [VENDORS_LIST_KEY] });
+      qc.invalidateQueries({ queryKey: ["vendor", doc!._id] });
+      showToast("Vendor updated", "success");
+      onSaved(String(updated._id ?? doc!._id));
+      onClose();
+    },
+    onError: (err: any) => showToast(err?.message ?? "Failed to update vendor", "error"),
+  });
+
+  const isBusy = createMut.isPending || updateMut.isPending;
+
+  const save = () => {
+    const name = f.name.trim() || `${f.firstName} ${f.lastName}`.trim();
+    if (!name) { showToast("Enter a company or contact name", "warning"); return; }
+    const payload: CustomerFormData = { ...f, name, sameAsBilling };
+    if (isCreate) createMut.mutate(payload);
+    else updateMut.mutate(payload);
   };
 
-  const addrBlock = (a: AddrForm, set: React.Dispatch<React.SetStateAction<AddrForm>>, disabled = false) => {
-    const u = (k: keyof AddrForm) => (v: string) => set((p) => ({ ...p, [k]: v }));
-    return (
-      <div className="space-y-4">
-        <VField label="Street 1" value={a.street1} onChange={u("street1")} disabled={disabled} />
-        <VField label="Street 2" value={a.street2} onChange={u("street2")} disabled={disabled} />
-        <div className="grid grid-cols-3 gap-3">
-          <VField label="Zip" value={a.zip} onChange={u("zip")} disabled={disabled} />
-          <VField label="City" value={a.city} onChange={u("city")} disabled={disabled} />
-          <VField label="State" value={a.state} onChange={u("state")} disabled={disabled} />
-        </div>
-        <VField label="Country" value={a.country} onChange={u("country")} disabled={disabled} />
-      </div>
-    );
-  };
+  const shipVal = (k: "Street1" | "Street2" | "Zip" | "City" | "State" | "Country") =>
+    sameAsBilling ? (f as any)[k.charAt(0).toLowerCase() + k.slice(1)] : (f as any)["ship" + k];
 
   return (
     <section className="module-detail-panel custom-scrollbar">
-      {/* form header */}
       <div className="module-title-bar">
         <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700"><Sparkles className="w-4 h-4" /></button>
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={save} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">Save</button>
+          <button onClick={save} disabled={isBusy} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-60">
+            {isBusy ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
-      {/* tabs */}
       <div className="flex items-center justify-center gap-8 border-b border-gray-300">
         {(["Details", "Settings"] as const).map((t) => (
           <button key={t} onClick={() => switchTab(t)} className={`py-3 text-sm transition-colors border-b-2 -mb-px ${tab === t ? "text-gray-900 font-medium border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>{t}</button>
@@ -509,33 +444,47 @@ const VendorForm: React.FC<{
       {tab === "Details" ? (
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6">
-            {/* left col */}
             <div className="space-y-6">
-              <VField label="Company Name" value={f.name} onChange={upd("name")} />
-              <div className="grid grid-cols-2 gap-4"><VField label="Reg. No" value={f.regNo} onChange={upd("regNo")} /><VField label="Tax ID" value={f.taxId} onChange={upd("taxId")} /></div>
-              <div className="grid grid-cols-2 gap-4"><VField label="Business Phone" value={f.businessPhone} onChange={upd("businessPhone")} /><VField label="Fax" value={f.fax} onChange={upd("fax")} /></div>
+              <VField label="Company Name" value={f.name} onChange={(v) => set("name", v)} />
+              <div className="grid grid-cols-2 gap-4"><VField label="Reg. No" value={f.regNo} onChange={(v) => set("regNo", v)} /><VField label="Tax ID" value={f.taxId} onChange={(v) => set("taxId", v)} /></div>
+              <div className="grid grid-cols-2 gap-4"><VField label="Business Phone" value={f.phone} onChange={(v) => set("phone", v)} /><VField label="Fax" value={f.fax} onChange={(v) => set("fax", v)} /></div>
             </div>
-            {/* right col */}
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4"><VField label="First Name" value={f.firstName} onChange={upd("firstName")} /><VField label="Last Name" value={f.lastName} onChange={upd("lastName")} /></div>
-              <VField label="Email" value={f.email} onChange={upd("email")} type="email" />
-              <div className="grid grid-cols-2 gap-4"><VField label="Mobile" value={f.mobile} onChange={upd("mobile")} /><VField label="Home Phone" value={f.homePhone} onChange={upd("homePhone")} /></div>
-              <div className="grid grid-cols-2 gap-4"><VField label="Birthday" value={f.birthday} onChange={upd("birthday")} type="date" /><VField label="Anniversary" value={f.anniversary} onChange={upd("anniversary")} type="date" /></div>
+              <div className="grid grid-cols-2 gap-4"><VField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} /><VField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} /></div>
+              <VField label="Email" value={f.email} onChange={(v) => set("email", v)} type="email" />
+              <div className="grid grid-cols-2 gap-4"><VField label="Mobile" value={f.mobile} onChange={(v) => set("mobile", v)} /><VField label="Home Phone" value={f.homePhone} onChange={(v) => set("homePhone", v)} /></div>
+              <div className="grid grid-cols-2 gap-4"><VField label="Birthday" value={f.birthday} onChange={(v) => set("birthday", v)} type="date" /><VField label="Anniversary" value={f.anniversary} onChange={(v) => set("anniversary", v)} type="date" /></div>
             </div>
           </div>
 
-          {/* Address */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6 pt-2">
             <div className="flex items-center justify-between"><span className="text-sm font-semibold text-gray-900">Address</span><span className="text-xs text-gray-400">Billing</span></div>
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
               <span className="text-xs text-gray-400">Shipping</span>
             </div>
-            {addrBlock(billing, setBilling)}
-            {addrBlock(sameAsBilling ? billing : shipping, setShipping, sameAsBilling)}
+            <div className="space-y-4">
+              <VField label="Street 1" value={f.street1} onChange={(v) => set("street1", v)} />
+              <VField label="Street 2" value={f.street2} onChange={(v) => set("street2", v)} />
+              <div className="grid grid-cols-3 gap-3">
+                <VField label="Zip" value={f.zip} onChange={(v) => set("zip", v)} />
+                <VField label="City" value={f.city} onChange={(v) => set("city", v)} />
+                <VField label="State" value={f.state} onChange={(v) => set("state", v)} />
+              </div>
+              <VField label="Country" value={f.country} onChange={(v) => set("country", v)} />
+            </div>
+            <div className={`space-y-4 ${sameAsBilling ? "opacity-60 pointer-events-none" : ""}`}>
+              <VField label="Street 1" value={shipVal("Street1")} onChange={(v) => set("shipStreet1", v)} disabled={sameAsBilling} />
+              <VField label="Street 2" value={shipVal("Street2")} onChange={(v) => set("shipStreet2", v)} disabled={sameAsBilling} />
+              <div className="grid grid-cols-3 gap-3">
+                <VField label="Zip" value={shipVal("Zip")} onChange={(v) => set("shipZip", v)} disabled={sameAsBilling} />
+                <VField label="City" value={shipVal("City")} onChange={(v) => set("shipCity", v)} disabled={sameAsBilling} />
+                <VField label="State" value={shipVal("State")} onChange={(v) => set("shipState", v)} disabled={sameAsBilling} />
+              </div>
+              <VField label="Country" value={shipVal("Country")} onChange={(v) => set("shipCountry", v)} disabled={sameAsBilling} />
+            </div>
           </div>
 
-          {/* Bank Details WYSIWYG */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
             <div className="border border-gray-300 rounded-md overflow-hidden">
@@ -545,19 +494,19 @@ const VendorForm: React.FC<{
                 <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200"><span className="w-4 h-4 rounded bg-gray-900 border border-gray-300" /></button>
                 <select className="ml-1 text-xs border border-gray-300 rounded px-1.5 py-1 bg-white"><option>10</option><option>14</option><option>16</option><option>18</option><option>24</option></select>
               </div>
-              <textarea value={f.bankDetails} onChange={(e) => upd("bankDetails")(e.target.value)} placeholder="Bank Details" className="w-full h-28 p-3 text-sm text-gray-800 outline-none resize-none" />
+              <textarea value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder="Bank Details" className="w-full h-28 p-3 text-sm text-gray-800 outline-none resize-none" />
             </div>
           </div>
         </div>
       ) : (
         <div className="p-6 space-y-6 max-w-2xl">
           <div className="grid grid-cols-2 gap-6">
-            <VField label="Currency" value={f.currency} onChange={upd("currency")} />
-            <VField label="Payment Terms (Purchases)" value={f.paymentTerms} onChange={upd("paymentTerms")} />
+            <VField label="Currency" value={f.currency} onChange={(v) => set("currency", v)} />
+            <VField label="Payment Terms (Purchases)" value={f.paymentTerms} onChange={(v) => set("paymentTerms", v)} />
           </div>
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Payment Reminder</span><Toggle on={reminder} onChange={() => setReminder((v) => !v)} /></div>
-            <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Contact Login</span><Toggle on={contactLogin} onChange={() => setContactLogin((v) => !v)} /></div>
+            <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Payment Reminder</span><Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} /></div>
+            <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Contact Login</span><Toggle on={!!f.isLoginRequired} onChange={() => set("isLoginRequired", !f.isLoginRequired)} /></div>
           </div>
         </div>
       )}
@@ -570,14 +519,14 @@ const VendorForm: React.FC<{
 export const Vendors: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  // When navigated here from a "Duplicate ▸ Vendor" action, pre-select that vendor.
-  const navSelectedId = (location.state as { selectedId?: number; openCreate?: boolean } | null)?.selectedId;
+  const qc = useQueryClient();
+  const navSelectedId = (location.state as { selectedId?: string; openCreate?: boolean } | null)?.selectedId;
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
+
   const dbVendors = useCollection<any>("vendors", "name");
   const dbBills = useCollection<any>("bills");
-  const dbPaymentsMade = useCollection<any>("paymentsMade");
   const dbExpenses = useCollection<any>("expenses");
-  // Create Vendor renders as an inline right panel (per reference), not a modal.
+
   const [createMode, setCreateMode] = useState(openCreateFromNav);
   useEffect(() => {
     if (openCreateFromNav) {
@@ -585,8 +534,12 @@ export const Vendors: React.FC = () => {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [openCreateFromNav, location.pathname, navigate]);
-  const [selectedId, setSelectedId] = useState(navSelectedId ?? 1);
-  useEffect(() => { if (navSelectedId != null) { setSelectedId(navSelectedId); setEditMode(false); } }, [navSelectedId]);
+
+  const [selectedId, setSelectedId] = useState<string>(navSelectedId ?? "");
+  useEffect(() => {
+    if (navSelectedId) { setSelectedId(String(navSelectedId)); setEditMode(false); setCreateMode(false); }
+  }, [navSelectedId]);
+
   const [tab, setTab] = useState<"Overview" | "Details" | "Settings">("Overview");
   const [sortBy, setSortBy] = useState("Created On");
   const [createdOn, setCreatedOn] = useState("All");
@@ -597,7 +550,7 @@ export const Vendors: React.FC = () => {
 
   const createdOnRange = createdOnToRange(createdOn);
   const { data: backendVendors } = useQuery({
-    queryKey: ["vendors-backend-list", page, search, sortBy, statusFilter, createdOn],
+    queryKey: [VENDORS_LIST_KEY, page, search, sortBy, statusFilter, createdOn],
     queryFn: () => fetchVendors({
       page,
       limit: LIST_PAGE_SIZE,
@@ -612,158 +565,214 @@ export const Vendors: React.FC = () => {
   });
   const listPagination = backendVendors?.pagination;
 
-  const vendors: Vendor[] = useMemo(() => {
-    const rows = backendVendors?.rows ?? [];
-    return rows.map((row, index) => {
-      const linked = dbVendors.find((v) => String(v._id) === row._id) || dbVendors.find((v) => v.name === row.name);
-      return {
-        id: linked?.id ?? (index + 1),
-        name: row.name,
-        contact: row.email || row.phone || linked?.contact || "—",
-        amount: -(row.opening_balance || linked?.payable || 0),
-      };
-    });
-  }, [backendVendors?.rows, dbVendors]);
+  const vendors: VendorRow[] = useMemo(
+    () => (backendVendors?.rows ?? []).map(mapListRow),
+    [backendVendors?.rows],
+  );
+
+  useEffect(() => {
+    if (!selectedId && vendors.length > 0) setSelectedId(vendors[0]._id);
+  }, [vendors, selectedId]);
+
+  const { data: selectedDoc } = useQuery<TBackendParty | null>({
+    queryKey: ["vendor", selectedId],
+    queryFn: () => (selectedId ? fetchVendor(selectedId) : null),
+    enabled: !!selectedId,
+    staleTime: 60_000,
+  });
+
+  const { data: paymentMethodOptions = [] } = useQuery({
+    queryKey: ["payment-methods"],
+    queryFn: fetchPaymentMethods,
+    staleTime: 60_000,
+  });
+
+  const { data: vendorPaymentsData } = useQuery({
+    queryKey: ["vendor-payments", selectedId],
+    queryFn: () => fetchVendorPayments({ vendor_id: selectedId, page: 1, limit: 50, sort: "-payment_date" }),
+    enabled: !!selectedId,
+    staleTime: 30_000,
+  });
+  const venPayments = vendorPaymentsData?.rows ?? [];
+
   const [activityFilter, setActivityFilter] = useState("All");
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
-  // selection-bar bulk actions: merge picker → confirm alert / archive / delete alerts
   const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
-  const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
-  // pending duplicate that needs the "already exists" confirmation ("vendor" or "both")
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [dupConfirm, setDupConfirm] = useState<null | "vendor" | "both">(null);
   const [editMode, setEditMode] = useState(false);
-  // Overview records section selector (reference: Expenses ▾ → Expenses / Bill / Payment Made)
   const [recordsType, setRecordsType] = useState<"Expenses" | "Bill" | "Payment Made">("Expenses");
-  const [reminder, setReminder] = useState(true);
-  const [contactLogin, setContactLogin] = useState(false);
 
-  // selection mode
   const [selectMode, setSelectMode] = useState(false);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const filtered = useMemo(() => {
-    let list = vendors.filter((c) => search.trim() === "" || (c.name || "").toLowerCase().includes(search.toLowerCase()));
-    list = [...list].sort((a, b) => {
-      if (sortBy === "Created On") return b.id - a.id;
-      if (sortBy === "Payable" || sortBy === "Total" || sortBy === "Due" || sortBy === "Paid") return b.amount - a.amount;
-      return (a.name || "").localeCompare(b.name || "");
-    });
-    return list;
-  }, [vendors, search, sortBy]);
-
-  const selected = vendors.find((c) => c.id === selectedId) || vendors[0];
+  const selected = vendors.find((c) => c._id === selectedId) || vendors[0];
+  const doc = selectedDoc ?? null;
   const listDue = vendors.reduce((s, c) => s + (c.amount < 0 ? -c.amount : 0), 0);
-  // Resolve the DB record for the row actually displayed — selectedId can go stale
-  // after archive/trash, which would otherwise leave selectedDb = {}.
-  const selectedDb: any = dbVendors.find((v) => v.id === (selected?.id ?? selectedId)) || {};
-  const venBills = dbBills.filter((b) => b.vendorId === selectedId);
-  const venPayments = dbPaymentsMade.filter((p) => p.vendorId === selectedId);
-  const venExpenses = dbExpenses.filter((x) => x.vendorId === selectedId);
+
+  // Optional Dexie link for local bills/expenses/activities (overview only)
+  const linkedDexie = dbVendors.find((v) => String(v._id) === selectedId);
+  const dexieVendorId = linkedDexie?.id as number | undefined;
+  const venBills = dexieVendorId != null ? dbBills.filter((b) => b.vendorId === dexieVendorId) : [];
+  const venExpenses = dexieVendorId != null ? dbExpenses.filter((x) => x.vendorId === dexieVendorId) : [];
   const venPayable = venBills.reduce((s, b) => s + (b.amountDue || 0), 0);
   const venTotal = venBills.reduce((s, b) => s + (b.total || 0), 0);
   const venPaid = venPayments.reduce((s, p) => s + (p.amount || 0), 0);
+
+  const profile = doc?.businessProfile ?? {};
+  const billing = profile.billing_address ?? {};
+  const shipping = profile.shipping_address ?? {};
+  const billingLine1 = [billing.address_line_1, billing.address_line_2].filter(Boolean).join(", ");
+  const billingLine2 = [billing.city, billing.state, billing.country, billing.zip_code].filter(Boolean).join(", ");
+  const shippingLine1 = [shipping.address_line_1, shipping.address_line_2].filter(Boolean).join(", ");
+  const shippingLine2 = [shipping.city, shipping.state, shipping.country, shipping.zip_code].filter(Boolean).join(", ");
+
   const stmtTx = [
     ...venBills.map((b) => ({ ts: b.ts || 0, date: b.date, details: `Bill ${b.number}`, amount: b.total || 0, paid: 0 })),
-    ...dbPaymentsMade.filter((p) => p.vendorId === selectedId).map((p) => ({ ts: p.ts || 0, date: p.date, details: `Payment ${p.number}`, amount: 0, paid: p.amount || 0 })),
+    ...venPayments.map((p) => ({
+      ts: p.paymentDateIso ? new Date(p.paymentDateIso).getTime() : 0,
+      date: p.dateLabel,
+      details: `Payment ${p.number}`,
+      amount: 0,
+      paid: p.amount || 0,
+    })),
   ].sort((a, b) => a.ts - b.ts);
   let _bal = 0;
   const stmtRows = stmtTx.map((t) => { _bal += t.amount - t.paid; return { date: t.date, details: t.details, amount: money(t.amount), paid: money(t.paid), balance: money(_bal) }; });
   const stmtSummary = { amount: money(stmtTx.reduce((s, t) => s + t.amount, 0)), paid: money(stmtTx.reduce((s, t) => s + t.paid, 0)), balance: money(_bal) };
 
-  /* ── More-menu actions ─────────────────────────────────────────── */
-  const removeSelected = async () => {
-    const id = selected?.id ?? selectedId;
-    if (!id) return;
-    await repo.remove("vendors", id);
-    const remaining = vendors.filter((c) => c.id !== id);
-    setSelectedId(remaining[0]?.id ?? 0);
-    setEditMode(false);
+  /* ── Mutations ───────────────────────────────────────────────── */
+  const invalidateList = () => qc.invalidateQueries({ queryKey: [VENDORS_LIST_KEY] });
+
+  const archiveMut = useMutation({
+    mutationFn: (id: string) => archiveVendor(id),
+    onSuccess: () => {
+      invalidateList();
+      showToast("Vendor archived", "success");
+      setSelectedId(vendors.find((v) => v._id !== selectedId)?._id ?? "");
+      setEditMode(false);
+    },
+    onError: () => showToast("Archive failed", "error"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteVendor(id),
+    onSuccess: () => {
+      invalidateList();
+      showToast("Vendor deleted", "success");
+      setSelectedId(vendors.find((v) => v._id !== selectedId)?._id ?? "");
+      setEditMode(false);
+    },
+    onError: () => showToast("Delete failed", "error"),
+  });
+
+  const bulkArchiveMut = useMutation({
+    mutationFn: (ids: string[]) => archiveVendors(ids),
+    onSuccess: (_, ids) => {
+      invalidateList();
+      showToast(`${ids.length} ${ids.length === 1 ? "vendor" : "vendors"} archived`, "success");
+      if (ids.includes(selectedId)) setSelectedId(vendors.find((v) => !ids.includes(v._id))?._id ?? "");
+      exitSelect();
+      setSelAction(null);
+    },
+    onError: () => showToast("Archive failed", "error"),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) => deleteVendors(ids),
+    onSuccess: (_, ids) => {
+      invalidateList();
+      showToast(`${ids.length} ${ids.length === 1 ? "vendor" : "vendors"} deleted`, "success");
+      if (ids.includes(selectedId)) setSelectedId(vendors.find((v) => !ids.includes(v._id))?._id ?? "");
+      exitSelect();
+      setSelAction(null);
+    },
+    onError: () => showToast("Delete failed", "error"),
+  });
+
+  const mergeMut = useMutation({
+    mutationFn: ({ survivorId, mergedIds }: { survivorId: string; mergedIds: string[] }) =>
+      mergeVendors(survivorId, mergedIds),
+    onSuccess: (_, vars) => {
+      invalidateList();
+      setSelectedId(vars.survivorId);
+      showToast("Vendors merged", "success");
+      exitSelect();
+      setSelAction(null);
+    },
+    onError: () => showToast("Merge failed", "error"),
+  });
+
+  const archiveSelectedOne = () => {
+    if (!selected?._id) return;
+    archiveMut.mutate(selected._id);
   };
-  // Archive keeps the record (status: Archived) but drops it from the list.
-  const archiveSelectedOne = async () => {
-    const id = selected?.id ?? selectedId;
-    if (!id) return;
-    await repo.update("vendors", id, { status: "Archived" });
-    const remaining = vendors.filter((c) => c.id !== id);
-    setSelectedId(remaining[0]?.id ?? 0);
-    setEditMode(false);
+  const removeSelected = () => {
+    if (!selected?._id) return;
+    deleteMut.mutate(selected._id);
   };
 
-  /* ── Selection-bar bulk actions (merge / archive / delete + alerts) ── */
   const checkedIds = [...checked];
-  const afterBulk = (removedIds: number[]) => {
-    const remaining = vendors.filter((c) => !removedIds.includes(c.id));
-    if (removedIds.includes(selectedId)) setSelectedId(remaining[0]?.id ?? 0);
-    exitSelect();
-    setSelAction(null);
+  const bulkMerge = (survivorId: string) => {
+    const mergedIds = checkedIds.filter((id) => id !== survivorId);
+    mergeMut.mutate({ survivorId, mergedIds });
   };
-  const bulkArchive = async () => {
-    await Promise.all(checkedIds.map((id) => repo.update("vendors", id, { status: "Archived" })));
-    showToast(`${checkedIds.length} ${checkedIds.length === 1 ? "vendor" : "vendors"} archived`, "success");
-    afterBulk(checkedIds);
-  };
-  const bulkDelete = async () => {
-    await repo.removeMany("vendors", checkedIds);
-    showToast(`${checkedIds.length} ${checkedIds.length === 1 ? "vendor" : "vendors"} deleted`, "success");
-    afterBulk(checkedIds);
-  };
-  /** Merge: re-point every reference of the losing vendors to the target,
-   *  combine payables, then remove the losers — fully relational. */
-  const bulkMerge = async (targetId: number) => {
-    const losers = checkedIds.filter((id) => id !== targetId);
-    const refCollections = ["bills", "purchaseOrders", "purchaseInvoices", "purchaseReturns", "paymentsMade", "debitNotes", "expenses"] as const;
-    for (const col of refCollections) {
-      const rows = await repo.getAll(col);
-      await Promise.all(rows.filter((r: any) => losers.includes(r.vendorId)).map((r: any) => repo.update(col, r.id, { vendorId: targetId })));
-    }
-    const all = await repo.getAll("vendors");
-    const extra = losers.reduce((s, id) => s + (all.find((v: any) => v.id === id)?.payable || 0), 0);
-    const target = all.find((v: any) => v.id === targetId);
-    await repo.update("vendors", targetId, { payable: (target?.payable || 0) + extra });
-    await repo.removeMany("vendors", losers);
-    showToast("Vendors merged", "success");
-    afterBulk(losers);
-    setSelectedId(targetId);
-  };
-  // Copy the full vendor record into a new vendors row (same company name).
-  const duplicateAsVendor = async (): Promise<number> => {
-    const { id, createdAt, updatedAt, ...rest } = selectedDb;
-    return repo.add("vendors", { ...rest });
-  };
-  // Copy the full vendor record into the customers collection.
-  const duplicateAsCustomer = async (): Promise<number> => {
-    const { id, createdAt, updatedAt, payable, ...rest } = selectedDb;
-    return repo.add("customers", { ...rest, balance: payable || 0, status: rest.status || "Active" });
-  };
-  const goToCustomer = (customerId: number) => navigate("/sales/customers", { state: { selectedId: customerId } });
+
+  const goToCustomer = (customerId: string) =>
+    navigate("/sales/customers", { state: { selectedId: String(customerId) } });
+
   const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
-    if (!selectedDb?.name) return; // nothing valid to duplicate
+    if (!doc) return;
     if (target === "customer") {
-      goToCustomer(await duplicateAsCustomer());
+      try {
+        const form = docToForm(doc);
+        form.name = `${form.name} (Copy)`;
+        const created = await createCustomer(form);
+        showToast("Duplicated as customer", "success");
+        goToCustomer(created._id);
+      } catch (e: any) {
+        showToast(e?.message || "Duplicate as customer failed", "error");
+      }
       return;
     }
-    // vendor + both create a vendor copy → confirm first ("name already exists").
     setDupConfirm(target);
   };
+
   const confirmDuplicate = async () => {
     const target = dupConfirm;
     setDupConfirm(null);
-    if (!target || !selectedDb?.name) return;
-    const newId = await duplicateAsVendor();
-    if (target === "both") goToCustomer(await duplicateAsCustomer());
-    else setSelectedId(newId);
+    if (!doc || !target) return;
+    try {
+      const form = docToForm(doc);
+      form.name = `${form.name} (Copy)`;
+      const created = await createVendor(form);
+      invalidateList();
+      setSelectedId(String(created._id));
+      showToast("Vendor duplicated", "success");
+      if (target === "both") {
+        try {
+          const asCustomer = await createCustomer({ ...form });
+          showToast("Also duplicated as customer", "success");
+          goToCustomer(asCustomer._id);
+        } catch {
+          showToast("Vendor copied; customer copy failed", "warning");
+        }
+      }
+    } catch {
+      showToast("Duplicate failed", "error");
+    }
   };
 
-  const allSelected = filtered.length > 0 && filtered.every((c) => checked.has(c.id));
-  const selectedVendors = vendors.filter((c) => checked.has(c.id));
+  const allSelected = vendors.length > 0 && vendors.every((c) => checked.has(c._id));
+  const selectedVendors = vendors.filter((c) => checked.has(c._id));
   const totals = {
     total: selectedVendors.reduce((s, c) => s + Math.abs(c.amount), 0),
     paid: 0,
     due: selectedVendors.reduce((s, c) => s + Math.abs(c.amount), 0),
   };
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
-  const toggleRow = (id: number) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((c) => c.id))));
+  const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(vendors.map((c) => c._id))));
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && selectMode && exitSelect();
     document.addEventListener("keydown", h);
@@ -771,7 +780,6 @@ export const Vendors: React.FC = () => {
   }, [selectMode]);
 
   const tabs: ("Overview" | "Details" | "Settings")[] = ["Overview", "Details", "Settings"];
-  // Directional push: moving to a higher tab enters from the right, lower from the left.
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
   const switchTab = (t: (typeof tabs)[number]) => {
     if (t === tab) return;
@@ -860,7 +868,6 @@ export const Vendors: React.FC = () => {
           </div>
         )}
 
-        {/* search */}
         <div className="px-3 py-2 border-b border-gray-300">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -868,7 +875,6 @@ export const Vendors: React.FC = () => {
           </div>
         </div>
 
-        {/* toolbar */}
         <div className="list-filter-toolbar hover-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden px-3 py-2 border-b border-gray-300">
           <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-full px-3 py-1 whitespace-nowrap">Sort by | <span className="text-gray-800 font-medium">{sortBy}</span><ChevronDown className="w-3.5 h-3.5" /></span>}>
             {(close) => sortFields.map((o) => (
@@ -877,7 +883,7 @@ export const Vendors: React.FC = () => {
           </Dropdown>
           <Dropdown trigger={<span className={`inline-flex items-center gap-1 text-xs border border-dashed rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400 ${statusFilter === "Trash" ? "text-red-500 border-red-300" : "text-gray-600 border-gray-300"}`}><Plus className="w-3 h-3" />Status{statusFilter !== "Active" ? ` | ${statusFilter}` : ""}</span>}>
             {(close) => statusOptions.map((o) => (
-              <button key={o} onClick={() => { setStatusFilter(o); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${o === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{o} {o === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
+              <button key={o} onClick={() => { setStatusFilter(o); setSelectedId(""); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${o === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{o} {o === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Created On | {createdOn}<ChevronDown className="w-3 h-3" /></span>}>
@@ -887,14 +893,13 @@ export const Vendors: React.FC = () => {
           </Dropdown>
         </div>
 
-        {/* rows */}
         <div className="relative flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto hover-scrollbar">
-          {filtered.map((c) => {
-            const active = !selectMode && c.id === selectedId;
-            const isChecked = checked.has(c.id);
+          {vendors.map((c) => {
+            const active = !selectMode && c._id === selectedId;
+            const isChecked = checked.has(c._id);
             return (
-              <button key={c.id} onClick={() => (selectMode ? toggleRow(c.id) : (setSelectedId(c.id), setEditMode(false), setCreateMode(false)))}
+              <button key={c._id} onClick={() => (selectMode ? toggleRow(c._id) : (setSelectedId(c._id), setEditMode(false), setCreateMode(false)))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-center gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
@@ -910,10 +915,9 @@ export const Vendors: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
         <ListSidebarFooter
           total={<>{money(listDue)} <span className="font-normal text-slate-500">Due</span></>}
-          countLabel={`${listPagination?.totalData ?? filtered.length} Contacts`}
+          countLabel={`${listPagination?.totalData ?? vendors.length} Contacts`}
           pagination={listPagination}
           page={page}
           onPageChange={setPage}
@@ -933,12 +937,17 @@ export const Vendors: React.FC = () => {
           </div>
         </section>
       ) : createMode ? (
-        <VendorForm title="Create Vendor" onClose={() => setCreateMode(false)} onSaved={(id) => { setSortBy("Created On"); setCreateMode(false); setSelectedId(id); }} />
+        <VendorForm key="create" title="Create Vendor" doc={null} onClose={() => setCreateMode(false)} onSaved={(id) => { setSortBy("Created On"); setCreateMode(false); setSelectedId(id); }} />
       ) : editMode ? (
-        <VendorForm title="Edit Vendor" initial={selectedDb} onClose={() => setEditMode(false)} onSaved={(id) => setSelectedId(id)} />
-      ) : (
+        doc ? (
+          <VendorForm key={selectedId} title="Edit Vendor" doc={doc} onClose={() => setEditMode(false)} onSaved={(id) => { setSelectedId(id); setEditMode(false); }} />
+        ) : (
+          <section className="module-empty-panel">
+            <div className="text-center px-6 text-sm text-gray-500">Loading vendor…</div>
+          </section>
+        )
+      ) : selected ? (
         <section className="module-detail-panel custom-scrollbar">
-          {/* detail header */}
           <div className="module-title-bar">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-0.5">
@@ -953,17 +962,14 @@ export const Vendors: React.FC = () => {
             </div>
           </div>
 
-          {/* tabs */}
           <div className="flex items-center justify-center gap-8 border-b border-gray-300">
             {tabs.map((t) => (
               <button key={t} onClick={() => switchTab(t)} className={`py-3 text-sm transition-colors border-b-2 -mb-px ${tab === t ? "text-gray-900 font-medium border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>{t}</button>
             ))}
           </div>
 
-          {/* tab body — directional push transition */}
           <TabSlide tabKey={tab} dir={tabDir}>
 
-          {/* ── Overview ── */}
           {tab === "Overview" && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-4 gap-4 divide-x divide-gray-200">
@@ -980,7 +986,6 @@ export const Vendors: React.FC = () => {
                 ))}
               </div>
 
-              {/* Records: Expenses ▾ / Bill / Payment Made (reference selector) */}
               <div className="bg-white border border-gray-200 rounded-lg">
                 <div className="px-4 py-3">
                   <Dropdown trigger={<span className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">{recordsType} <ChevronDown className="w-4 h-4 text-gray-500" /></span>}>
@@ -995,7 +1000,7 @@ export const Vendors: React.FC = () => {
                       ? venExpenses.map((x) => ({ id: `x${x.id}`, title: x.category || `Expense ${x.number}`, sub: x.date, right: money(x.amount || 0), status: "" }))
                       : recordsType === "Bill"
                         ? venBills.map((b) => ({ id: `b${b.id}`, title: `Bill ${b.number}`, sub: b.date, right: money(b.total || 0), status: b.status || "" }))
-                        : venPayments.map((p) => ({ id: `p${p.id}`, title: `Payment ${p.number}`, sub: p.date, right: money(p.amount || 0), status: p.method || "" }));
+                        : venPayments.map((p) => ({ id: `p${p._id}`, title: `Payment ${p.number}`, sub: p.dateLabel, right: money(p.amount || 0), status: p.method || "" }));
                   return rows.length === 0 ? (
                     <div className="px-4 pb-10 pt-6 text-center text-sm text-gray-400">No Records</div>
                   ) : (
@@ -1017,7 +1022,6 @@ export const Vendors: React.FC = () => {
                 })()}
               </div>
 
-              {/* Recent Activities */}
               <div className="bg-white border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-medium text-gray-900">Recent Activities</h3>
@@ -1025,78 +1029,127 @@ export const Vendors: React.FC = () => {
                     {(close) => activityFilters.map((o) => <button key={o} onClick={() => { setActivityFilter(o); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{o} {o === activityFilter && <Check className="w-4 h-4 text-blue-600" />}</button>)}
                   </Dropdown>
                 </div>
-                <RecentActivities vendorId={selected.id} filter={activityFilter} />
+                <RecentActivities vendorId={dexieVendorId} filter={activityFilter} />
               </div>
             </div>
           )}
 
-          {/* ── Details ── */}
           {tab === "Details" && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
                 {[
-                  ["Company", selectedDb.name || selected.name],
-                  ["Reg. No", selectedDb.regNo || "—"], ["Tax ID", selectedDb.taxId || "—"],
-                  ["Business Phone", selectedDb.businessPhone || selectedDb.phone || "—"], ["Fax", selectedDb.fax || "—"],
-                  ["First Name", selectedDb.firstName || (selectedDb.contact || "").split(" ")[0] || "—"], ["Last Name", selectedDb.lastName || (selectedDb.contact || "").split(" ").slice(1).join(" ") || "—"], ["Email", selectedDb.email || "—"],
-                  ["Mobile Number", selectedDb.mobile || "—"], ["Home Phone", selectedDb.homePhone || "—"],
-                  ["Birthday", selectedDb.birthday || "—"], ["Anniversary", selectedDb.anniversary || "—"],
+                  ["Company", profile.companyName || selected.name],
+                  ["Reg. No", profile.registration_number || "—"], ["Tax ID", profile.tax_number || "—"],
+                  ["Business Phone", profile.business_phone || "—"], ["Fax", profile.fax || "—"],
+                  ["First Name", (doc?.name ?? "").split(" ")[0] || "—"], ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"], ["Email", doc?.email || "—"],
+                  ["Mobile Number", doc?.phone || "—"], ["Home Phone", profile.home_phone || "—"],
+                  ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"], ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"],
                 ].map(([k, v]) => (
                   <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
                 ))}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
-                {(["Billing Address", "Shipping Address"] as const).map((label, i) => {
-                  const a = i === 0 ? selectedDb.billing : selectedDb.shipping;
-                  const line1 = [a?.street1, a?.street2].filter(Boolean).join(", ");
-                  const line2 = [a?.city, a?.state, a?.country, a?.zip].filter(Boolean).join(", ");
-                  return (
-                    <div key={label}>
-                      <div className="text-xs text-gray-500 mb-1">{label}</div>
-                      <div className="text-sm text-gray-800 leading-relaxed">
-                        {line1 || line2 ? (<>{line1}{line1 && line2 && <br />}{line2}</>) : "—"}
-                      </div>
-                    </div>
-                  );
-                })}
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Billing Address</div>
+                  <div className="text-sm text-gray-800 leading-relaxed">
+                    {billingLine1 || billingLine2 ? (<>{billingLine1}{billingLine1 && billingLine2 && <br />}{billingLine2}</>) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
+                  <div className="text-sm text-gray-800 leading-relaxed">
+                    {shippingLine1 || shippingLine2 ? (<>{shippingLine1}{shippingLine1 && shippingLine2 && <br />}{shippingLine2}</>) : "—"}
+                  </div>
+                </div>
               </div>
               <div className="pt-4 border-t border-gray-200">
                 <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-                <div className="text-sm text-gray-800 whitespace-pre-line">{selectedDb.bankDetails || "—"}</div>
+                {profile.bank_details
+                  ? <div className="text-sm text-gray-800 whitespace-pre-line [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
+                  : <div className="text-sm text-gray-400">—</div>}
               </div>
             </div>
           )}
 
-          {/* ── Settings ── */}
           {tab === "Settings" && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-6 max-w-2xl">
-                <div><div className="text-xs text-gray-500">Currency</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{selectedDb.currency || "$ USD"}</div></div>
-                <div><div className="text-xs text-gray-500">Payment Terms (Purchases)</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{selectedDb.paymentTerms || "Default Company"}</div></div>
+                <div><div className="text-xs text-gray-500">Currency</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{doc?.currency || "$ USD"}</div></div>
+                <div><div className="text-xs text-gray-500">Payment Terms (Purchases)</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{profile.payment_terms || "Default Company"}</div></div>
               </div>
               <div className="space-y-4 pt-4 border-t border-gray-200">
                 <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Payment Reminder</span>
-                  <Toggle on={reminder} onChange={() => setReminder((v) => !v)} />
+                  <Toggle
+                    on={profile.payment_reminder !== false}
+                    onChange={() => {
+                      if (!selected._id || !doc) return;
+                      updateVendor(selected._id, { ...docToForm(doc), paymentReminder: !(profile.payment_reminder !== false) })
+                        .then(() => qc.invalidateQueries({ queryKey: ["vendor", selected._id] }));
+                    }}
+                  />
                 </div>
                 <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Contact Login</span>
-                  <Toggle on={contactLogin} onChange={() => setContactLogin((v) => !v)} />
+                  <Toggle
+                    on={profile.is_login_required ?? false}
+                    onChange={() => {
+                      if (!selected._id || !doc) return;
+                      updateVendor(selected._id, { ...docToForm(doc), isLoginRequired: !(profile.is_login_required ?? false) })
+                        .then(() => qc.invalidateQueries({ queryKey: ["vendor", selected._id] }));
+                    }}
+                  />
                 </div>
               </div>
             </div>
           )}
           </TabSlide>
         </section>
+      ) : (
+        <section className="module-empty-panel">
+          <div className="text-center px-6">
+            <p className="text-sm text-gray-500">Select a vendor</p>
+          </div>
+        </section>
       )}
 
       {/* ════════ MODALS ════════ */}
-      {modal === "payment" && <PaymentModal onClose={() => setModal(null)} vendor={selected.name} />}
+      {modal === "payment" && selected && (
+        <BillPaymentsModal
+          open
+          bill={null}
+          vendorId={selected._id}
+          vendorName={selected.name}
+          paymentMethods={paymentMethodOptions}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            invalidateList();
+            qc.invalidateQueries({ queryKey: ["vendor-payments", selected._id] });
+          }}
+        />
+      )}
       {modal === "statement" && <StatementModal onClose={() => setModal(null)} onGo={() => setModal("preview")} />}
-      {modal === "preview" && <StatementPreview onClose={() => setModal(null)} name={selected.name} vendor={selectedDb} rows={stmtRows} summary={stmtSummary} onDownload={() => downloadDocPdf({ filename: `${selected.name} Statement`, docTitle: "STATEMENT", partyLabel: "Statement To", partyLines: [selected.name, selectedDb.contact, selectedDb.email, selectedDb.phone].filter(Boolean) as string[], meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance], ["From", "Apr 27, 2026"], ["To", "Jun 22, 2026"]], itemHead: ["Date", "Details", "Amount", "Paid", "Balance"], itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"], ...stmtRows.map((r) => [r.date, r.details, r.amount, r.paid, r.balance]), ["", "Total", stmtSummary.amount, stmtSummary.paid, stmtSummary.balance]] })} />}
+      {modal === "preview" && selected && (
+        <StatementPreview
+          onClose={() => setModal(null)}
+          name={selected.name}
+          vendor={{ contact: selected.contact, email: doc?.email, phone: doc?.phone }}
+          rows={stmtRows}
+          summary={stmtSummary}
+          onDownload={() => downloadDocPdf({
+            filename: `${selected.name} Statement`,
+            docTitle: "STATEMENT",
+            partyLabel: "Statement To",
+            partyLines: [selected.name, doc?.email, doc?.phone].filter(Boolean) as string[],
+            meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance], ["From", "Apr 27, 2026"], ["To", "Jun 22, 2026"]],
+            itemHead: ["Date", "Details", "Amount", "Paid", "Balance"],
+            itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"], ...stmtRows.map((r) => [r.date, r.details, r.amount, r.paid, r.balance]), ["", "Total", stmtSummary.amount, stmtSummary.paid, stmtSummary.balance]],
+          })}
+        />
+      )}
       {(selAction === "merge" || selAction === "mergeConfirm") && (
         <MergeVendorsModal
-          vendors={vendors.filter((c) => checked.has(c.id))}
+          vendors={vendors.filter((c) => checked.has(c._id))}
           onClose={() => { setSelAction(null); setMergeTargetId(null); }}
           onMerge={(id) => { setMergeTargetId(id); setSelAction("mergeConfirm"); }}
         />
@@ -1109,10 +1162,10 @@ export const Vendors: React.FC = () => {
         />
       )}
       {selAction === "archive" && (
-        <ConfirmAlert message="Are you sure want to archive these vendors?" onNo={() => setSelAction(null)} onYes={bulkArchive} />
+        <ConfirmAlert message="Are you sure want to archive these vendors?" onNo={() => setSelAction(null)} onYes={() => bulkArchiveMut.mutate(checkedIds)} />
       )}
       {selAction === "delete" && (
-        <ConfirmAlert message="Are you sure want to delete these vendors?" onNo={() => setSelAction(null)} onYes={bulkDelete} />
+        <ConfirmAlert message="Are you sure want to delete these vendors?" onNo={() => setSelAction(null)} onYes={() => bulkDeleteMut.mutate(checkedIds)} />
       )}
       {dupConfirm && (
         <Overlay onClose={() => setDupConfirm(null)}>

@@ -10,7 +10,9 @@ import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { updateBill } from "@/services/billsApi";
 import {
   createVendorPayment,
+  deleteVendorPayment,
   fetchVendorPayments,
+  recordVendorPayment,
   type VendorPaymentListRow,
 } from "@/services/vendorPaymentsApi";
 import type { PaymentMethodOption } from "@/services/paymentMethodsApi";
@@ -32,6 +34,9 @@ interface BillPaymentsModalProps {
   bill: BillPaymentDoc | null;
   /** When set, one amount row per bill (batch from list selection). */
   bills?: BillPaymentDoc[];
+  /** Open from Vendors page (no bill) — list/create payments for this vendor. */
+  vendorId?: string;
+  vendorName?: string;
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onSaved?: () => void;
@@ -151,6 +156,8 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   open,
   bill,
   bills: billsProp,
+  vendorId: partyVendorId,
+  vendorName: partyVendorName,
   paymentMethods,
   onClose,
   onSaved,
@@ -161,6 +168,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   const [paymentSerial, setPaymentSerial] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInput());
   const [method, setMethod] = useState("");
+  const [amount, setAmount] = useState("0.00");
   const [lineAmounts, setLineAmounts] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
@@ -175,8 +183,13 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     return [];
   }, [bill, billsProp]);
 
+  const partyMode = paymentDocs.length === 0 && !!partyVendorId;
+
   const paymentDocIds = useMemo(() => paymentDocs.map((doc) => doc._id).filter(Boolean), [paymentDocs]);
-  const paymentDocIdsKey = useMemo(() => paymentDocIds.slice().sort().join(","), [paymentDocIds]);
+  const paymentDocIdsKey = useMemo(
+    () => (partyMode ? `vendor:${partyVendorId}` : paymentDocIds.slice().sort().join(",")),
+    [partyMode, partyVendorId, paymentDocIds],
+  );
   const paymentDocBillNumbers = useMemo(
     () => new Set(paymentDocs.map((doc) => billNumberOf(doc)).filter((n) => n !== "—")),
     [paymentDocs],
@@ -184,8 +197,10 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
 
   const billId = bill?._id ?? "";
   const billVendorId = vendorIdOf(bill);
+  const resolvedVendorId = partyVendorId || billVendorId;
+  const displayVendorName = partyVendorName || vendorNameOf(bill);
   const dueAmount = paymentDocs.reduce((sum, doc) => sum + dueOfBill(doc), 0);
-  const billNumbersLabel = paymentDocs.map((doc) => billNumberOf(doc)).join(", ");
+  const billNumbersLabel = partyMode ? "—" : paymentDocs.map((doc) => billNumberOf(doc)).join(", ");
   const totalLineAmount = useMemo(
     () => paymentDocs.reduce((sum, doc) => sum + Math.max(0, Number(lineAmounts[doc._id]) || 0), 0),
     [lineAmounts, paymentDocs],
@@ -198,19 +213,28 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    setVendorId(billVendorId);
-    setVendorQuery(vendorNameOf(bill));
+    setVendorId(resolvedVendorId);
+    setVendorQuery(displayVendorName);
     setPaymentDate(todayInput());
     setPaymentSerial("");
     setMethod(preferredMethods[0] || "Cash");
     setLineAmounts(initLineAmountsForBills(paymentDocs));
+    setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setNotes("");
     setInternalNotes("");
-  }, [open, preferredMethods, dueAmount, billId, billVendorId, bill, paymentDocs]);
+  }, [open, preferredMethods, dueAmount, billId, resolvedVendorId, displayVendorName, paymentDocs]);
 
   const { data: paymentsData, isFetching } = useQuery({
     queryKey: ["bill-payments", paymentDocIdsKey],
     queryFn: async () => {
+      if (partyMode && partyVendorId) {
+        const res = await fetchVendorPayments({
+          vendor_id: partyVendorId,
+          limit: 100,
+          sort: "-payment_date",
+        });
+        return { rows: res.rows };
+      }
       const results = await Promise.all(
         paymentDocIds.map((id) => fetchVendorPayments({ bill_id: id, limit: 100, sort: "-payment_date" })),
       );
@@ -230,7 +254,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
           : unique;
       return { rows: filtered.length > 0 ? filtered : unique };
     },
-    enabled: open && paymentDocIds.length > 0,
+    enabled: open && (partyMode || paymentDocIds.length > 0),
     placeholderData: (prev) => prev,
   });
 
@@ -289,11 +313,12 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   const openCreateForm = () => {
     setShowForm(true);
     setSelectedPaymentId("");
-    setVendorId(billVendorId);
-    setVendorQuery(vendorNameOf(bill));
+    setVendorId(resolvedVendorId);
+    setVendorQuery(displayVendorName);
     setPaymentSerial(nextPaymentNumber);
     setMethod(preferredMethods[0] || "Cash");
     setLineAmounts(initLineAmountsForBills(paymentDocs));
+    setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setPaymentDate(todayInput());
     setNotes("");
     setInternalNotes("");
@@ -308,8 +333,21 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   const savePaymentMut = useMutation({
     mutationFn: async () => {
       const serial = text(paymentSerial) || nextPaymentNumber;
-      const vId = vendorId || billVendorId;
+      const vId = vendorId || resolvedVendorId;
       if (!vId) throw new Error("No vendor");
+
+      if (partyMode) {
+        const parsedAmount = Math.max(0, Number(amount) || 0);
+        if (parsedAmount <= 0) throw new Error("Enter a payment amount");
+        return recordVendorPayment({
+          vendor_id: vId,
+          payment_amount: parsedAmount,
+          payment_date: paymentDate,
+          payment_method: [method || "Cash"],
+          notes: notes || undefined,
+          reference_number: serial,
+        });
+      }
 
       if (paymentDocs.length > 1) {
         const vendorKeys = [...new Set(paymentDocs.map((doc) => vendorIdOf(doc)).filter(Boolean))];
@@ -368,6 +406,23 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     },
   });
 
+  const saveDisabled =
+    savePaymentMut.isPending ||
+    (partyMode ? !(Number(amount) > 0) : totalLineAmount <= 0);
+
+  const deletePaymentMut = useMutation({
+    mutationFn: async () => {
+      if (!selectedPayment) throw new Error("No payment");
+      await deleteVendorPayment(selectedPayment.id);
+    },
+    onSuccess: async () => {
+      await refreshPayments();
+      setSelectedPaymentId("");
+      showToast("Payment deleted", "success");
+    },
+    onError: (err: any) => showToast(err?.message || "Delete failed", "error"),
+  });
+
   const openReceiptWindow = (mode: "preview" | "print" | "email") => {
     if (!selectedPayment) return;
     const title = `Payment Receipt ${selectedPayment.serial}`;
@@ -391,7 +446,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
             <div class="row">
               <div>
                 <div style="font-size:20px; font-weight:700;">info</div>
-                <div>${vendorNameOf(bill)}</div>
+                <div>${displayVendorName}</div>
               </div>
               <table>
                 <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
@@ -412,7 +467,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     if (mode === "email") {
       const subject = encodeURIComponent(title);
       const mailBody = encodeURIComponent(
-        `Vendor: ${vendorNameOf(bill)}\nPayment #: ${selectedPayment.serial}\nBill: ${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
+        `Vendor: ${displayVendorName}\nPayment #: ${selectedPayment.serial}\nBill: ${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
       );
       window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
       return;
@@ -429,7 +484,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     if (mode === "print") popup.print();
   };
 
-  if (!open || !bill) return null;
+  if (!open || (!bill && !partyMode)) return null;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
@@ -477,7 +532,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-gray-900">{vendorNameOf(bill)}</div>
+                          <div className="truncate text-sm font-semibold text-gray-900">{displayVendorName}</div>
                           <div className="mt-0.5 text-xs text-gray-500">{payment.serial}</div>
                           <div className="mt-0.5 truncate text-xs text-gray-500">{payment.notes || "No Notes"}</div>
                         </div>
@@ -502,7 +557,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                 <div className="text-lg font-semibold text-gray-900">
                   {currencyLabel(
                     payments.reduce((sum, item) => sum + item.amount, 0),
-                    text(bill.currency),
+                    text(bill?.currency),
                   )}
                 </div>
                 <div className="text-xs text-gray-500">
@@ -523,13 +578,13 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (!(vendorId || billVendorId)) {
-                            showToast("This bill has no linked vendor", "warning");
+                          if (!(vendorId || resolvedVendorId)) {
+                            showToast("Select a vendor", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
                         }}
-                        disabled={savePaymentMut.isPending || totalLineAmount <= 0}
+                        disabled={saveDisabled}
                         className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                       >
                         Save
@@ -537,13 +592,13 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (!(vendorId || billVendorId)) {
-                            showToast("This bill has no linked vendor", "warning");
+                          if (!(vendorId || resolvedVendorId)) {
+                            showToast("Select a vendor", "warning");
                             return;
                           }
                           savePaymentMut.mutate();
                         }}
-                        disabled={savePaymentMut.isPending || totalLineAmount <= 0}
+                        disabled={saveDisabled}
                         className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-40"
                       >
                         {savePaymentMut.isPending ? "Saving..." : "Save & Send"}
@@ -628,41 +683,49 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Amount</label>
-                        <div className="space-y-2">
-                          {paymentDocs.map((doc) => (
-                            <div key={doc._id} className="mt-1 flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setLineAmounts((prev) => ({
-                                    ...prev,
-                                    [doc._id]: dueOfBill(doc).toFixed(2),
-                                  }))
-                                }
-                                className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-                              >
-                                Full Payment
-                              </button>
-                              <span className="min-w-[7rem] truncate text-sm text-gray-700">{billNumberOf(doc)}</span>
-                              <input
-                                value={lineAmounts[doc._id] ?? ""}
-                                onChange={(e) =>
-                                  setLineAmounts((prev) => ({
-                                    ...prev,
-                                    [doc._id]: e.target.value,
-                                  }))
-                                }
-                                className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
-                              />
-                            </div>
-                          ))}
-                        </div>
+                        {partyMode ? (
+                          <input
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            {paymentDocs.map((doc) => (
+                              <div key={doc._id} className="mt-1 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLineAmounts((prev) => ({
+                                      ...prev,
+                                      [doc._id]: dueOfBill(doc).toFixed(2),
+                                    }))
+                                  }
+                                  className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                                >
+                                  Full Payment
+                                </button>
+                                <span className="min-w-[7rem] truncate text-sm text-gray-700">{billNumberOf(doc)}</span>
+                                <input
+                                  value={lineAmounts[doc._id] ?? ""}
+                                  onChange={(e) =>
+                                    setLineAmounts((prev) => ({
+                                      ...prev,
+                                      [doc._id]: e.target.value,
+                                    }))
+                                  }
+                                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className={`rounded-md border p-4 ${modalSection}`}>
                         <div className="text-sm text-gray-500">
                           Outstanding Balance:{" "}
                           <span className="font-semibold text-gray-900">
-                            {currencyLabel(dueAmount, text(bill.currency))}
+                            {currencyLabel(dueAmount, text(bill?.currency))}
                           </span>
                         </div>
                       </div>
@@ -712,7 +775,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                   <div className="flex h-12 items-center justify-between gap-3 border-b border-gray-300 bg-gray-100 px-6 pr-14">
                     <div className="min-w-0">
                       <h3 className="truncate text-base font-semibold tracking-tight text-gray-900">
-                        {vendorNameOf(bill)}
+                        {displayVendorName}
                       </h3>
                     </div>
                     <div className="flex items-center gap-0.5">

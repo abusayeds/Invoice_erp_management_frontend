@@ -75,6 +75,7 @@ export interface CreatePaymentReceivedPayload {
   customer_name?: string;
   invoice_id?: string;
   invoice_number?: string;
+  payment_number?: string;
   currency?: string;
   date?: string;
   payment_method?: string[];
@@ -99,6 +100,7 @@ export interface UpdatePaymentReceivedPayload {
   customer_id?: string;
   invoice_id?: string;
   invoice_number?: string;
+  payment_number?: string;
   currency?: string;
   date?: string;
   payment_method?: string[];
