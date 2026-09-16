@@ -20,6 +20,8 @@ import { showToast } from "@/utils/toast";
 import { useCollection, repo, nextNumber, money as fmtMoney, PdfPreviewModal } from "@/lib/db";
 import { api } from "@/lib/api/client";
 import { buildListSortParam } from "@/lib/listSort";
+import { dateRangeFor } from "@/lib/listDateRange";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { CreateSalesReceiptForm } from "./CreateSalesReceiptForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
@@ -108,53 +110,6 @@ const receiptSortToBackend = (value: string) => {
       return "createdAt";
   }
 };
-const rangeFor = (option: string): { dateFrom?: string; dateTo?: string } => {
-  const now = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  if (option === "Today") {
-    const today = iso(now);
-    return { dateFrom: today, dateTo: today };
-  }
-  if (option === "This Week") {
-    const day = now.getDay();
-    const start = new Date(now);
-    start.setDate(now.getDate() - day);
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  if (option === "This Month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  if (option === "Last 30 Days") {
-    const start = new Date(now);
-    start.setDate(now.getDate() - 30);
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  if (option === "This Year") {
-    const start = new Date(now.getFullYear(), 0, 1);
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  return {};
-};
-
-const Dropdown: React.FC<{ trigger: React.ReactNode; children: (close: () => void) => React.ReactNode; align?: "left" | "right"; panelClass?: string }> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>{children(() => setOpen(false))}</div>}
-    </div>
-  );
-};
-
 const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({ onClose, children }) => {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -308,7 +263,7 @@ export const SalesReceipts: React.FC = () => {
   const dbReceipts = useCollection<any>("salesReceipts");
   const dbCustomers = useCollection<any>("customers", "name");
 
-  const dateRange = rangeFor(dateFilter);
+  const dateRange = dateRangeFor(dateFilter);
   const { data: backendList } = useQuery({
     queryKey: ["sales-receipt-backend-list", page, search, sortBy, sortDir, customerFilter, dateFilter, statusFilter],
     queryFn: () => fetchSalesReceipts({
@@ -316,6 +271,7 @@ export const SalesReceipts: React.FC = () => {
       limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(receiptSortToBackend(sortBy), sortDir),
+      status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
       customer_id: customerFilter || undefined,
       dateFrom: dateRange.dateFrom,

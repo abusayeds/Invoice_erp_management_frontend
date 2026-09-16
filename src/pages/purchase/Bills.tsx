@@ -10,7 +10,10 @@
  * Backend not wired (per request) — data is hardcoded to match the design.
  */
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { dateRangeFor } from "@/lib/listDateRange";
 import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
@@ -26,7 +29,7 @@ import { SignatureBlock } from "@/components/ui/SignatureBlock";
 import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
-import { BillPaymentsModal } from "@/components/modals/BillPaymentsModal";
+import { BillPaymentsModal, type BillPaymentDoc } from "@/components/modals/BillPaymentsModal";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
 import {
@@ -97,34 +100,6 @@ const STATUS_BADGE: Record<Status, string> = {
   Paid: "bg-green-500 text-white",
   "Partially Paid": "bg-orange-500 text-white",
   Overdue: "bg-red-500 text-white",
-};
-
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
 };
 
 /* ── Modal shell ───────────────────────────────────────────────── */
@@ -308,7 +283,6 @@ const EmailModal: React.FC<{ onClose: () => void; bill: Bill }> = ({ onClose, bi
 export const Bills: React.FC = () => {
   const dbBills = useCollection<any>("bills");
   const dbVendors = useCollection<any>("vendors", "name");
-  const vendorList = useMemo(() => dbVendors.map((v) => v.name), [dbVendors]);
 
   // Opened from an activity link / Header (+) → pre-select or open create.
   const location = useLocation();
@@ -321,6 +295,7 @@ export const Bills: React.FC = () => {
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
+  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -345,8 +320,9 @@ export const Bills: React.FC = () => {
 
   useEffect(() => { setPage(1); }, [search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
 
+  const billDateRange = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
   const { data: backendBills } = useQuery({
-    queryKey: ["bills-backend-list", page, search, sortBy, sortDir, statusFilter],
+    queryKey: ["bills-backend-list", page, search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter],
     queryFn: () => fetchBills({
       page,
       limit: LIST_PAGE_SIZE,
@@ -354,6 +330,9 @@ export const Bills: React.FC = () => {
       sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
+      vendor_id: vendorFilter || undefined,
+      dateField: "date",
+      ...billDateRange,
     }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
@@ -383,7 +362,6 @@ export const Bills: React.FC = () => {
     let list = bills.filter(
       (i) =>
         (statusFilter === "All" || i.status === statusFilter) &&
-        (vendorFilter === null || i.name === vendorFilter) &&
         (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
     );
     list = [...list].sort((a, b) => {
@@ -396,7 +374,7 @@ export const Bills: React.FC = () => {
       return sortDir === "Ascending" ? r : -r;
     });
     return list;
-  }, [bills, sortBy, sortDir, statusFilter, vendorFilter, search]);
+  }, [bills, sortBy, sortDir, statusFilter, search]);
 
   const selected =
     bills.find((i) => i.id === selectedId || i.backendId === selectedId) || bills[0];
@@ -418,7 +396,61 @@ export const Bills: React.FC = () => {
   });
 
   /** $ Add Payment — same split-pane modal as Invoice → Payment Received. */
-  const openBillPayment = () => setModal("payment");
+  const selectedBills = filtered.filter((i) => checked.has(i.id));
+  const batchPaymentBills = useMemo((): BillPaymentDoc[] | undefined => {
+    if (!selectMode || selectedBills.length === 0) return undefined;
+    const rows = backendBills?.rows ?? [];
+    const docs = selectedBills
+      .filter((bill) => bill.backendId)
+      .map((bill) => {
+        const row = rows.find((r) => r._id === bill.backendId);
+        const linkedDb =
+          dbBills.find((d) => String(d._id) === bill.backendId) ||
+          dbBills.find((d) => String(d.number).replace(/^#/, "") === bill.number.replace(/^#/, ""));
+        return {
+          _id: String(bill.backendId),
+          bill_number: bill.number.replace(/^#/, ""),
+          currency: row?.currency || linkedDb?.currency || "USD",
+          total: row?.amount ?? linkedDb?.total ?? (parseFloat(bill.amount.replace(/[^0-9.]/g, "")) || 0),
+          balance_amount:
+            row?.dueAmount ??
+            linkedDb?.amountDue ??
+            row?.amount ??
+            (parseFloat(bill.amount.replace(/[^0-9.]/g, "")) || 0),
+          paid_amount: row?.paidAmount ?? linkedDb?.amountPaid ?? 0,
+          vendor_id: row?.vendorId ? { _id: row.vendorId, name: row.vendorName || bill.name } : undefined,
+          vendor_name: bill.name || row?.vendorName || "",
+          payment_method: [],
+        } satisfies BillPaymentDoc;
+      });
+    return docs.length > 0 ? docs : undefined;
+  }, [selectMode, selectedBills, backendBills?.rows, dbBills]);
+  const openBillPayment = () => {
+    if (selectMode) {
+      if (checked.size === 0) {
+        showToast("Select bills to add payment", "warning");
+        return;
+      }
+      const withBackend = selectedBills.filter((bill) => bill.backendId);
+      if (withBackend.length === 0) {
+        showToast("Selected bills are not synced to the server", "warning");
+        return;
+      }
+      const rows = backendBills?.rows ?? [];
+      const vendorIds = withBackend
+        .map((bill) => rows.find((r) => r._id === bill.backendId)?.vendorId)
+        .filter(Boolean) as string[];
+      if (vendorIds.length !== withBackend.length) {
+        showToast("Some selected bills have no linked vendor", "warning");
+        return;
+      }
+      if (new Set(vendorIds).size > 1) {
+        showToast("Selected bills must belong to the same vendor", "warning");
+        return;
+      }
+    }
+    setModal("payment");
+  };
   const selectedBillRow = (backendBills?.rows ?? []).find((r) => {
     const linked = dbBills.find((b) => String(b._id) === r._id);
     return linked?.id === selectedId || r.number.replace(/^#/, "") === selected?.number?.replace(/^#/, "") || r._id === selected?.backendId;
@@ -504,6 +536,7 @@ export const Bills: React.FC = () => {
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select bills to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
+              <button title="Add Payment" onClick={openBillPayment} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><DollarSign className="w-4 h-4" /></button>
               <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
               <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
               <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
@@ -549,19 +582,15 @@ export const Bills: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Vendor{vendorFilter ? ` | ${vendorFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
-            {(close) => (
-              <>
-                <button onClick={() => { setVendorFilter(null); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All Vendors {vendorFilter === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-                <div className="px-3 py-1.5 border-y border-gray-200">
-                  <input placeholder="Search Vendor" className="w-full px-2 py-1 text-xs bg-gray-100 rounded focus:outline-none" />
-                </div>
-                {vendorList.map((c) => (
-                  <button key={c} onClick={() => { setVendorFilter(c); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c} {vendorFilter === c && <Check className="w-4 h-4 text-blue-600" />}</button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <PartyFilterPopover
+            kind="vendor"
+            applied={vendorFilter}
+            appliedLabel={vendorFilterLabel}
+            onApply={(id, label) => {
+              setVendorFilter(id);
+              setVendorFilterLabel(label);
+            }}
+          />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Bill date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => dateRanges.map((d) => (
               <button key={d} onClick={() => { setDateFilter(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -762,21 +791,24 @@ export const Bills: React.FC = () => {
       {modal === "payment" && (
         <BillPaymentsModal
           open
-          bill={{
-            _id: String(selectedBillRow?._id || selected?.backendId || selectedDb._id || ""),
-            bill_number: (selectedBillRow?.number || selected?.number || selectedDb.number || "").replace(/^#/, ""),
-            currency: selectedBillRow?.currency || selectedDb.currency || "USD",
-            total: selectedBillRow?.amount ?? selectedDb.total ?? 0,
-            balance_amount: selectedBillRow?.dueAmount ?? selectedDb.amountDue ?? 0,
-            paid_amount: selectedBillRow?.paidAmount ?? selectedDb.amountPaid ?? 0,
-            vendor_id: selectedBillRow?.vendorId
-              ? { _id: selectedBillRow.vendorId, name: selectedBillRow.vendorName || selected?.name }
-              : selectedVendor._id
-                ? { _id: String(selectedVendor._id), name: selectedVendor.contact || selectedVendor.name }
-                : undefined,
-            vendor_name: selected?.name || selectedBillRow?.vendorName || "",
-            payment_method: [],
-          }}
+          bills={batchPaymentBills}
+          bill={
+            batchPaymentBills?.[0] ?? {
+              _id: String(selectedBillRow?._id || selected?.backendId || selectedDb._id || ""),
+              bill_number: (selectedBillRow?.number || selected?.number || selectedDb.number || "").replace(/^#/, ""),
+              currency: selectedBillRow?.currency || selectedDb.currency || "USD",
+              total: selectedBillRow?.amount ?? selectedDb.total ?? 0,
+              balance_amount: selectedBillRow?.dueAmount ?? selectedDb.amountDue ?? 0,
+              paid_amount: selectedBillRow?.paidAmount ?? selectedDb.amountPaid ?? 0,
+              vendor_id: selectedBillRow?.vendorId
+                ? { _id: selectedBillRow.vendorId, name: selectedBillRow.vendorName || selected?.name }
+                : selectedVendor._id
+                  ? { _id: String(selectedVendor._id), name: selectedVendor.contact || selectedVendor.name }
+                  : undefined,
+              vendor_name: selected?.name || selectedBillRow?.vendorName || "",
+              payment_method: [],
+            }
+          }
           paymentMethods={paymentMethodOptions}
           onClose={() => setModal(null)}
           onSaved={() => setModal(null)}

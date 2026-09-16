@@ -32,7 +32,8 @@ import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, type BackendInvoiceDoc } from "@/services/invoicesApi";
 import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
-import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import {
   Search,
   Plus,
@@ -154,12 +155,6 @@ const statusList = [
   "All", "Draft", "Partial", "Paid", "Overdue", "Recurring",
   "Void", "Credit Notes Applied", "Open", "Trash",
 ];
-const customerList = [
-  "Aute quidem et perfe", "Dignissimos quae ull", "Dolor perspiciatis",
-  "Dolore quidem nisi d", "Harum ut dolore aliq", "sayed cpy", "sayed cpy 1",
-  "Aliqua In vel quod", "Aute quidem et perfe", "Sed aliquip eaque co", "SMT", "STA",
-].filter((v, i, a) => a.indexOf(v) === i);
-
 const STATUS_BADGE: Record<Status, string> = {
   Draft: "bg-gray-600 text-white",
   Paid: "bg-green-500 text-white",
@@ -256,71 +251,6 @@ const DynamicPaymentBadges: React.FC<{ names: string[]; options: PaymentMethodOp
           </span>
         );
       })}
-    </div>
-  );
-};
-
-/* ── Small dropdown ────────────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-}> = ({ trigger, children, align = "left" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left?: number; right?: number; width: number } | null>(null);
-
-  const updatePosition = () => {
-    const node = ref.current;
-    if (!node) return;
-    const bounds = node.getBoundingClientRect();
-    setRect({
-      top: bounds.bottom + 8,
-      left: align === "right" ? undefined : bounds.left,
-      right: align === "right" ? window.innerWidth - bounds.right : undefined,
-      width: bounds.width,
-    });
-  };
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    updatePosition();
-    const sync = () => updatePosition();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, true);
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync, true);
-    };
-  }, [open, align]);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => {
-        setOpen((o) => {
-          const next = !o;
-          if (!o) setTimeout(updatePosition, 0);
-          return next;
-        });
-      }}>{trigger}</button>
-      {open && rect && (
-        <div
-          ref={panelRef}
-          className="fixed z-50 min-w-[180px] max-h-[70vh] overflow-y-auto hover-scrollbar rounded-md border border-gray-200 bg-white py-1 shadow-xl"
-          style={align === "right" ? { top: rect.top, right: rect.right } : { top: rect.top, left: rect.left, minWidth: rect.width }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
     </div>
   );
 };
@@ -535,153 +465,6 @@ const EmailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
     </div>
   </Overlay>
 );
-
-/* ── Customer multi-select filter (staged, Apply/Cancel) ───────── */
-const CustomerFilter: React.FC<{
-  applied: string[] | null; // null = All Customers
-  onApply: (v: string[] | null) => void;
-}> = ({ applied, onApply }) => {
-  const [open, setOpen] = useState(false);
-  const [all, setAll] = useState(applied === null);
-  const [sel, setSel] = useState<Set<string>>(new Set(applied ?? customerList));
-  const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
-
-  const customerQuery = useQuery({
-    queryKey: ["sales-invoice-customer-filter", q],
-    queryFn: async () => fetchCustomers({ page: 1, limit: 100, searchTerm: q.trim() || undefined }),
-    staleTime: 30_000,
-  });
-
-  const customerOptions = useMemo<TCustomerRow[]>(() => {
-    const rows = customerQuery.data?.rows ?? [];
-    if (rows.length > 0) return rows;
-    if (q.trim()) return [];
-    return customerList.map((name, index) => ({ id: index + 1, _id: name, name, contact: "", amount: 0, status: "Active" }));
-  }, [customerQuery.data, q]);
-
-  const customerNames = useMemo(() => customerOptions.map((row) => row.name).filter(Boolean), [customerOptions]);
-
-  const updatePosition = () => {
-    const node = ref.current;
-    if (!node) return;
-    const bounds = node.getBoundingClientRect();
-    setRect({ top: bounds.bottom + 8, left: bounds.left, width: Math.max(bounds.width, 256) });
-  };
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  // sync staged state from applied whenever the menu opens
-  useEffect(() => {
-    if (open) {
-      setAll(applied === null);
-      setSel(new Set(applied ?? customerNames));
-      setQ("");
-      setTimeout(updatePosition, 0);
-    }
-  }, [open, applied]);
-
-  useEffect(() => {
-    if (!open) return;
-    updatePosition();
-    const sync = () => updatePosition();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, true);
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync, true);
-    };
-  }, [open]);
-
-  const toggleAll = () => {
-    if (all) {
-      setAll(false);
-      setSel(new Set());
-    } else {
-      setAll(true);
-      setSel(new Set(customerNames));
-    }
-  };
-  const toggle = (name: string) => {
-    setSel((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      setAll(next.size === customerNames.length);
-      return next;
-    });
-  };
-  const apply = () => {
-    onApply(all || sel.size === customerNames.length ? null : [...sel]);
-    setOpen(false);
-  };
-
-  const label = applied === null ? "All" : applied.length === 1 ? applied[0] : `${applied.length}`;
-
-  const Box: React.FC<{ on: boolean }> = ({ on }) => (
-    <span className={`w-4 h-4 rounded-[4px] flex items-center justify-center border ${on ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
-      {on && <Check className="w-3 h-3 text-white" />}
-    </span>
-  );
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => {
-          setOpen((o) => {
-            const next = !o;
-            if (!o) setTimeout(updatePosition, 0);
-            return next;
-          });
-        }}
-        className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"
-      >
-        <Plus className="w-3 h-3" />
-        Customer | {label}
-        <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && rect && (
-        <div ref={panelRef} className="fixed z-50 flex max-h-[70vh] w-64 flex-col rounded-md border border-gray-200 bg-white shadow-xl" style={{ top: rect.top, left: rect.left, width: rect.width }}>
-          <label className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-300 cursor-pointer">
-            <Box on={all} />
-            <input type="checkbox" className="hidden" checked={all} onChange={toggleAll} />
-            <span className="text-sm text-gray-800">All Customers</span>
-          </label>
-          <div className="p-2 border-b border-gray-300">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search Customer"
-              className="w-full px-2.5 py-1.5 text-sm bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
-            />
-          </div>
-          <div className="hover-scrollbar flex-1 overflow-y-auto py-1">
-            {customerOptions.map((customer) => (
-              <label key={customer._id} className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
-                <Box on={sel.has(customer.name)} />
-                <input type="checkbox" className="hidden" checked={sel.has(customer.name)} onChange={() => toggle(customer.name)} />
-                <span className="truncate">{customer.name}</span>
-              </label>
-            ))}
-          </div>
-          <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-gray-200">
-            <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-            <button onClick={apply} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Apply</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 /* ── "Mark as Paid" payment methods (reference submenu) ────────── */
 const PAY_METHOD_NAMES = [
@@ -976,7 +759,8 @@ export const SalesInvoice: React.FC = () => {
   const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [customerFilter, setCustomerFilter] = useState<string[] | null>(null);
+  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
+  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -1018,7 +802,7 @@ export const SalesInvoice: React.FC = () => {
   const dbInvoices = useCollection<any>("invoices");
   const dbCustomers = useCollection<any>("customers", "name");
   const { data: backendInvoiceList } = useQuery({
-    queryKey: ["sales-invoice-backend-list", page, search, sortBy, sortDir, statusFilter],
+    queryKey: ["sales-invoice-backend-list", page, search, sortBy, sortDir, statusFilter, customerFilter],
     queryFn: () =>
       fetchInvoices({
         page,
@@ -1027,6 +811,7 @@ export const SalesInvoice: React.FC = () => {
         sort: buildListSortParam(invoiceSortToBackend(sortBy), sortDir),
         status: statusFilter === "Trash" ? undefined : statusFilter,
         isDeleted: statusFilter === "Trash" || undefined,
+        customer_id: customerFilter || undefined,
       }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
@@ -1035,9 +820,7 @@ export const SalesInvoice: React.FC = () => {
 
   const filtered = useMemo(() => {
     const backendRows = backendInvoiceList?.rows ?? [];
-    return backendRows
-      .filter((row) => customerFilter === null || customerFilter.includes(row.customerName))
-      .map((row) => {
+    return backendRows.map((row) => {
         const linkedLocal =
           dbInvoices.find((item) => item._id === row._id) ||
           dbInvoices.find((item) => String(item.number).replace(/^#/, "") === row.number);
@@ -1056,7 +839,7 @@ export const SalesInvoice: React.FC = () => {
           status: (["Draft", "Paid", "Partial", "Overdue"].includes(row.status) ? row.status : "Draft") as Status,
         } satisfies Invoice;
       });
-  }, [backendInvoiceList?.rows, customerFilter, dbInvoices]);
+  }, [backendInvoiceList?.rows, dbInvoices]);
 
   const listDue = useMemo(
     () => filtered.reduce((sum, item) => sum + (Number(item.amount.replace(/[^0-9.-]/g, "")) || 0), 0),
@@ -1307,6 +1090,57 @@ export const SalesInvoice: React.FC = () => {
     `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedInvoices = filtered.filter((i) => checked.has(i.id));
+  const batchPaymentInvoices = useMemo((): BackendInvoiceDoc[] | undefined => {
+    if (!selectMode || selectedInvoices.length === 0) return undefined;
+    const docs = selectedInvoices
+      .filter((inv) => inv.backendId)
+      .map((inv) => {
+        const row = backendInvoiceList?.rows?.find((r) => r._id === inv.backendId);
+        const linkedDb =
+          dbInvoices.find((item) => item._id === inv.backendId) ||
+          dbInvoices.find((item) => String(item.number).replace(/^#/, "") === inv.number.replace(/^#/, ""));
+        const customerId = row?.customerId || "";
+        const detailCustomer =
+          selectedInvoiceDoc && selectedInvoiceDoc._id === inv.backendId ? selectedInvoiceDoc.customer_id : undefined;
+        return {
+          _id: String(inv.backendId),
+          invoice_number: inv.number.replace(/^#/, ""),
+          currency: inv.currency || row?.currency || "USD",
+          total: row?.amount ?? linkedDb?.total ?? num(inv.amount),
+          balance_amount: row?.dueAmount ?? linkedDb?.amountDue ?? row?.amount ?? num(inv.amount),
+          customer_id: customerId ? { _id: customerId, name: inv.name } : detailCustomer,
+          customer_name: inv.name,
+          payment_method: [],
+        } satisfies BackendInvoiceDoc;
+      });
+    return docs.length > 0 ? docs : undefined;
+  }, [selectMode, selectedInvoices, backendInvoiceList?.rows, dbInvoices, selectedInvoiceDoc]);
+  const openAddPayment = () => {
+    if (selectMode) {
+      if (checked.size === 0) {
+        showToast("Select invoices to add payment", "warning");
+        return;
+      }
+      const withBackend = selectedInvoices.filter((inv) => inv.backendId);
+      if (withBackend.length === 0) {
+        showToast("Selected invoices are not synced to the server", "warning");
+        return;
+      }
+      const rows = backendInvoiceList?.rows ?? [];
+      const customerIds = withBackend
+        .map((inv) => rows.find((r) => r._id === inv.backendId)?.customerId)
+        .filter(Boolean) as string[];
+      if (customerIds.length !== withBackend.length) {
+        showToast("Some selected invoices have no linked customer", "warning");
+        return;
+      }
+      if (new Set(customerIds).size > 1) {
+        showToast("Selected invoices must belong to the same customer", "warning");
+        return;
+      }
+    }
+    setModal("payment");
+  };
   const totals = {
     total: selectedInvoices.reduce((s, i) => s + num(i.amount), 0),
     paid: selectedInvoices.filter((i) => i.status === "Paid").reduce((s, i) => s + num(i.amount), 0),
@@ -1345,7 +1179,7 @@ export const SalesInvoice: React.FC = () => {
     { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") },
     { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) },
     { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) },
-    { icon: DollarSign, title: "Add Payment", onClick: () => setModal("payment") },
+    { icon: DollarSign, title: "Add Payment", onClick: openAddPayment },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
     { icon: Printer, title: "Print", onClick: () => setModal("preview") },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
@@ -1354,7 +1188,7 @@ export const SalesInvoice: React.FC = () => {
   const hasActiveListFilters =
     !!search.trim() ||
     statusFilter !== "All" ||
-    (customerFilter !== null && customerFilter.length > 0);
+    !!customerFilter;
 
   // Match Delivery Challan: only full-page empty when nothing selected and create is closed.
   // Create always opens inside the normal list + right-panel shell.
@@ -1403,7 +1237,7 @@ export const SalesInvoice: React.FC = () => {
                 {(close) => (
                   <PaidMenu
                     close={close}
-                    onAddPayment={() => setModal("payment")}
+                    onAddPayment={openAddPayment}
                     onMarkPaid={(m) => (checked.size === 0 ? showToast("Select invoices to mark as paid", "warning") : markAsPaid(m))}
                   />
                 )}
@@ -1516,8 +1350,15 @@ export const SalesInvoice: React.FC = () => {
             }
           </Dropdown>
 
-          {/* Customer multi-select filter */}
-          <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
+          <PartyFilterPopover
+            kind="customer"
+            applied={customerFilter}
+            appliedLabel={customerFilterLabel}
+            onApply={(id, label) => {
+              setCustomerFilter(id);
+              setCustomerFilterLabel(label);
+            }}
+          />
         </div>
 
         {/* List rows — FAB stays outside the scroller so it remains clickable */}
@@ -1844,15 +1685,19 @@ export const SalesInvoice: React.FC = () => {
       {modal === "payment" && (
         <InvoicePaymentsModal
           open
+          invoices={batchPaymentInvoices}
           invoice={
+            batchPaymentInvoices?.[0] ??
             selectedInvoiceDoc ?? {
-              _id: String(selectedDb._id || ""),
-              invoice_number: selectedDb.number?.replace(/^#/, "") || "",
-              currency: selectedDb.currency || "USD",
-              total: selectedDb.total || 0,
-              balance_amount: selectedDb.amountDue || 0,
-              customer_id: selectedCustomer._id ? { _id: String(selectedCustomer._id), name: selectedCustomer.contact || selectedCustomer.name } : undefined,
-              customer_name: selected.name,
+              _id: String(selectedDb._id || selected?.backendId || ""),
+              invoice_number: selectedDb.number?.replace(/^#/, "") || selected?.number?.replace(/^#/, "") || "",
+              currency: selectedDb.currency || selected?.currency || "USD",
+              total: selectedDb.total || num(selected?.amount || "0"),
+              balance_amount: selectedDb.amountDue ?? detailDue,
+              customer_id: selectedCustomer._id
+                ? { _id: String(selectedCustomer._id), name: selectedCustomer.contact || selectedCustomer.name }
+                : undefined,
+              customer_name: selected?.name,
               payment_method: [],
             }
           }

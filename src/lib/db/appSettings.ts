@@ -102,7 +102,7 @@ export const DOC_TYPES = [
 export const MODULE_NAMES = [
   "Invoice", "Proforma Invoice", "Estimate", "Delivery Challan", "Bill", "Credit Note",
   "Debit Note", "Expense", "Sales Receipt", "Packing Slip", "Delivery Note", "Time Log",
-  "Purchase Order", "Project", "Team", "Payment Received", "Payment Made", "Integrations",
+  "Purchase Order", "Project", "Team", "Payment Received", "Payment Made",
   "Banking", "Rewards", "Product", "Service", "Report", "My Documents",
 ] as const;
 

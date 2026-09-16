@@ -77,7 +77,6 @@ export const MODULE_UI_TO_API: Record<string, string> = {
   Team: "team",
   "Payment Received": "payment_received",
   "Payment Made": "payment_made",
-  Integrations: "integrations",
   Banking: "banking",
   Rewards: "rewards",
   Product: "product",

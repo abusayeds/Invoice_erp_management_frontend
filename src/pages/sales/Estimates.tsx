@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildListSortParam } from "@/lib/listSort";
+import { dateRangeFor } from "@/lib/listDateRange";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
@@ -93,49 +95,10 @@ const estimateSortToBackend = (value: string) => {
       return "createdAt";
   }
 };
-const dateRangeFor = (option: string): { dateFrom?: string; dateTo?: string } => {
-  const now = new Date();
-  const iso = (date: Date) => date.toISOString().slice(0, 10);
-  if (option === "Today") {
-    const today = iso(now);
-    return { dateFrom: today, dateTo: today };
-  }
-  if (option === "This Week") {
-    const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  if (option === "This Month") return { dateFrom: iso(new Date(now.getFullYear(), now.getMonth(), 1)), dateTo: iso(now) };
-  if (option === "Last 30 Days") {
-    const start = new Date(now);
-    start.setDate(now.getDate() - 30);
-    return { dateFrom: iso(start), dateTo: iso(now) };
-  }
-  if (option === "This Year") return { dateFrom: iso(new Date(now.getFullYear(), 0, 1)), dateTo: iso(now) };
-  return {};
-};
 const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
   const res = await fetch(dataUrl);
   const blob = await res.blob();
   return new File([blob], filename, { type: blob.type || "image/png" });
-};
-
-const Dropdown: React.FC<{ trigger: React.ReactNode; children: (close: () => void) => React.ReactNode; align?: "left" | "right"; panelClass?: string }> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>{children(() => setOpen(false))}</div>}
-    </div>
-  );
 };
 
 const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({ onClose, children }) => {

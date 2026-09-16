@@ -26,6 +26,9 @@ export interface PaymentReceivedListParams {
   sort?: string;
   invoice_id?: string;
   customer_id?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  dateField?: string;
   isDeleted?: boolean;
 }
 
@@ -54,6 +57,9 @@ export async function fetchPaymentReceived(
   if (params.isDeleted) query.isDeleted = "true";
   if (params.invoice_id) query.invoice_id = params.invoice_id;
   if (params.customer_id) query.customer_id = params.customer_id;
+  if (params.dateFrom) query.dateFrom = params.dateFrom;
+  if (params.dateTo) query.dateTo = params.dateTo;
+  if (params.dateField) query.dateField = params.dateField;
 
   const res = await api.raw.get("/payment-received/all", { params: query });
   const body = res.data ?? {};

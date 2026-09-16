@@ -2,7 +2,7 @@
  * File: src/components/layout/Sidebar.tsx
  * Sidebar structured to match the reference design:
  *   Dashboard · Sales · Purchases · Items · Time Logs · Projects ·
- *   Documents · Reports · Team · Integrations · Rewards · Banking · … · Companies (last)
+ *   Documents · Reports · Team · Rewards · Banking · … · Companies (last)
  * All existing modules are kept and grouped below the reference core.
  */
 
@@ -29,7 +29,6 @@ import {
   UserCog,
   Building2,
   Landmark,
-  Puzzle,
   Gift,
   ChevronDown,
   ChevronRight,
@@ -93,7 +92,6 @@ const LABEL_MODULE: Record<string, string> = {
   Projects: "Project",
   Reports: "Report",
   Team: "Team",
-  Integrations: "Integrations",
   Rewards: "Rewards",
   Banking: "Banking",
   "My Documents": "My Documents",
@@ -283,7 +281,6 @@ const navigationItems: NavItem[] = [
   },
   { label: "Reports", icon: BarChart3, path: "/reports" },
   { label: "Team", icon: Users, path: "/team" },
-  { label: "Integrations", icon: Puzzle, path: "/integrations" },
   { label: "Banking", icon: Landmark, path: "/banking" },
 
   /* ── Accounting & finance ────────────────────────────────────── */

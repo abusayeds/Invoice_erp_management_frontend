@@ -17,6 +17,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview, PdfPreviewModal } from "@/lib/db";
 import { buildListSortParam } from "@/lib/listSort";
+import { dateRangeFor } from "@/lib/listDateRange";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
 import { showToast } from "@/utils/toast";
 import { RecordPaymentReceivedForm, type PaymentReceivedPrefill } from "@/components/payments/RecordPaymentReceivedForm";
@@ -88,34 +91,6 @@ const paySortField = (label: string) => {
   if (label === "Payment #") return "payment_number";
   if (label === "Name" || label === "First Name" || label === "Last Name") return "customer_name";
   return "date";
-};
-
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
 };
 
 /* ── Modal shell ───────────────────────────────────────────────── */
@@ -348,6 +323,7 @@ export const PaymentReceived: React.FC = () => {
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
+  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -363,25 +339,26 @@ export const PaymentReceived: React.FC = () => {
   }, [searchInput]);
   useEffect(() => { setPage(1); }, [sortBy, sortDir, statusFilter, customerFilter, dateFilter]);
 
+  const dateRange = dateRangeFor(dateFilter);
   const { data: listData } = useQuery({
-    queryKey: ["payment-received-list", page, search, sortBy, sortDir, statusFilter],
+    queryKey: ["payment-received-list", page, search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
     queryFn: () => fetchPaymentReceived({
       page,
       limit: LIST_PAGE_SIZE,
       searchTerm: search || undefined,
       sort: buildListSortParam(paySortField(sortBy), sortDir),
       isDeleted: statusFilter === "Trash" || undefined,
+      customer_id: customerFilter || undefined,
+      dateFrom: dateRange.dateFrom,
+      dateTo: dateRange.dateTo,
+      dateField: "date",
     }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
   const listPagination = listData?.pagination;
   const payments: Payment[] = useMemo(
-    () => (listData?.rows ?? []).map(mapPaymentRow).filter((row) => !customerFilter || row.name === customerFilter),
-    [listData?.rows, customerFilter],
-  );
-  const customerList = useMemo(
-    () => [...new Set((listData?.rows ?? []).map(mapPaymentRow).map((p) => p.name).filter((n) => n && n !== "—"))],
+    () => (listData?.rows ?? []).map(mapPaymentRow),
     [listData?.rows],
   );
 
@@ -494,19 +471,15 @@ export const PaymentReceived: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Customer{customerFilter ? ` | ${customerFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
-            {(close) => (
-              <>
-                <button onClick={() => { setCustomerFilter(null); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All Customers {customerFilter === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-                <div className="px-3 py-1.5 border-y border-gray-200">
-                  <input placeholder="Search Customer" className="w-full px-2 py-1 text-xs bg-gray-100 rounded focus:outline-none" />
-                </div>
-                {customerList.map((c) => (
-                  <button key={c} onClick={() => { setCustomerFilter(c); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c} {customerFilter === c && <Check className="w-4 h-4 text-blue-600" />}</button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <PartyFilterPopover
+            kind="customer"
+            applied={customerFilter}
+            appliedLabel={customerFilterLabel}
+            onApply={(id, label) => {
+              setCustomerFilter(id);
+              setCustomerFilterLabel(label);
+            }}
+          />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Payment date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => dateRanges.map((d) => (
               <button key={d} onClick={() => { setDateFilter(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>

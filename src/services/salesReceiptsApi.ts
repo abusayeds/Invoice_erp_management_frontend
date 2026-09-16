@@ -76,6 +76,7 @@ export interface SalesReceiptListParams {
   limit?: number;
   searchTerm?: string;
   sort?: string;
+  status?: string;
   customer_id?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -153,6 +154,7 @@ export async function fetchSalesReceipts(params: SalesReceiptListParams): Promis
   if (params.searchTerm?.trim()) query.searchTerm = params.searchTerm.trim();
   if (params.sort) query.sort = params.sort;
   if (params.isDeleted) query.isDeleted = "true";
+  else if (params.status && params.status !== "All" && params.status !== "Trash") query.status = params.status;
   if (params.customer_id) query.customer_id = params.customer_id;
   if (params.dateFrom) query.dateFrom = params.dateFrom;
   if (params.dateTo) query.dateTo = params.dateTo;

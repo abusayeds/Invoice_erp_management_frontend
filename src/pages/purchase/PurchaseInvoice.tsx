@@ -12,6 +12,9 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { dateRangeFor } from "@/lib/listDateRange";
 import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
@@ -78,7 +81,6 @@ const sortDirections = ["Ascending", "Descending"];
 const statusList: (Status | "All" | "Trash")[] = ["All", "Draft", "Sent", "Paid", "Partially Paid", "Overdue", "Trash"];
 const paymentMethods = ["Paypal", "Stripe", "Venmo", "Paypal Checkout", "Braintree", "Custom", "UPI", "Google Pay", "Apple Pay", "Square"];
 const duplicateAs = ["As Purchase Invoice", "As Debit Note"];
-const vendorList = ["bipul company", "Ex aut sequi ad libe", "Explicabo Doloremqu", "Officiis ullam labor", "SSE", "SST", "bdcalling", "SMT"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
 const STATUS_BADGE: Record<Status, string> = {
@@ -87,32 +89,6 @@ const STATUS_BADGE: Record<Status, string> = {
   Paid: "bg-green-500 text-white",
   "Partially Paid": "bg-orange-500 text-white",
   Overdue: "bg-red-500 text-white",
-};
-
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
 };
 
 /* ── Modal shell ───────────────────────────────────────────────── */
@@ -319,6 +295,7 @@ const EmailModal: React.FC<{ onClose: () => void; inv: Invoice }> = ({ onClose, 
 
 /* ── Create Purchase Invoice (inline form, replaces detail) ────── */
 const CreateInvoice: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const dbVendorsForm = useCollection<any>("vendors", "name");
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorOpen, setVendorOpen] = useState(false);
   const [addVendor, setAddVendor] = useState(false);
@@ -329,7 +306,9 @@ const CreateInvoice: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const matches = vendorList.filter((v) => v.toLowerCase().includes(vendorQuery.toLowerCase()));
+  const matches = dbVendorsForm
+    .map((v) => v.name as string)
+    .filter((v) => v.toLowerCase().includes(vendorQuery.toLowerCase()));
   const rows = [{ no: 1, name: "", desc: "Description" }, { no: 2, name: "Service", desc: "Description" }];
 
   return (
@@ -450,6 +429,7 @@ export const PurchaseInvoices: React.FC = () => {
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
+  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -465,8 +445,9 @@ export const PurchaseInvoices: React.FC = () => {
   const dbInvoices = useCollection<any>("purchaseInvoices");
   const dbVendors = useCollection<any>("vendors", "name");
   useEffect(() => { setPage(1); }, [search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+  const invoiceDateRange = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
   const { data: backendList } = useQuery({
-    queryKey: ["purchase-invoice-backend-list", page, search, sortBy, sortDir, statusFilter],
+    queryKey: ["purchase-invoice-backend-list", page, search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter],
     queryFn: () => fetchPurchaseInvoices({
       page,
       limit: LIST_PAGE_SIZE,
@@ -474,6 +455,9 @@ export const PurchaseInvoices: React.FC = () => {
       sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
+      vendor_id: vendorFilter || undefined,
+      dateField: "date",
+      ...invoiceDateRange,
     }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
@@ -501,7 +485,6 @@ export const PurchaseInvoices: React.FC = () => {
     let list = invoices.filter(
       (i) =>
         (statusFilter === "All" || i.status === statusFilter) &&
-        (vendorFilter === null || i.name === vendorFilter) &&
         (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
     );
     list = [...list].sort((a, b) => {
@@ -514,7 +497,7 @@ export const PurchaseInvoices: React.FC = () => {
       return sortDir === "Ascending" ? r : -r;
     });
     return list;
-  }, [invoices, sortBy, sortDir, statusFilter, vendorFilter, search]);
+  }, [invoices, sortBy, sortDir, statusFilter, search]);
 
   const selected = invoices.find((i) => i.id === selectedId) || invoices[0];
 
@@ -544,7 +527,7 @@ export const PurchaseInvoices: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
   if (!selected && !createMode && !hasActiveFilters) return <ListEmptyState title="No purchase invoices yet" onCreate={() => setCreateMode(true)} createLabel="New Purchase Invoice" />;
 
   return (
@@ -597,19 +580,15 @@ export const PurchaseInvoices: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Vendor{vendorFilter ? ` | ${vendorFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
-            {(close) => (
-              <>
-                <button onClick={() => { setVendorFilter(null); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All Vendors {vendorFilter === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-                <div className="px-3 py-1.5 border-y border-gray-200">
-                  <input placeholder="Search Vendor" className="w-full px-2 py-1 text-xs bg-gray-100 rounded focus:outline-none" />
-                </div>
-                {vendorList.map((c) => (
-                  <button key={c} onClick={() => { setVendorFilter(c); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c} {vendorFilter === c && <Check className="w-4 h-4 text-blue-600" />}</button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <PartyFilterPopover
+            kind="vendor"
+            applied={vendorFilter}
+            appliedLabel={vendorFilterLabel}
+            onApply={(id, label) => {
+              setVendorFilter(id);
+              setVendorFilterLabel(label);
+            }}
+          />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Invoice date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => dateRanges.map((d) => (
               <button key={d} onClick={() => { setDateFilter(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>

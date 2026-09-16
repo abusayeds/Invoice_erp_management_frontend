@@ -10,7 +10,10 @@
  * Backend not wired (per request) — data is hardcoded to match the design.
  */
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { dateRangeFor } from "@/lib/listDateRange";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -85,32 +88,18 @@ const STATUS_BADGE: Record<Status, string> = {
   Received: "bg-green-600 text-white",
 };
 
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
+const rowDateIso = (value: string): string | null => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+};
+
+const matchesDateRange = (value: string, range: { dateFrom?: string; dateTo?: string }) => {
+  if (!range.dateFrom) return true;
+  const iso = rowDateIso(value);
+  if (!iso) return false;
+  const end = range.dateTo || range.dateFrom;
+  return iso >= range.dateFrom && iso <= end;
 };
 
 /* ── Modal shell ───────────────────────────────────────────────── */
@@ -171,6 +160,7 @@ export const PurchaseOrder: React.FC = () => {
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [vendorFilter, setVendorFilter] = useState<string | null>(null);
+  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
@@ -195,7 +185,12 @@ export const PurchaseOrder: React.FC = () => {
 
   const dbOrders = useCollection<any>("purchaseOrders");
   const dbVendors = useCollection<any>("vendors", "name");
-  const vendorList = useMemo(() => dbVendors.map((v) => v.name), [dbVendors]);
+  const poDateRange = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
+  const filteredVendorLocalId = useMemo(() => {
+    if (!vendorFilter) return null;
+    const ven = dbVendors.find((v) => String(v._id) === vendorFilter);
+    return ven?.id ?? null;
+  }, [dbVendors, vendorFilter]);
   const orders: PurchaseOrder[] = useMemo(
     () => dbOrders.slice().sort((a, b) => b.id - a.id).map((d) => {
       const ven = dbVendors.find((v) => v.id === d.vendorId);
@@ -210,7 +205,8 @@ export const PurchaseOrder: React.FC = () => {
     let list = orders.filter(
       (i) =>
         (statusFilter === "All" || i.status === statusFilter) &&
-        (vendorFilter === null || i.name === vendorFilter) &&
+        (filteredVendorLocalId == null || dbOrders.find((d) => d.id === i.id)?.vendorId === filteredVendorLocalId) &&
+        matchesDateRange(i.date, poDateRange) &&
         (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
     );
     list = [...list].sort((a, b) => {
@@ -223,7 +219,7 @@ export const PurchaseOrder: React.FC = () => {
       return sortDir === "Ascending" ? r : -r;
     });
     return list;
-  }, [orders, sortBy, sortDir, statusFilter, vendorFilter, search]);
+  }, [orders, sortBy, sortDir, statusFilter, filteredVendorLocalId, poDateRange, search, dbOrders]);
 
   const selected = orders.find((i) => i.id === selectedId) || orders[0];
   const selectedDb: any = dbOrders.find((d) => d.id === (selected?.id ?? selectedId)) || {};
@@ -338,7 +334,7 @@ export const PurchaseOrder: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter;
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
   if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No purchase orders yet" onCreate={() => setCreateOpen(true)} createLabel="New Purchase Order" />;
 
   return (
@@ -395,19 +391,15 @@ export const PurchaseOrder: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Vendor{vendorFilter ? ` | ${vendorFilter.split(" ")[0]}` : " | All"}<ChevronDown className="w-3 h-3" /></span>}>
-            {(close) => (
-              <>
-                <button onClick={() => { setVendorFilter(null); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All Vendors {vendorFilter === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-                <div className="px-3 py-1.5 border-y border-gray-200">
-                  <input placeholder="Search Vendor" className="w-full px-2 py-1 text-xs bg-gray-100 rounded focus:outline-none" />
-                </div>
-                {vendorList.map((c) => (
-                  <button key={c} onClick={() => { setVendorFilter(c); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{c} {vendorFilter === c && <Check className="w-4 h-4 text-blue-600" />}</button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <PartyFilterPopover
+            kind="vendor"
+            applied={vendorFilter}
+            appliedLabel={vendorFilterLabel}
+            onApply={(id, label) => {
+              setVendorFilter(id);
+              setVendorFilterLabel(label);
+            }}
+          />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Purchase orders date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => dateRanges.map((d) => (
               <button key={d} onClick={() => { setDateFilter(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>

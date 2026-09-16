@@ -33,6 +33,8 @@ export async function fetchVendors(params: {
   sort?: string;
   isArchive?: boolean;
   isDeleted?: boolean;
+  startDate?: string;
+  endDate?: string;
 }): Promise<{ rows: VendorListRow[]; pagination: TPartyPagination }> {
   const { rows, pagination } = await fetchPaginatedList<any>("/vendor/all", {
     page: params.page,
@@ -41,6 +43,8 @@ export async function fetchVendors(params: {
     sort: params.sort,
     isArchive: params.isArchive ? "true" : undefined,
     isDeleted: params.isDeleted ? "true" : undefined,
+    startDate: params.startDate || undefined,
+    endDate: params.endDate || undefined,
   });
   return { rows: rows.map(mapVendor), pagination };
 }

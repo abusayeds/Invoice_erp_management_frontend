@@ -4,12 +4,20 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, FileText, Upload } from "lucide-react";
+import { Calendar, Check, FileText, Upload } from "lucide-react";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchInvoices, type InvoiceListRow } from "@/services/invoicesApi";
-import { createPaymentReceived } from "@/services/paymentReceivedApi";
+import { createInvoicePayment } from "@/services/paymentReceivedApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
+
+export type PaymentReceivedPrefillInvoice = {
+  _id: string;
+  number: string;
+  dueAmount: number;
+  currency: string;
+  customerId?: string;
+};
 
 export type PaymentReceivedPrefill = {
   customerId?: string;
@@ -18,6 +26,16 @@ export type PaymentReceivedPrefill = {
   invoiceNumber?: string;
   dueAmount?: number;
   currency?: string;
+  invoices?: PaymentReceivedPrefillInvoice[];
+};
+
+type SelectedInvoice = {
+  _id: string;
+  number: string;
+  dueAmount: number;
+  currency: string;
+  customerId?: string;
+  customerName?: string;
 };
 
 type Props = {
@@ -44,20 +62,55 @@ const money = (n: number, currency = "USD") => {
   }
 };
 
+const invoiceLabel = (number: string) => (number.startsWith("#") ? number : `#${number}`);
+
+const initSelectedFromPrefill = (prefill?: PaymentReceivedPrefill): SelectedInvoice[] => {
+  if (prefill?.invoices?.length) {
+    return prefill.invoices.map((inv) => ({
+      _id: inv._id,
+      number: inv.number,
+      dueAmount: inv.dueAmount,
+      currency: inv.currency || prefill.currency || "USD",
+      customerId: inv.customerId ?? prefill.customerId,
+    }));
+  }
+  if (prefill?.invoiceId) {
+    return [
+      {
+        _id: prefill.invoiceId,
+        number: prefill.invoiceNumber ?? "",
+        dueAmount: prefill.dueAmount ?? 0,
+        currency: prefill.currency ?? "USD",
+        customerId: prefill.customerId,
+        customerName: prefill.customerName,
+      },
+    ];
+  }
+  return [];
+};
+
+const initLineAmounts = (invoices: SelectedInvoice[]): Record<string, string> => {
+  const next: Record<string, string> = {};
+  for (const inv of invoices) {
+    next[inv._id] = inv.dueAmount > 0 ? inv.dueAmount.toFixed(2) : "0.00";
+  }
+  return next;
+};
+
 export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, prefill }) => {
   const [customerId, setCustomerId] = useState(prefill?.customerId ?? "");
   const [customerQuery, setCustomerQuery] = useState(prefill?.customerName ?? "");
   const [customerOpen, setCustomerOpen] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
 
-  const [invoiceId, setInvoiceId] = useState(prefill?.invoiceId ?? "");
-  const [invoiceQuery, setInvoiceQuery] = useState(prefill?.invoiceNumber ?? "");
+  const [selectedInvoices, setSelectedInvoices] = useState<SelectedInvoice[]>(() => initSelectedFromPrefill(prefill));
+  const [invoiceQuery, setInvoiceQuery] = useState("");
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
-
-  const [amount, setAmount] = useState(
-    prefill?.dueAmount != null && prefill.dueAmount > 0 ? prefill.dueAmount.toFixed(2) : "",
+  const [lineAmounts, setLineAmounts] = useState<Record<string, string>>(() =>
+    initLineAmounts(initSelectedFromPrefill(prefill)),
   );
+
   const [method, setMethod] = useState("Cash");
   const [date, setDate] = useState(todayInput());
   const [notes, setNotes] = useState("");
@@ -107,35 +160,68 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
     staleTime: 10_000,
   });
 
-  const unpaidInvoices = useMemo(() => {
+  const invoiceOptions = useMemo(() => {
     const rows = invoicesData?.rows ?? [];
-    return rows.filter((inv) => inv.dueAmount > 0.001 || inv._id === invoiceId);
-  }, [invoicesData?.rows, invoiceId]);
+    const q = invoiceQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (inv) => inv.number.toLowerCase().includes(q) || inv.customerName.toLowerCase().includes(q),
+    );
+  }, [invoicesData?.rows, invoiceQuery]);
 
-  const selectedInvoice: InvoiceListRow | undefined = unpaidInvoices.find((i) => i._id === invoiceId);
+  const selectedIdSet = useMemo(() => new Set(selectedInvoices.map((inv) => inv._id)), [selectedInvoices]);
+
+  const totalLineAmount = useMemo(
+    () => selectedInvoices.reduce((sum, inv) => sum + Math.max(0, Number(lineAmounts[inv._id]) || 0), 0),
+    [lineAmounts, selectedInvoices],
+  );
+
+  const outstandingTotal = useMemo(
+    () => selectedInvoices.reduce((sum, inv) => sum + Math.max(0, inv.dueAmount), 0),
+    [selectedInvoices],
+  );
+
+  const currency =
+    selectedInvoices[0]?.currency || prefill?.currency || "USD";
 
   useEffect(() => {
-    if (selectedInvoice && !prefill?.dueAmount) {
-      setAmount(selectedInvoice.dueAmount > 0 ? selectedInvoice.dueAmount.toFixed(2) : "");
-    }
-  }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLineAmounts((prev) => {
+      const next: Record<string, string> = {};
+      for (const inv of selectedInvoices) {
+        next[inv._id] =
+          prev[inv._id] ?? (inv.dueAmount > 0 ? inv.dueAmount.toFixed(2) : "0.00");
+      }
+      return next;
+    });
+  }, [selectedInvoices]);
 
   const pickCustomer = (c: TCustomerRow) => {
     setCustomerId(c._id);
     setCustomerQuery(c.name);
     setCustomerOpen(false);
-    if (selectedInvoice && selectedInvoice.customerId !== c._id) {
-      setInvoiceId("");
-      setInvoiceQuery("");
-      setAmount("");
+    const mismatch = selectedInvoices.some((inv) => inv.customerId && inv.customerId !== c._id);
+    if (mismatch) {
+      setSelectedInvoices([]);
+      setLineAmounts({});
     }
   };
 
-  const pickInvoice = (inv: InvoiceListRow) => {
-    setInvoiceId(inv._id);
-    setInvoiceQuery(inv.number.startsWith("#") ? inv.number : `#${inv.number}`);
-    setInvoiceOpen(false);
-    setAmount(inv.dueAmount > 0 ? inv.dueAmount.toFixed(2) : "");
+  const toggleInvoice = (inv: InvoiceListRow) => {
+    setSelectedInvoices((prev) => {
+      const exists = prev.some((item) => item._id === inv._id);
+      if (exists) return prev.filter((item) => item._id !== inv._id);
+      return [
+        ...prev,
+        {
+          _id: inv._id,
+          number: inv.number,
+          dueAmount: inv.dueAmount,
+          currency: inv.currency,
+          customerId: inv.customerId,
+          customerName: inv.customerName,
+        },
+      ];
+    });
     if (inv.customerId && inv.customerId !== customerId) {
       setCustomerId(inv.customerId);
       setCustomerQuery(inv.customerName);
@@ -147,45 +233,67 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
       showToast("Select a customer", "warning");
       return;
     }
-    if (!invoiceId || !selectedInvoice) {
+    if (selectedInvoices.length === 0) {
       showToast("Select an invoice", "warning");
       return;
     }
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
+
+    const customerKeys = [
+      ...new Set(
+        selectedInvoices.map((inv) => inv.customerId).filter(Boolean) as string[],
+      ),
+    ];
+    if (customerKeys.length > 1) {
+      showToast("Selected invoices must belong to the same customer", "warning");
+      return;
+    }
+    if (customerKeys.length === 1 && customerKeys[0] !== customerId) {
+      showToast("Selected invoices must match the chosen customer", "warning");
+      return;
+    }
+
+    const creates = selectedInvoices
+      .map((inv) => ({
+        inv,
+        parsedAmount: Math.max(0, Number(lineAmounts[inv._id]) || 0),
+      }))
+      .filter(({ parsedAmount }) => parsedAmount > 0);
+
+    if (creates.length === 0) {
       showToast("Enter a valid amount", "warning");
       return;
     }
+
     setSaving(true);
     try {
-      const created = await createPaymentReceived({
-        customer_id: customerId,
-        customer_name: customerQuery,
-        invoice_id: invoiceId,
-        invoice_number: selectedInvoice.number.replace(/^#/, ""),
-        currency: selectedInvoice.currency || prefill?.currency || "USD",
-        date,
-        payment_method: [method],
-        notes: notes || undefined,
-        internal_notes: internalNotes || undefined,
-        product: [],
-        service: [],
-        sub_total: amt,
-        total: amt,
-        status: "Paid",
-      });
+      const serialBase = `PR-${Date.now().toString().slice(-8)}`;
+      const results = await Promise.all(
+        creates.map(({ inv, parsedAmount }, index) =>
+          createInvoicePayment({
+            customer_id: customerId,
+            invoice_id: inv._id,
+            payment_number: index === 0 ? serialBase : `${serialBase}-${index + 1}`,
+            payment_date: date,
+            payment_type: method || "Cash",
+            amount: parsedAmount,
+            notes: notes || undefined,
+            internal_notes: internalNotes || undefined,
+            type: "invoice",
+          }),
+        ),
+      );
       showToast("Payment recorded", "success");
-      onSaved(String(created._id));
+      onSaved(String(results[0]._id));
       onClose();
-    } catch (err: any) {
-      showToast(err?.message || "Couldn't save payment", "error");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      showToast(message || "Couldn't save payment", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const due = selectedInvoice?.dueAmount ?? prefill?.dueAmount ?? 0;
-  const currency = selectedInvoice?.currency || prefill?.currency || "USD";
+  const selectedInvoicesLabel = selectedInvoices.map((inv) => invoiceLabel(inv.number)).join(", ");
 
   return (
     <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
@@ -198,7 +306,7 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !customerId || !invoiceId}
+            disabled={saving || !customerId || selectedInvoices.length === 0 || totalLineAmount <= 0}
             className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-40"
           >
             Save
@@ -206,7 +314,7 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !customerId || !invoiceId}
+            disabled={saving || !customerId || selectedInvoices.length === 0 || totalLineAmount <= 0}
             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save & Send"}
@@ -252,6 +360,23 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
 
           <div>
             <label className="text-xs text-gray-500">Invoice *</label>
+            {selectedInvoices.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {selectedInvoices.map((inv) => (
+                  <span
+                    key={inv._id}
+                    className="inline-flex items-center rounded-full border border-gray-300 bg-gray-50 px-2.5 py-0.5 text-xs text-gray-800"
+                  >
+                    {invoiceLabel(inv.number)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {selectedInvoices.length > 0 && (
+              <p className="mt-1 text-xs text-gray-500 truncate" title={selectedInvoicesLabel}>
+                {selectedInvoicesLabel}
+              </p>
+            )}
             <div className="relative" ref={invoiceRef}>
               <input
                 value={invoiceQuery}
@@ -259,25 +384,32 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
                 onChange={(e) => {
                   setInvoiceQuery(e.target.value);
                   setInvoiceOpen(true);
-                  if (!e.target.value.trim()) setInvoiceId("");
                 }}
                 placeholder={customerId ? "Search invoice" : "Select customer first (or search invoice)"}
                 className={fieldClass}
               />
               {invoiceOpen && (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                  {unpaidInvoices.map((inv) => (
-                    <button
-                      key={inv._id}
-                      type="button"
-                      onClick={() => pickInvoice(inv)}
-                      className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      {inv.number} · {inv.customerName} · {money(inv.dueAmount, inv.currency)} due
-                    </button>
-                  ))}
-                  {unpaidInvoices.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-gray-400">No unpaid invoices found</div>
+                  {invoiceOptions.map((inv) => {
+                    const selected = selectedIdSet.has(inv._id);
+                    return (
+                      <button
+                        key={inv._id}
+                        type="button"
+                        onClick={() => toggleInvoice(inv)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300"}`}>
+                          {selected && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          {inv.number} · {inv.customerName} · {money(inv.dueAmount, inv.currency)} due
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {invoiceOptions.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-400">No invoices found</div>
                   )}
                 </div>
               )}
@@ -306,26 +438,44 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
 
           <div>
             <label className="text-xs text-gray-500">Amount</label>
-            <div className="flex items-center gap-2 mt-1">
-              <button
-                type="button"
-                onClick={() => setAmount(due > 0 ? due.toFixed(2) : "0.00")}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap"
-              >
-                Full Payment
-              </button>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
-              />
+            <div className="space-y-2 mt-1">
+              {selectedInvoices.length === 0 && (
+                <p className="text-sm text-gray-400">Select one or more invoices to enter amounts.</p>
+              )}
+              {selectedInvoices.map((inv) => (
+                <div key={inv._id} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLineAmounts((prev) => ({
+                        ...prev,
+                        [inv._id]: inv.dueAmount > 0 ? inv.dueAmount.toFixed(2) : "0.00",
+                      }))
+                    }
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap"
+                  >
+                    Full Payment
+                  </button>
+                  <span className="min-w-[7rem] truncate text-sm text-gray-700">{invoiceLabel(inv.number)}</span>
+                  <input
+                    value={lineAmounts[inv._id] ?? ""}
+                    onChange={(e) =>
+                      setLineAmounts((prev) => ({
+                        ...prev,
+                        [inv._id]: e.target.value,
+                      }))
+                    }
+                    className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
-          {selectedInvoice && (
+          {selectedInvoices.length > 0 && (
             <div className="text-sm text-gray-600 border border-gray-200 rounded-md p-3">
-              Outstanding on {selectedInvoice.number}:{" "}
-              <span className="font-semibold text-gray-900">{money(selectedInvoice.dueAmount, currency)}</span>
+              Outstanding balance:{" "}
+              <span className="font-semibold text-gray-900">{money(outstandingTotal, currency)}</span>
             </div>
           )}
 

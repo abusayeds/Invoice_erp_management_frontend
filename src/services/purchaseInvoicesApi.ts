@@ -36,6 +36,10 @@ export async function fetchPurchaseInvoices(params: {
   searchTerm?: string;
   sort?: string;
   status?: string;
+  vendor_id?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  dateField?: string;
   isDeleted?: boolean;
 }): Promise<{ rows: PurchaseInvoiceListRow[]; pagination: TPartyPagination }> {
   const { rows, pagination } = await fetchPaginatedList<any>("/purchase/invoices/all", {
@@ -44,6 +48,10 @@ export async function fetchPurchaseInvoices(params: {
     searchTerm: params.searchTerm,
     sort: params.sort,
     status: params.status && params.status !== "All" ? params.status : undefined,
+    vendor_id: params.vendor_id || undefined,
+    dateFrom: params.dateFrom || undefined,
+    dateTo: params.dateTo || undefined,
+    dateField: params.dateField || undefined,
     isDeleted: params.isDeleted ? "true" : undefined,
   });
   return { rows: rows.map(mapRow), pagination };

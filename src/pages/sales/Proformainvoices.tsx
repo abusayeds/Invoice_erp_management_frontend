@@ -20,6 +20,7 @@ import { showToast } from "@/utils/toast";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { buildListSortParam } from "@/lib/listSort";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import {
   fetchProformaInvoice,
   fetchProformaInvoices,
@@ -152,35 +153,6 @@ const addressLines = (address?: {
   zip?: string;
   country?: string;
 }) => [address?.street, address?.street2, [address?.city, address?.state, address?.zip].filter(Boolean).join(", "), address?.country].filter(Boolean);
-
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({ onClose, children }) => {
   useEffect(() => {

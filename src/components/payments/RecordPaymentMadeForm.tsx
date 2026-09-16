@@ -4,12 +4,22 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, FileText, Upload, X } from "lucide-react";
+import { Calendar, Check, FileText, Upload, X } from "lucide-react";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { fetchBills, updateBill, type BillListRow } from "@/services/billsApi";
-import { recordVendorPayment } from "@/services/vendorPaymentsApi";
+import { createVendorPayment } from "@/services/vendorPaymentsApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
+
+export type PaymentMadePrefillBill = {
+  _id: string;
+  number: string;
+  dueAmount: number;
+  currency: string;
+  vendorId?: string;
+  amount?: number;
+  paidAmount?: number;
+};
 
 export type PaymentMadePrefill = {
   vendorId?: string;
@@ -17,6 +27,18 @@ export type PaymentMadePrefill = {
   billId?: string;
   billNumber?: string;
   dueAmount?: number;
+  bills?: PaymentMadePrefillBill[];
+};
+
+type SelectedBill = {
+  _id: string;
+  number: string;
+  dueAmount: number;
+  currency: string;
+  vendorId?: string;
+  vendorName?: string;
+  amount: number;
+  paidAmount: number;
 };
 
 type Props = {
@@ -45,20 +67,59 @@ const money = (n: number, currency = "USD") => {
   }
 };
 
+const billLabel = (number: string) => (number.startsWith("#") ? number : `#${number}`);
+
+const initSelectedFromPrefill = (prefill?: PaymentMadePrefill): SelectedBill[] => {
+  if (prefill?.bills?.length) {
+    return prefill.bills.map((b) => ({
+      _id: b._id,
+      number: b.number,
+      dueAmount: b.dueAmount,
+      currency: b.currency || "USD",
+      vendorId: b.vendorId ?? prefill.vendorId,
+      amount: b.amount ?? b.dueAmount + (b.paidAmount ?? 0),
+      paidAmount: b.paidAmount ?? 0,
+    }));
+  }
+  if (prefill?.billId) {
+    return [
+      {
+        _id: prefill.billId,
+        number: prefill.billNumber ?? "",
+        dueAmount: prefill.dueAmount ?? 0,
+        currency: "USD",
+        vendorId: prefill.vendorId,
+        vendorName: prefill.vendorName,
+        amount: prefill.dueAmount ?? 0,
+        paidAmount: 0,
+      },
+    ];
+  }
+  return [];
+};
+
+const initLineAmounts = (bills: SelectedBill[]): Record<string, string> => {
+  const next: Record<string, string> = {};
+  for (const bill of bills) {
+    next[bill._id] = bill.dueAmount > 0 ? bill.dueAmount.toFixed(2) : "0.00";
+  }
+  return next;
+};
+
 export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefill, asModal = false }) => {
   const [vendorId, setVendorId] = useState(prefill?.vendorId ?? "");
   const [vendorQuery, setVendorQuery] = useState(prefill?.vendorName ?? "");
   const [vendorOpen, setVendorOpen] = useState(false);
   const vendorRef = useRef<HTMLDivElement>(null);
 
-  const [billId, setBillId] = useState(prefill?.billId ?? "");
-  const [billQuery, setBillQuery] = useState(prefill?.billNumber ?? "");
+  const [selectedBills, setSelectedBills] = useState<SelectedBill[]>(() => initSelectedFromPrefill(prefill));
+  const [billQuery, setBillQuery] = useState("");
   const [billOpen, setBillOpen] = useState(false);
   const billRef = useRef<HTMLDivElement>(null);
-
-  const [amount, setAmount] = useState(
-    prefill?.dueAmount != null && prefill.dueAmount > 0 ? prefill.dueAmount.toFixed(2) : "",
+  const [lineAmounts, setLineAmounts] = useState<Record<string, string>>(() =>
+    initLineAmounts(initSelectedFromPrefill(prefill)),
   );
+
   const [method, setMethod] = useState("Cash");
   const [date, setDate] = useState(todayInput());
   const [notes, setNotes] = useState("");
@@ -108,35 +169,67 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
     staleTime: 10_000,
   });
 
-  const unpaidBills = useMemo(() => {
+  const billOptions = useMemo(() => {
     const rows = billsData?.rows ?? [];
-    return rows.filter((b) => b.dueAmount > 0.001 || b._id === billId);
-  }, [billsData?.rows, billId]);
+    const q = billQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (b) => b.number.toLowerCase().includes(q) || b.vendorName.toLowerCase().includes(q),
+    );
+  }, [billsData?.rows, billQuery]);
 
-  const selectedBill: BillListRow | undefined = unpaidBills.find((b) => b._id === billId);
+  const selectedIdSet = useMemo(() => new Set(selectedBills.map((b) => b._id)), [selectedBills]);
+
+  const totalLineAmount = useMemo(
+    () => selectedBills.reduce((sum, b) => sum + Math.max(0, Number(lineAmounts[b._id]) || 0), 0),
+    [lineAmounts, selectedBills],
+  );
+
+  const outstandingTotal = useMemo(
+    () => selectedBills.reduce((sum, b) => sum + Math.max(0, b.dueAmount), 0),
+    [selectedBills],
+  );
 
   useEffect(() => {
-    if (selectedBill && !prefill?.dueAmount) {
-      setAmount(selectedBill.dueAmount > 0 ? selectedBill.dueAmount.toFixed(2) : "");
-    }
-  }, [billId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLineAmounts((prev) => {
+      const next: Record<string, string> = {};
+      for (const bill of selectedBills) {
+        next[bill._id] =
+          prev[bill._id] ?? (bill.dueAmount > 0 ? bill.dueAmount.toFixed(2) : "0.00");
+      }
+      return next;
+    });
+  }, [selectedBills]);
 
   const pickVendor = (v: VendorListRow) => {
     setVendorId(v._id);
     setVendorQuery(v.name);
     setVendorOpen(false);
-    if (selectedBill && selectedBill.vendorId !== v._id) {
-      setBillId("");
-      setBillQuery("");
-      setAmount("");
+    const mismatch = selectedBills.some((b) => b.vendorId && b.vendorId !== v._id);
+    if (mismatch) {
+      setSelectedBills([]);
+      setLineAmounts({});
     }
   };
 
-  const pickBill = (b: BillListRow) => {
-    setBillId(b._id);
-    setBillQuery(b.number.startsWith("#") ? b.number : `#${b.number}`);
-    setBillOpen(false);
-    setAmount(b.dueAmount > 0 ? b.dueAmount.toFixed(2) : "");
+  const toggleBill = (b: BillListRow) => {
+    setSelectedBills((prev) => {
+      const exists = prev.some((item) => item._id === b._id);
+      if (exists) return prev.filter((item) => item._id !== b._id);
+      return [
+        ...prev,
+        {
+          _id: b._id,
+          number: b.number,
+          dueAmount: b.dueAmount,
+          currency: b.currency,
+          vendorId: b.vendorId,
+          vendorName: b.vendorName,
+          amount: b.amount,
+          paidAmount: b.paidAmount,
+        },
+      ];
+    });
     if (b.vendorId && b.vendorId !== vendorId) {
       setVendorId(b.vendorId);
       setVendorQuery(b.vendorName);
@@ -148,45 +241,76 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
       showToast("Select a vendor", "warning");
       return;
     }
-    if (!billId || !selectedBill) {
+    if (selectedBills.length === 0) {
       showToast("Select a bill", "warning");
       return;
     }
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
+
+    const vendorKeys = [...new Set(selectedBills.map((b) => b.vendorId).filter(Boolean) as string[])];
+    if (vendorKeys.length > 1) {
+      showToast("Selected bills must belong to the same vendor", "warning");
+      return;
+    }
+    if (vendorKeys.length === 1 && vendorKeys[0] !== vendorId) {
+      showToast("Selected bills must match the chosen vendor", "warning");
+      return;
+    }
+
+    const allocations = selectedBills
+      .map((bill) => ({
+        bill,
+        parsedAmount: Math.max(0, Number(lineAmounts[bill._id]) || 0),
+      }))
+      .filter(({ parsedAmount }) => parsedAmount > 0);
+
+    if (allocations.length === 0) {
       showToast("Enter a valid amount", "warning");
       return;
     }
+
     setSaving(true);
     try {
-      const created = await recordVendorPayment({
+      const serial = `PM-${Date.now().toString().slice(-8)}`;
+      const paymentTotal = allocations.reduce((sum, item) => sum + item.parsedAmount, 0);
+
+      const created = await createVendorPayment({
         vendor_id: vendorId,
-        payment_amount: amt,
+        payment_amount: paymentTotal,
         payment_date: date,
         payment_method: [method],
         notes: notes || undefined,
-        reference_number: selectedBill.number.replace(/^#/, ""),
+        reference_number: serial,
+        allocations: allocations.map(({ bill, parsedAmount }) => ({
+          invoice_id: bill._id,
+          allocated_amount: parsedAmount,
+        })),
       });
 
-      const paid = selectedBill.paidAmount + amt;
-      const due = Math.max(0, selectedBill.amount - paid);
-      await updateBill(billId, {
-        paid_amount: +paid.toFixed(2),
-        balance_amount: +due.toFixed(2),
-        status: due <= 0 ? "Paid" : "Partial",
-      });
+      await Promise.all(
+        allocations.map(async ({ bill, parsedAmount }) => {
+          const paid = bill.paidAmount + parsedAmount;
+          const due = Math.max(0, bill.amount - paid);
+          await updateBill(bill._id, {
+            paid_amount: +paid.toFixed(2),
+            balance_amount: +due.toFixed(2),
+            status: due <= 0 ? "Paid" : "Partial",
+          });
+        }),
+      );
 
       showToast("Payment recorded", "success");
       onSaved(String(created._id));
       onClose();
-    } catch (err: any) {
-      showToast(err?.message || "Couldn't save payment", "error");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      showToast(message || "Couldn't save payment", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const due = selectedBill?.dueAmount ?? prefill?.dueAmount ?? 0;
+  const selectedBillsLabel = selectedBills.map((b) => billLabel(b.number)).join(", ");
+  const currency = selectedBills[0]?.currency || "USD";
 
   return (
     <section
@@ -203,7 +327,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !vendorId || !billId}
+            disabled={saving || !vendorId || selectedBills.length === 0 || totalLineAmount <= 0}
             className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-40"
           >
             Save
@@ -211,7 +335,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !vendorId || !billId}
+            disabled={saving || !vendorId || selectedBills.length === 0 || totalLineAmount <= 0}
             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save & Send"}
@@ -265,6 +389,23 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
 
           <div>
             <label className="text-xs text-gray-500">Bill *</label>
+            {selectedBills.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {selectedBills.map((b) => (
+                  <span
+                    key={b._id}
+                    className="inline-flex items-center rounded-full border border-gray-300 bg-gray-50 px-2.5 py-0.5 text-xs text-gray-800"
+                  >
+                    {billLabel(b.number)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {selectedBills.length > 0 && (
+              <p className="mt-1 text-xs text-gray-500 truncate" title={selectedBillsLabel}>
+                {selectedBillsLabel}
+              </p>
+            )}
             <div className="relative" ref={billRef}>
               <input
                 value={billQuery}
@@ -272,25 +413,32 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
                 onChange={(e) => {
                   setBillQuery(e.target.value);
                   setBillOpen(true);
-                  if (!e.target.value.trim()) setBillId("");
                 }}
                 placeholder={vendorId ? "Search bill" : "Select vendor first (or search bill)"}
                 className={fieldClass}
               />
               {billOpen && (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                  {unpaidBills.map((b) => (
-                    <button
-                      key={b._id}
-                      type="button"
-                      onClick={() => pickBill(b)}
-                      className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      {b.number} · {b.vendorName} · {money(b.dueAmount, b.currency)} due
-                    </button>
-                  ))}
-                  {unpaidBills.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-gray-400">No unpaid bills found</div>
+                  {billOptions.map((b) => {
+                    const selected = selectedIdSet.has(b._id);
+                    return (
+                      <button
+                        key={b._id}
+                        type="button"
+                        onClick={() => toggleBill(b)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300"}`}>
+                          {selected && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          {b.number} · {b.vendorName} · {money(b.dueAmount, b.currency)} due
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {billOptions.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-400">No bills found</div>
                   )}
                 </div>
               )}
@@ -319,26 +467,44 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
 
           <div>
             <label className="text-xs text-gray-500">Amount</label>
-            <div className="flex items-center gap-2 mt-1">
-              <button
-                type="button"
-                onClick={() => setAmount(due > 0 ? due.toFixed(2) : "0.00")}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap"
-              >
-                Full Payment
-              </button>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
-              />
+            <div className="space-y-2 mt-1">
+              {selectedBills.length === 0 && (
+                <p className="text-sm text-gray-400">Select one or more bills to enter amounts.</p>
+              )}
+              {selectedBills.map((b) => (
+                <div key={b._id} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLineAmounts((prev) => ({
+                        ...prev,
+                        [b._id]: b.dueAmount > 0 ? b.dueAmount.toFixed(2) : "0.00",
+                      }))
+                    }
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 whitespace-nowrap"
+                  >
+                    Full Payment
+                  </button>
+                  <span className="min-w-[7rem] truncate text-sm text-gray-700">{billLabel(b.number)}</span>
+                  <input
+                    value={lineAmounts[b._id] ?? ""}
+                    onChange={(e) =>
+                      setLineAmounts((prev) => ({
+                        ...prev,
+                        [b._id]: e.target.value,
+                      }))
+                    }
+                    className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
-          {selectedBill && (
+          {selectedBills.length > 0 && (
             <div className="text-sm text-gray-600 border border-gray-200 rounded-md p-3">
-              Outstanding on {selectedBill.number}:{" "}
-              <span className="font-semibold text-gray-900">{money(selectedBill.dueAmount, selectedBill.currency)}</span>
+              Outstanding balance:{" "}
+              <span className="font-semibold text-gray-900">{money(outstandingTotal, currency)}</span>
             </div>
           )}
 

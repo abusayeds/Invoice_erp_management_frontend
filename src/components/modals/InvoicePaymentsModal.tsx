@@ -21,6 +21,8 @@ import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 interface InvoicePaymentsModalProps {
   open: boolean;
   invoice: BackendInvoiceDoc | null;
+  /** When set, payment form allocates one amount row per invoice (batch from list selection). */
+  invoices?: BackendInvoiceDoc[];
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onSaved?: () => void;
@@ -78,6 +80,26 @@ const customerSubtitle = (invoice: BackendInvoiceDoc | null) => {
   const customer = invoice?.customer_id;
   if (customer && typeof customer === "object") return text(customer.name);
   return "";
+};
+
+const invoiceCustomerIdOf = (doc: BackendInvoiceDoc | null) => {
+  if (!doc) return "";
+  const customer = doc.customer_id;
+  if (customer && typeof customer === "object") return text(customer._id);
+  return text(customer) || text(doc.customer_name);
+};
+
+const invoiceNumberOf = (doc: BackendInvoiceDoc) => text(doc.invoice_number).replace(/^#/, "") || "—";
+
+const dueOfInvoice = (doc: BackendInvoiceDoc) => numberValue(doc.balance_amount ?? doc.total);
+
+const initLineAmountsForDocs = (docs: BackendInvoiceDoc[]): Record<string, string> => {
+  const next: Record<string, string> = {};
+  for (const doc of docs) {
+    const due = dueOfInvoice(doc);
+    next[doc._id] = due > 0 ? due.toFixed(2) : "0.00";
+  }
+  return next;
 };
 
 const firstPaymentMethod = (payment: BackendPaymentReceivedDoc) =>
@@ -143,6 +165,7 @@ const Dropdown: React.FC<{
 export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   open,
   invoice,
+  invoices: invoicesProp,
   paymentMethods,
   onClose,
   onSaved,
@@ -156,6 +179,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(todayInput());
   const [method, setMethod] = useState("");
   const [amount, setAmount] = useState("");
+  const [lineAmounts, setLineAmounts] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
@@ -164,13 +188,36 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   const [customerOpen, setCustomerOpen] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
 
+  const paymentDocs = useMemo(() => {
+    if (invoicesProp && invoicesProp.length > 0) return invoicesProp;
+    if (invoice) return [invoice];
+    return [];
+  }, [invoice, invoicesProp]);
+
+  const paymentDocIds = useMemo(() => paymentDocs.map((doc) => doc._id).filter(Boolean), [paymentDocs]);
+  const paymentDocIdsKey = useMemo(() => paymentDocIds.slice().sort().join(","), [paymentDocIds]);
+
+  const allowedLocalInvoiceKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const id of paymentDocIds) {
+      keys.add(String(id));
+      const local = localInvoices.find((item) => String(item._id) === id);
+      if (local?.id != null) keys.add(String(local.id));
+    }
+    return keys;
+  }, [paymentDocIds, localInvoices]);
+
   const invoiceId = invoice?._id ?? "";
-  const localInvoice = useMemo(() => localInvoices.find((item) => String(item._id) === invoiceId), [invoiceId, localInvoices]);
   const invoiceCustomerId =
     invoice?.customer_id && typeof invoice.customer_id === "object"
       ? text(invoice.customer_id._id)
       : text(invoice?.customer_id);
-  const dueAmount = numberValue(invoice?.balance_amount ?? invoice?.total);
+  const dueAmount = paymentDocs.reduce((sum, doc) => sum + dueOfInvoice(doc), 0);
+  const invoiceNumbersLabel = paymentDocs.map(invoiceNumberOf).join(", ");
+  const totalLineAmount = useMemo(
+    () => paymentDocs.reduce((sum, doc) => sum + Math.max(0, Number(lineAmounts[doc._id]) || 0), 0),
+    [lineAmounts, paymentDocs],
+  );
   const preferredMethods = useMemo(() => {
     const configured = paymentMethods.map((item) => item.name).filter(Boolean);
     const invoiceSpecific = Array.isArray(invoice?.payment_method) ? invoice.payment_method.filter(Boolean) : [];
@@ -184,31 +231,68 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setPaymentDate(todayInput());
     setPaymentSerial("");
     setMethod(preferredMethods[0] || "Cash");
+    setLineAmounts(initLineAmountsForDocs(paymentDocs));
     setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setNotes("");
     setInternalNotes("");
     setEditingPaymentId(null);
-  }, [open, preferredMethods, dueAmount, invoiceId]);
+  }, [open, preferredMethods, dueAmount, invoiceId, paymentDocs]);
 
   const { data: paymentsData, isFetching } = useQuery({
-    queryKey: ["invoice-payments", invoiceId],
+    queryKey: ["invoice-payments", paymentDocIdsKey],
     queryFn: async () => {
-      const [invoiceReceived, customerReceived, direct] = await Promise.all([
-        fetchPaymentReceived({ invoice_id: invoiceId, limit: 100, sort: "-date" }),
-        fetchPaymentReceived({ customer_id: invoiceCustomerId || undefined, limit: 100, sort: "-date" }),
-        fetchInvoiceDirectPayments(invoiceId),
-      ]);
-      return { received: [...invoiceReceived.rows, ...customerReceived.rows], direct };
+      const perInvoice = await Promise.all(
+        paymentDocIds.map(async (id) => {
+          const [received, direct] = await Promise.all([
+            fetchPaymentReceived({ invoice_id: id, limit: 100, sort: "-date" }),
+            fetchInvoiceDirectPayments(id),
+          ]);
+          return { received: received.rows, direct };
+        }),
+      );
+      const received = perInvoice.flatMap((item) => item.received);
+      const direct = perInvoice.flatMap((item) => item.direct);
+      const seenReceived = new Set<string>();
+      const dedupedReceived = received.filter((row) => {
+        if (seenReceived.has(row._id)) return false;
+        seenReceived.add(row._id);
+        return true;
+      });
+      const seenDirect = new Set<string>();
+      const dedupedDirect = direct.filter((row) => {
+        if (seenDirect.has(row._id)) return false;
+        seenDirect.add(row._id);
+        return true;
+      });
+      return { received: dedupedReceived, direct: dedupedDirect };
     },
-    enabled: open && !!invoiceId,
+    enabled: open && paymentDocIds.length > 0,
     placeholderData: (prev) => prev,
   });
+
+  const invoiceNumberForReceived = (payment: BackendPaymentReceivedDoc) => {
+    const fromNumber = text(payment.invoice_number);
+    if (fromNumber) return fromNumber.replace(/^#/, "");
+    const invRef = payment.invoice_id;
+    if (invRef && typeof invRef === "object") {
+      const fromRef = text(invRef.invoice_number);
+      if (fromRef) return fromRef.replace(/^#/, "");
+    }
+    const invId = typeof invRef === "string" ? invRef : text((invRef as { _id?: string } | null)?._id);
+    const doc = invId ? paymentDocs.find((item) => item._id === invId) : undefined;
+    return doc ? invoiceNumberOf(doc) : text(invoice?.invoice_number).replace(/^#/, "") || "—";
+  };
+
+  const invoiceNumberForDirect = (payment: BackendInvoicePaymentDoc) => {
+    const doc = payment.invoice_id ? paymentDocs.find((item) => item._id === payment.invoice_id) : undefined;
+    return doc ? invoiceNumberOf(doc) : text(invoice?.invoice_number).replace(/^#/, "") || "—";
+  };
 
   const payments = useMemo<UnifiedPayment[]>(() => {
     const received = (paymentsData?.received ?? []).map((payment, index) => ({
       id: payment._id,
       serial: text(payment.payment_number) || `PR-${String(index + 1).padStart(4, "0")}`,
-      invoiceNumber: text(payment.invoice_number) || text(invoice?.invoice_number),
+      invoiceNumber: invoiceNumberForReceived(payment),
       dateLabel: dateLabel(payment.date ?? payment.createdAt),
       timestamp: new Date(payment.date ?? payment.createdAt ?? 0).getTime() || 0,
       amount: numberValue(payment.total ?? payment.sub_total),
@@ -221,7 +305,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc, index) => ({
       id: payment._id,
       serial: text(payment.payment_number) || `PAY-${String(index + 1).padStart(4, "0")}`,
-      invoiceNumber: text(invoice?.invoice_number),
+      invoiceNumber: invoiceNumberForDirect(payment),
       dateLabel: dateLabel(payment.payment_date ?? payment.createdAt),
       timestamp: new Date(payment.payment_date ?? payment.createdAt ?? 0).getTime() || 0,
       amount: numberValue(payment.amount),
@@ -232,11 +316,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       source: "payment" as const,
     }));
     const local = localPaymentsReceived
-      .filter((payment) => {
-        if (localInvoice?.id && payment.invoiceId === localInvoice.id) return true;
-        if (invoiceCustomerId && String(payment.customerId) === String(localInvoice?.customerId ?? "")) return true;
-        return false;
-      })
+      .filter((payment) => allowedLocalInvoiceKeys.has(String(payment.invoiceId ?? "")))
       .map((payment, index) => ({
         id: `local-${payment.id}`,
         serial: text(payment.number) || `PR-LOCAL-${String(index + 1).padStart(4, "0")}`,
@@ -252,7 +332,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       }));
     const merged = [...direct, ...received, ...local].sort((a, b) => b.timestamp - a.timestamp);
     return merged.filter((payment, index, arr) => arr.findIndex((item) => item.id === payment.id && item.source === payment.source) === index);
-  }, [invoice, invoiceCustomerId, localInvoice, localPaymentsReceived, paymentsData]);
+  }, [allowedLocalInvoiceKeys, invoice, invoiceCustomerId, localPaymentsReceived, paymentDocs, paymentsData]);
 
   const customerSearch = useQuery({
     queryKey: ["invoice-payment-customers", customerQuery],
@@ -295,6 +375,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     setCustomerQuery(customerName(invoice));
     setPaymentSerial(nextPaymentNumber);
     setMethod(preferredMethods[0] || "Cash");
+    setLineAmounts(initLineAmountsForDocs(paymentDocs));
     setAmount(dueAmount > 0 ? dueAmount.toFixed(2) : "0.00");
     setPaymentDate(todayInput());
     setNotes("");
@@ -317,15 +398,19 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   };
 
   const refreshPayments = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["invoice-payments", invoiceId] });
-    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", invoiceId] });
+    await queryClient.invalidateQueries({ queryKey: ["invoice-payments", paymentDocIdsKey] });
+    await Promise.all(
+      paymentDocIds.map((id) =>
+        queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", id] }),
+      ),
+    );
   };
 
   const savePaymentMut = useMutation({
     mutationFn: async () => {
-      const parsedAmount = Math.max(0, Number(amount) || 0);
       const serial = text(paymentSerial) || nextPaymentNumber;
-      if (editingPaymentId && selectedPayment) {
+      if (editingPaymentId && selectedPayment && invoice) {
+        const parsedAmount = Math.max(0, Number(amount) || 0);
         if (selectedPayment.source === "paymentReceived") {
           return updatePaymentReceived(editingPaymentId, {
             customer_id: customerId || invoiceCustomerId || undefined,
@@ -356,17 +441,41 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
         });
       }
 
-      return createInvoicePayment({
-        customer_id: customerId || invoiceCustomerId,
-        invoice_id: invoiceId,
-        payment_number: serial,
-        payment_date: paymentDate,
-        payment_type: method || "Cash",
-        amount: parsedAmount,
-        notes,
-        internal_notes: internalNotes,
-        type: "invoice",
-      });
+      if (paymentDocs.length > 1) {
+        const customerKeys = [...new Set(paymentDocs.map((doc) => invoiceCustomerIdOf(doc)).filter(Boolean))];
+        if (customerKeys.length > 1) {
+          throw new Error("Selected invoices must belong to the same customer");
+        }
+      }
+
+      const creates = paymentDocs
+        .map((doc) => ({
+          doc,
+          parsedAmount: Math.max(0, Number(lineAmounts[doc._id]) || 0),
+        }))
+        .filter(({ parsedAmount }) => parsedAmount > 0);
+
+      if (creates.length === 0) {
+        throw new Error("Enter a payment amount");
+      }
+
+      const sharedCustomer = customerId || invoiceCustomerId || invoiceCustomerIdOf(paymentDocs[0]);
+
+      return Promise.all(
+        creates.map(({ doc, parsedAmount }, index) =>
+          createInvoicePayment({
+            customer_id: sharedCustomer,
+            invoice_id: doc._id,
+            payment_number: index === 0 ? serial : `${serial}-${index + 1}`,
+            payment_date: paymentDate,
+            payment_type: method || "Cash",
+            amount: parsedAmount,
+            notes,
+            internal_notes: internalNotes,
+            type: "invoice",
+          }),
+        ),
+      );
     },
     onSuccess: () => {
       refreshPayments();
@@ -375,10 +484,15 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       setShowForm(false);
       onSaved?.();
     },
-    onError: () => {
-      showToast(editingPaymentId ? "Payment update failed" : "Payment save failed", "error");
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "";
+      showToast(message || (editingPaymentId ? "Payment update failed" : "Payment save failed"), "error");
     },
   });
+
+  const saveDisabled =
+    savePaymentMut.isPending ||
+    (editingPaymentId ? !amount : totalLineAmount <= 0);
 
   const deletePaymentMut = useMutation({
     mutationFn: async () => {
@@ -551,7 +665,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                           }
                           savePaymentMut.mutate();
                         }}
-                        disabled={savePaymentMut.isPending || !amount}
+                        disabled={saveDisabled}
                         className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                       >
                         Save
@@ -564,7 +678,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                           }
                           savePaymentMut.mutate();
                         }}
-                        disabled={savePaymentMut.isPending || !amount}
+                        disabled={saveDisabled}
                         className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-40"
                       >
                         {savePaymentMut.isPending ? "Saving..." : "Save & Send"}
@@ -611,7 +725,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Invoice #</label>
-                        <input value={text(invoice.invoice_number)} readOnly className={fieldClass} />
+                        <input value={invoiceNumbersLabel} readOnly className={fieldClass} />
                       </div>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
@@ -635,12 +749,52 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Amount</label>
-                        <div className="mt-1 flex items-center gap-2">
-                          <button onClick={() => setAmount(dueAmount.toFixed(2))} className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">
-                            Full Payment
-                          </button>
-                          <input value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900" />
-                        </div>
+                        {editingPaymentId ? (
+                          <div className="mt-1 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAmount(dueOfInvoice(invoice!).toFixed(2))}
+                              className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                            >
+                              Full Payment
+                            </button>
+                            <input
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)}
+                              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                            />
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {paymentDocs.map((doc) => (
+                              <div key={doc._id} className="mt-1 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLineAmounts((prev) => ({
+                                      ...prev,
+                                      [doc._id]: dueOfInvoice(doc).toFixed(2),
+                                    }))
+                                  }
+                                  className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                                >
+                                  Full Payment
+                                </button>
+                                <span className="min-w-[7rem] truncate text-sm text-gray-700">{invoiceNumberOf(doc)}</span>
+                                <input
+                                  value={lineAmounts[doc._id] ?? ""}
+                                  onChange={(e) =>
+                                    setLineAmounts((prev) => ({
+                                      ...prev,
+                                      [doc._id]: e.target.value,
+                                    }))
+                                  }
+                                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className={`rounded-md border p-4 ${modalSection}`}>
                         <div className="text-sm text-gray-500">

@@ -8,7 +8,9 @@
  * Backend not wired (per request) — data is hardcoded to match the design.
  */
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { createdOnToRange } from "@/services/customersApi";
 import { useQuery } from "@tanstack/react-query";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
@@ -75,34 +77,6 @@ const activityFilters = ["All", "Created", "Updated", "Archived", "Bill", "Expen
 /* ── Helpers ───────────────────────────────────────────────────── */
 const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/* ── Outside-click dropdown ────────────────────────────────────── */
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div className={`absolute z-30 mt-2 min-w-[170px] bg-white border border-gray-200 rounded-md shadow-xl py-1 ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 /* ── Detail "more" menu (Archive / Duplicate ▸ / Trash) ────────── */
 const DetailMoreMenu: React.FC<{
@@ -621,8 +595,9 @@ export const Vendors: React.FC = () => {
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [search, sortBy, statusFilter, createdOn]);
 
+  const createdOnRange = createdOnToRange(createdOn);
   const { data: backendVendors } = useQuery({
-    queryKey: ["vendors-backend-list", page, search, sortBy, statusFilter],
+    queryKey: ["vendors-backend-list", page, search, sortBy, statusFilter, createdOn],
     queryFn: () => fetchVendors({
       page,
       limit: LIST_PAGE_SIZE,
@@ -630,6 +605,7 @@ export const Vendors: React.FC = () => {
       sort: buildListSortParam(sortBy === "Created On" ? "createdAt" : "name", "Descending"),
       isArchive: statusFilter === "Archived" || undefined,
       isDeleted: statusFilter === "Trash" || undefined,
+      ...createdOnRange,
     }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
