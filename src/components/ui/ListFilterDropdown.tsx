@@ -33,6 +33,9 @@ export const ListFilterDropdown: React.FC<{
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      // Nested MenuSideFlyout is portaled outside panelRef — do not treat it as outside.
+      if (el?.closest?.("[data-menu-side-flyout]")) return;
       const target = e.target as Node;
       if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
       setOpen(false);

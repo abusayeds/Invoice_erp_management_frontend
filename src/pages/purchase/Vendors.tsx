@@ -601,7 +601,6 @@ export const Vendors: React.FC = () => {
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
   const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
-  const [dupConfirm, setDupConfirm] = useState<null | "vendor" | "both">(null);
   const [editMode, setEditMode] = useState(false);
   const [recordsType, setRecordsType] = useState<"Expenses" | "Bill" | "Payment Made">("Expenses");
 
@@ -723,45 +722,32 @@ export const Vendors: React.FC = () => {
   const goToCustomer = (customerId: string) =>
     navigate("/sales/customers", { state: { selectedId: String(customerId) } });
 
-  const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
-    if (!doc) return;
-    if (target === "customer") {
-      try {
-        const form = docToForm(doc);
-        form.name = `${form.name} (Copy)`;
-        const created = await createCustomer(form);
-        showToast("Duplicated as customer", "success");
-        goToCustomer(created._id);
-      } catch (e: any) {
-        showToast(e?.message || "Duplicate as customer failed", "error");
-      }
-      return;
-    }
-    setDupConfirm(target);
+  const buildDupForm = () => {
+    const form = docToForm(doc!);
+    form.name = `${form.name || "Contact"} (Copy)`.trim();
+    form.email = "";
+    form.isLoginRequired = false;
+    return form;
   };
 
-  const confirmDuplicate = async () => {
-    const target = dupConfirm;
-    setDupConfirm(null);
-    if (!doc || !target) return;
+  const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
+    if (!doc) return;
+    const form = buildDupForm();
     try {
-      const form = docToForm(doc);
-      form.name = `${form.name} (Copy)`;
-      const created = await createVendor(form);
-      invalidateList();
-      setSelectedId(String(created._id));
-      showToast("Vendor duplicated", "success");
-      if (target === "both") {
-        try {
-          const asCustomer = await createCustomer({ ...form });
-          showToast("Also duplicated as customer", "success");
-          goToCustomer(asCustomer._id);
-        } catch {
-          showToast("Vendor copied; customer copy failed", "warning");
-        }
+      if (target === "vendor" || target === "both") {
+        const created = await createVendor(form);
+        invalidateList();
+        setSelectedId(String(created._id));
+        showToast("Vendor duplicated", "success");
+        if (target === "vendor") return;
       }
-    } catch {
-      showToast("Duplicate failed", "error");
+      if (target === "customer" || target === "both") {
+        const asCustomer = await createCustomer({ ...form });
+        showToast(target === "both" ? "Also duplicated as customer" : "Duplicated as customer", "success");
+        goToCustomer(asCustomer._id);
+      }
+    } catch (e: any) {
+      showToast(e?.message || "Duplicate failed", "error");
     }
   };
 
@@ -1091,7 +1077,7 @@ export const Vendors: React.FC = () => {
                     }}
                   />
                 </div>
-                {/* <div className="flex items-center justify-between max-w-sm">
+                <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Contact Login</span>
                   <Toggle
                     on={profile.is_login_required ?? false}
@@ -1101,7 +1087,7 @@ export const Vendors: React.FC = () => {
                         .then(() => qc.invalidateQueries({ queryKey: ["vendor", selected._id] }));
                     }}
                   />
-                </div> */}
+                </div>
               </div>
             </div>
           )}
@@ -1168,19 +1154,6 @@ export const Vendors: React.FC = () => {
       )}
       {selAction === "delete" && (
         <ConfirmAlert message="Are you sure want to delete these vendors?" onNo={() => setSelAction(null)} onYes={() => bulkDeleteMut.mutate(checkedIds)} />
-      )}
-      {dupConfirm && (
-        <Overlay onClose={() => setDupConfirm(null)}>
-          <div className="w-full max-w-sm my-40 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="p-6">
-              <p className="text-sm text-gray-800 text-center mb-6">Contact with this company name already exists. Create anyway?</p>
-              <div className="flex justify-center gap-3">
-                <button onClick={() => setDupConfirm(null)} className="px-5 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">No</button>
-                <button onClick={confirmDuplicate} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Yes</button>
-              </div>
-            </div>
-          </div>
-        </Overlay>
       )}
     </div>
   );

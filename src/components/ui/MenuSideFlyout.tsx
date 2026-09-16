@@ -70,13 +70,17 @@ export const MenuSideFlyout: React.FC<Props> = ({
   return createPortal(
     <div
       ref={panelRef}
+      data-menu-side-flyout=""
       className={`fixed z-[90] bg-white border border-gray-200 rounded-md shadow-xl py-1 overflow-hidden ${className}`}
       style={{
         width: MENU_SIDE_FLYOUT_WIDTH,
         maxWidth: MENU_SIDE_FLYOUT_WIDTH,
         ...(pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999, visibility: "hidden" as const }),
       }}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        e.nativeEvent.stopImmediatePropagation();
+      }}
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
     >

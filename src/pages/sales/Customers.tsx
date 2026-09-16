@@ -504,6 +504,7 @@ const EditCustomer: React.FC<{
     currency: "$ USD", defaultTaxService: "None", defaultTaxProduct: "None",
     hourlyRate: "", paymentTerms: "Default Company",
     openingBalance: "", openingBalanceDate: "", notes: "", paymentReminder: true,
+    isLoginRequired: false,
   });
 
   const set = (k: keyof CustomerFormData, v: any) => setF((p) => ({ ...p, [k]: v }));
@@ -656,6 +657,10 @@ const EditCustomer: React.FC<{
             <span className="text-sm font-semibold text-gray-900">Payment Reminder</span>
             <Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} />
           </div>
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-semibold text-gray-900">Contact Login</span>
+            <Toggle on={!!f.isLoginRequired} onChange={() => set("isLoginRequired", !f.isLoginRequired)} />
+          </div>
         </div>
       )}
       </TabSlide>
@@ -722,7 +727,6 @@ export const Customers: React.FC = () => {
   const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "pdfSettings">(null);
   const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
-  const [dupConfirm, setDupConfirm] = useState<null | "customer" | "both">(null);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
@@ -877,45 +881,33 @@ export const Customers: React.FC = () => {
     mergeMut.mutate({ survivorId, mergedIds });
   };
 
-  /* ── Duplicate (client-side copy: calls create) ── */
+  /* ── Duplicate — login off + email cleared so unique-index / password rules never block copies ── */
+  const buildDupForm = () => {
+    const form = docToForm(doc!);
+    form.name = `${form.name || "Contact"} (Copy)`.trim();
+    form.email = "";
+    form.isLoginRequired = false;
+    return form;
+  };
+
   const handleDuplicate = async (target: "customer" | "vendor" | "both") => {
     if (!doc) return;
-    if (target === "vendor") {
-      try {
-        const form = docToForm(doc);
-        form.name = `${form.name} (Copy)`;
-        const created = await createVendor(form);
-        showToast("Duplicated as vendor", "success");
-        navigate("/purchase/vendors", { state: { selectedId: created._id } });
-      } catch (e: any) {
-        showToast(e?.message || "Duplicate as vendor failed", "error");
-      }
-      return;
-    }
-    setDupConfirm(target);
-  };
-  const confirmDuplicate = async () => {
-    const target = dupConfirm;
-    setDupConfirm(null);
-    if (!doc || !target) return;
+    const form = buildDupForm();
     try {
-      const form = docToForm(doc);
-      form.name = `${form.name} (Copy)`;
-      const created = await createCustomer(form);
-      qc.invalidateQueries({ queryKey: ["customers"] });
-      setSelectedId(created._id);
-      showToast("Customer duplicated", "success");
-      if (target === "both") {
-        try {
-          const asVendor = await createVendor({ ...form, name: `${form.name}` });
-          showToast("Also duplicated as vendor", "success");
-          navigate("/purchase/vendors", { state: { selectedId: asVendor._id } });
-        } catch {
-          showToast("Customer copied; vendor copy failed", "warning");
-        }
+      if (target === "customer" || target === "both") {
+        const created = await createCustomer(form);
+        qc.invalidateQueries({ queryKey: ["customers"] });
+        setSelectedId(created._id);
+        showToast("Customer duplicated", "success");
+        if (target === "customer") return;
       }
-    } catch {
-      showToast("Duplicate failed", "error");
+      if (target === "vendor" || target === "both") {
+        const asVendor = await createVendor({ ...form });
+        showToast(target === "both" ? "Also duplicated as vendor" : "Duplicated as vendor", "success");
+        navigate("/purchase/vendors", { state: { selectedId: asVendor._id } });
+      }
+    } catch (e: any) {
+      showToast(e?.message || "Duplicate failed", "error");
     }
   };
 
@@ -1235,15 +1227,15 @@ export const Customers: React.FC = () => {
                   />
                 </div>
                 <div className="flex items-center justify-between max-w-sm">
-                  {/* <span className="text-sm text-gray-700">Contact Login</span> */}
-                  {/* <Toggle
+                  <span className="text-sm text-gray-700">Contact Login</span>
+                  <Toggle
                     on={profile.is_login_required ?? false}
                     onChange={() => {
                       if (!selected._id) return;
                       updateCustomer(selected._id, { ...docToForm(doc!), isLoginRequired: !(profile.is_login_required ?? false) })
                         .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
                     }}
-                  /> */}
+                  />
                 </div>
               </div>
             </div>
@@ -1322,19 +1314,6 @@ export const Customers: React.FC = () => {
           onNo={() => setSelAction(null)}
           onYes={() => bulkDeleteMut.mutate(checkedIds)}
         />
-      )}
-      {dupConfirm && (
-        <Overlay onClose={() => setDupConfirm(null)}>
-          <div className="w-full max-w-sm my-40 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="p-6">
-              <p className="text-sm text-gray-800 text-center mb-6">Contact with this company name already exists. Create anyway?</p>
-              <div className="flex justify-center gap-3">
-                <button onClick={() => setDupConfirm(null)} className="px-5 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">No</button>
-                <button onClick={confirmDuplicate} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Yes</button>
-              </div>
-            </div>
-          </div>
-        </Overlay>
       )}
     </div>
   );
