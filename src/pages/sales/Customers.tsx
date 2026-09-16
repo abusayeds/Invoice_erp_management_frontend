@@ -87,6 +87,7 @@ import {
 import type { TBackendParty } from "@/services/customerTypes";
 import { buildListSortParam } from "@/lib/listSort";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
+import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { createVendor } from "@/services/vendorsApi";
@@ -173,31 +174,50 @@ const DetailMoreMenu: React.FC<{
   onDuplicate: (target: "customer" | "vendor" | "both") => void;
 }> = ({ close, onArchive, onTrash, onDuplicate }) => {
   const [subOpen, setSubOpen] = useState(false);
+  const dupRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<number | null>(null);
   const item = "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left";
   const run = (fn: () => void) => { fn(); close(); };
+  const openSub = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    setSubOpen(true);
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setSubOpen(false), 160);
+  };
   return (
     <div>
       <button type="button" onClick={() => run(onArchive)} className={item}>
         <span className="flex items-center gap-2"><Archive className="w-4 h-4" /> Archive</span>
       </button>
-      <button type="button" onClick={() => setSubOpen((o) => !o)} className={item}>
-        <span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${subOpen ? "rotate-90" : ""}`} />
-      </button>
-      {subOpen && (
-        <div className="bg-gray-50 border-y border-gray-100 py-0.5">
+      <div
+        ref={dupRef}
+        className="relative"
+        onMouseEnter={openSub}
+        onMouseLeave={scheduleClose}
+      >
+        <button type="button" className={item}>
+          <span className="flex items-center gap-2"><Copy className="w-4 h-4" /> Duplicate</span>
+          <ChevronRight className="w-4 h-4 text-gray-400" />
+        </button>
+        <MenuSideFlyout
+          open={subOpen}
+          anchorRef={dupRef}
+          onHoverChange={(h) => (h ? openSub() : scheduleClose())}
+        >
           {(["customer", "vendor", "both"] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => run(() => onDuplicate(t))}
-              className="w-full px-3 py-2 pl-9 text-sm text-gray-700 hover:bg-gray-100 text-left capitalize"
+              className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left capitalize"
             >
               {t}
             </button>
           ))}
-        </div>
-      )}
+        </MenuSideFlyout>
+      </div>
       <button type="button" onClick={() => run(onTrash)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">
         <Trash2 className="w-4 h-4" /> Trash
       </button>
