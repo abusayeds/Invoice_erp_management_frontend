@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
+import { BACKEND_BASE_URL } from "@/lib/env";
+import useAuth from "@/hooks/useAuth";
 import { PdfPrintSettingsModal } from "../components/modals/PdfPrintSettingsModal";
 import { AppSettingsModal } from "../components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "../components/modals/PaymentMethodsModal";
@@ -40,6 +42,7 @@ import {
   PenLine,
   Users,
   X,
+  ImagePlus,
 } from "lucide-react";
 
 interface AddressParts {
@@ -67,9 +70,32 @@ interface Company {
   paymentTermsSales: string;
   paymentTermsPurchase: string;
   startFiscalYear: string;
+  logo: string;
   isOwner: boolean;
   reverseChargeSales?: boolean;
 }
+
+const resolveLogoUrl = (value?: string) => {
+  const src = String(value || "").trim();
+  if (!src) return "";
+  if (/^(https?:|data:|blob:)/i.test(src)) return src;
+  if (src.startsWith("/")) return src;
+  return `${BACKEND_BASE_URL}/${src.replace(/^\//, "")}`;
+};
+
+const uploadCompanyLogo = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append("files", file);
+  const uploadRes = await api.raw.post("/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return (
+    uploadRes.data?.data?.file_path ||
+    uploadRes.data?.data?.url ||
+    uploadRes.data?.data?.path ||
+    ""
+  );
+};
 
 const emptyAddress = (): AddressParts => ({
   street1: "",
@@ -118,6 +144,7 @@ const mapCompany = (d: any): Company => ({
   paymentTermsSales: d.payment_terms_sales ?? "",
   paymentTermsPurchase: d.payment_terms_purchase ?? "",
   startFiscalYear: d.start_fiscal_year ?? "January",
+  logo: d.logo ?? "",
   isOwner: !!d.is_owner,
 });
 
@@ -136,6 +163,7 @@ const companyBody = (c: Company) => ({
   payment_terms_sales: c.paymentTermsSales,
   payment_terms_purchase: c.paymentTermsPurchase,
   start_fiscal_year: c.startFiscalYear,
+  logo: c.logo || "",
   is_owner: !!c.isOwner,
 });
 
@@ -192,7 +220,8 @@ const emptyForm = (): CompanyFormState => ({
   paymentTermsSales: "Net on receipt",
   paymentTermsPurchase: "Net on receipt",
       startFiscalYear: "January",
-  isOwner: false,
+  logo: "",
+  isOwner: true,
   reverseChargeSales: false,
   billing: emptyAddress(),
   shipping: emptyAddress(),
@@ -202,6 +231,7 @@ const fromCompany = (c: Company): CompanyFormState => ({
   ...c,
   paymentTermsSales: c.paymentTermsSales || "Net on receipt",
   paymentTermsPurchase: c.paymentTermsPurchase || "Net on receipt",
+  logo: c.logo || "",
   billing: parseAddress(c.billingAddress),
   shipping: parseAddress(c.shippingAddress || (c.sameAsBilling ? c.billingAddress : "")),
 });
@@ -225,6 +255,7 @@ const toCompany = (f: CompanyFormState): Company => {
     paymentTermsSales: f.paymentTermsSales,
     paymentTermsPurchase: f.paymentTermsPurchase,
     startFiscalYear: f.startFiscalYear,
+    logo: f.logo || "",
     isOwner: !!f.isOwner,
     reverseChargeSales: !!f.reverseChargeSales,
   };
@@ -283,12 +314,15 @@ const CompanyFormModal: React.FC<{
   title: string;
   onClose: () => void;
   onSave: (company: Company) => Promise<void>;
-}> = ({ initial, title, onClose, onSave }) => {
+  loginEmail?: string;
+}> = ({ initial, title, onClose, onSave, loginEmail }) => {
   const [form, setForm] = useState<CompanyFormState>(initial);
   const [addrOpen, setAddrOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [emailDraft, setEmailDraft] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -305,8 +339,30 @@ const CompanyFormModal: React.FC<{
   const commitEmail = () => {
     const v = emailDraft.trim();
     if (!v) return;
-    patch({ email: v });
+    const next = { email: v } as Partial<CompanyFormState>;
+    if (loginEmail && v.toLowerCase() === loginEmail.toLowerCase()) next.isOwner = true;
+    patch(next);
     setEmailDraft("");
+  };
+
+  const onLogoPick = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Please choose an image file", "error");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const path = await uploadCompanyLogo(file);
+      if (!path) throw new Error("Upload failed");
+      patch({ logo: path });
+      showToast("Logo uploaded", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Logo upload failed", "error");
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
   };
 
   const handleNext = async () => {
@@ -314,11 +370,21 @@ const CompanyFormModal: React.FC<{
     if (!form.billing.country.trim()) return;
     setSaving(true);
     try {
-      await onSave(toCompany(form));
+      const payload = toCompany(form);
+      if (
+        loginEmail &&
+        payload.email &&
+        payload.email.toLowerCase() === loginEmail.toLowerCase()
+      ) {
+        payload.isOwner = true;
+      }
+      await onSave(payload);
     } finally {
       setSaving(false);
     }
   };
+
+  const logoUrl = resolveLogoUrl(form.logo);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
@@ -333,25 +399,58 @@ const CompanyFormModal: React.FC<{
               type="button"
               disabled={saving || !form.businessName.trim()}
               onClick={() => void handleNext()}
-              className="px-4 py-1.5 text-sm font-medium rounded-md bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40"
+              className="px-4 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
             >
-              {saving ? "Saving…" : "Next"}
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
           <div className="flex justify-center">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => void onLogoPick(e.target.files?.[0])}
+            />
             <button
               type="button"
-              className="w-28 h-28 border border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center gap-2 text-gray-500 hover:border-blue-400"
+              disabled={uploadingLogo}
+              onClick={() => logoInputRef.current?.click()}
+              className="relative w-28 h-28 border border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center gap-2 text-gray-500 hover:border-blue-400 overflow-hidden disabled:opacity-60"
             >
-              <span className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white">
-                <Plus className="w-5 h-5" />
-              </span>
-              <span className="text-xs font-medium text-blue-600">Add Logo</span>
+              {logoUrl ? (
+                <>
+                  <img src={logoUrl} alt="Logo" className="absolute inset-0 w-full h-full object-contain p-2 bg-white" />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] py-1">
+                    {uploadingLogo ? "Uploading…" : "Change Logo"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                    {uploadingLogo ? <ImagePlus className="w-5 h-5 animate-pulse" /> : <Plus className="w-5 h-5" />}
+                  </span>
+                  <span className="text-xs font-medium text-blue-600">
+                    {uploadingLogo ? "Uploading…" : "Add Logo"}
+                  </span>
+                </>
+              )}
             </button>
           </div>
+          {form.logo && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => patch({ logo: "" })}
+                className="text-xs text-red-500 hover:text-red-700"
+              >
+                Remove logo
+              </button>
+            </div>
+          )}
 
           <div>
             <label className={fieldLabel}>
@@ -392,6 +491,16 @@ const CompanyFormModal: React.FC<{
               />
             )}
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.isOwner}
+              onChange={(e) => patch({ isOwner: e.target.checked })}
+              className="w-4 h-4 accent-blue-600"
+            />
+            Owner company (login account)
+          </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
@@ -546,6 +655,8 @@ const SectionBar: React.FC<{ title: string }> = ({ title }) => (
 export const Companies: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const loginEmail = String(user?.email || "").trim();
   const [showMobileList, setShowMobileList] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
@@ -580,7 +691,13 @@ export const Companies: React.FC = () => {
         if (prev && list.some((c) => c.id === prev.id)) {
           return list.find((c) => c.id === prev.id) || list[0];
         }
-        return list[0];
+        const owner =
+          list.find((c) => c.isOwner) ||
+          (loginEmail
+            ? list.find((c) => c.email.toLowerCase() === loginEmail.toLowerCase())
+            : undefined) ||
+          list[0];
+        return owner;
       });
     } catch {
       setCompanies([]);
@@ -659,13 +776,20 @@ export const Companies: React.FC = () => {
   };
 
   const handleSave = async (company: Company) => {
-    if (company.id) {
-      await api.raw.patch(`/company-register/${company.id}`, companyBody(company));
+    try {
+      if (company.id) {
+        await api.raw.patch(`/company-register/${company.id}`, companyBody(company));
+        showToast("Company updated", "success");
       } else {
-      await api.raw.post("/company-register/create", companyBody(company));
+        await api.raw.post("/company-register/create", companyBody(company));
+        showToast("Company created", "success");
       }
-    setFormOpen(null);
+      setFormOpen(null);
       await loadCompanies();
+    } catch (e: any) {
+      showToast(e?.message || "Could not save company", "error");
+      throw e;
+    }
   };
 
   const handleDelete = async () => {
@@ -725,7 +849,16 @@ export const Companies: React.FC = () => {
       {formOpen && (
         <CompanyFormModal
           title={formOpen === "edit" ? "Edit Company" : "Create Company"}
-          initial={formOpen === "edit" && selectedCompany ? fromCompany(selectedCompany) : emptyForm()}
+          initial={
+            formOpen === "edit" && selectedCompany
+              ? fromCompany(selectedCompany)
+              : {
+                  ...emptyForm(),
+                  email: loginEmail || "",
+                  isOwner: true,
+                }
+          }
+          loginEmail={loginEmail}
           onClose={() => setFormOpen(null)}
           onSave={handleSave}
         />
@@ -804,16 +937,27 @@ export const Companies: React.FC = () => {
                     active ? "bg-gray-100" : "hover:bg-gray-50"
                 }`}
               >
-                <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
-                    {(company.businessName || "?").charAt(0).toUpperCase()}
+                <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 overflow-hidden">
+                    {company.logo ? (
+                      <img
+                        src={resolveLogoUrl(company.logo)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      (company.businessName || "?").charAt(0).toUpperCase()
+                    )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 truncate">
                       {company.businessName || "—"}
                   </div>
+                  {company.email && (
+                    <div className="text-xs text-gray-500 truncate">{company.email}</div>
+                  )}
                 </div>
                 {company.isOwner && (
-                    <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded">Owner</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">Owner</span>
                 )}
                 </button>
               );
@@ -831,7 +975,14 @@ export const Companies: React.FC = () => {
         {selectedCompany ? (
           <>
             <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">{selectedCompany.businessName}</h2>
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-base font-semibold text-gray-900 truncate">{selectedCompany.businessName}</h2>
+                {selectedCompany.isOwner && (
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium flex-shrink-0">
+                    Owner
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1">
                   <button
                   type="button"
@@ -855,10 +1006,18 @@ export const Companies: React.FC = () => {
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-[1fr_auto] gap-6">
                 <InfoField label="Business Name">{selectedCompany.businessName}</InfoField>
-                <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-lg">
-                  {(selectedCompany.businessName || "?").charAt(0).toUpperCase()}
-                  </div>
+                <div className="w-14 h-14 bg-blue-600 rounded flex items-center justify-center text-white font-semibold text-lg overflow-hidden">
+                  {selectedCompany.logo ? (
+                    <img
+                      src={resolveLogoUrl(selectedCompany.logo)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    (selectedCompany.businessName || "?").charAt(0).toUpperCase()
+                  )}
                 </div>
+              </div>
 
               <InfoField label="Email">
                 {selectedCompany.email ? (

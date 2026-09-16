@@ -151,6 +151,9 @@ import CrmSystemSetup from "@/pages/crm/CmsSystemSetup";
 import LeadReports from "@/pages/crm/reports/LeadReports";
 import DealReports from "@/pages/crm/reports/DealReports";
 import FormBuilder from "@/pages/formBulder/FormBuilder";
+import FormsList from "@/pages/formBulder/FormsList";
+import FormResponses from "@/pages/formBulder/FormResponses";
+import PublicForm from "@/pages/formBulder/PublicForm";
 import Tickets from "@/pages/supportTicket/Tickets";
 import KnowledgeBase from "@/pages/supportTicket/KnowledgeBase";
 import FAQ from "@/pages/supportTicket/FAQ";
@@ -207,6 +210,12 @@ export const route = createBrowserRouter([
         element: <SetNewPassword />,
       },
     ],
+  },
+  // Public shared form (no auth)
+  {
+    path: "/f/:code",
+    element: <PublicForm />,
+    errorElement: <ErrorPage />,
   },
   // ============================================
   // APP ROUTES (With MainLayout - Header + Sidebar + Outlet)
@@ -779,10 +788,15 @@ export const route = createBrowserRouter([
           },
         ],
       },
-      // Form Bulder
+      // Form Builder
       {
         path: "form-builder",
-        element: <FormBuilder />,
+        children: [
+          { index: true, element: <FormsList /> },
+          { path: "create", element: <FormBuilder /> },
+          { path: ":id/edit", element: <FormBuilder /> },
+          { path: ":id/responses", element: <FormResponses /> },
+        ],
       },
       // Support Ticket
       {

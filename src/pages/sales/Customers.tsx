@@ -555,8 +555,7 @@ const EditCustomer: React.FC<{
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300">
         <h1 className="text-lg font-semibold text-gray-900">{isCreate ? "Create Customer" : "Edit Customer"}</h1>
         <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700"><Sparkles className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
+        <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
           <button onClick={save} disabled={isBusy} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-60">
             {isBusy ? "Saving…" : "Save"}
           </button>
@@ -1233,15 +1232,15 @@ export const Customers: React.FC = () => {
                   />
                 </div>
                 <div className="flex items-center justify-between max-w-sm">
-                  <span className="text-sm text-gray-700">Contact Login</span>
-                  <Toggle
+                  {/* <span className="text-sm text-gray-700">Contact Login</span> */}
+                  {/* <Toggle
                     on={profile.is_login_required ?? false}
                     onChange={() => {
                       if (!selected._id) return;
                       updateCustomer(selected._id, { ...docToForm(doc!), isLoginRequired: !(profile.is_login_required ?? false) })
                         .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
                     }}
-                  />
+                  /> */}
                 </div>
               </div>
             </div>
