@@ -187,7 +187,7 @@ export const ProductReport: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={70} />
               <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v)} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v) => money(Number(v) || 0)} />
               <Bar dataKey="value" fill="#007aff" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -253,7 +253,7 @@ export const CustomerReport: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={70} />
               <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v)} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v) => money(Number(v) || 0)} />
               <Bar dataKey="value" fill="#007aff" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -315,7 +315,7 @@ export const SalesReport: React.FC = () => {
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v)} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v) => money(Number(v) || 0)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="value" name="Revenue" fill="#007aff" radius={[4, 4, 0, 0]} />
           </BarChart>

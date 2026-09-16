@@ -221,7 +221,7 @@ const emptyForm = (): CompanyFormState => ({
   paymentTermsPurchase: "Net on receipt",
       startFiscalYear: "January",
   logo: "",
-  isOwner: true,
+      isOwner: true,
   reverseChargeSales: false,
   billing: emptyAddress(),
   shipping: emptyAddress(),
@@ -1016,8 +1016,8 @@ export const Companies: React.FC = () => {
                   ) : (
                     (selectedCompany.businessName || "?").charAt(0).toUpperCase()
                   )}
+                  </div>
                 </div>
-              </div>
 
               <InfoField label="Email">
                 {selectedCompany.email ? (

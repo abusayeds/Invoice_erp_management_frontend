@@ -252,7 +252,7 @@ export const DeliveryChallan: React.FC = () => {
         number: row.number,
         note: linkedLocal?.notes || "No Notes",
         date: row.dateLabel,
-        amount: fmtMoney(row.amount, row.currency || "USD"),
+        amount: fmtMoney(row.amount),
         status: row.status,
         currency: row.currency || "USD",
       };
@@ -587,7 +587,7 @@ export const DeliveryChallan: React.FC = () => {
               <div>
                 <div className="text-xs text-gray-500 mb-1">Billing Address</div>
                 {addressLines(selectedDoc?.billing_address).length
-                  ? addressLines(selectedDoc?.billing_address).map((l: string, i: number) => (
+                  ? addressLines(selectedDoc?.billing_address).map((l, i) => (
                       <div key={i} className={`text-sm ${i === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{l}</div>
                     ))
                   : <div className="text-sm text-gray-400">—</div>}
@@ -623,10 +623,10 @@ export const DeliveryChallan: React.FC = () => {
                       <td className="px-5 py-3 text-gray-700">{idx + 1}</td>
                       <td className="px-2 py-3"><div className="font-semibold text-gray-900">{apiText(it.product_name) || apiText(it.service_name) || "Item"}</div>{it.description && <div className="text-xs text-gray-500 mt-0.5">{it.description}</div>}</td>
                       <td className="px-2 py-3 text-right text-gray-800">{numberValue(it.quantity) || 1}</td>
-                      <td className="px-2 py-3 text-right text-gray-800">{fmtMoney(numberValue(it.rate), selected.currency)}</td>
+                      <td className="px-2 py-3 text-right text-gray-800">{fmtMoney(numberValue(it.rate))}</td>
                       <td className="px-2 py-3 text-gray-800">{CH_TAX_NAME[numberValue(it.tax) || 1]}</td>
                       <td className="px-2 py-3 text-right text-gray-500 text-xs">{numberValue(it.discount) ? `${numberValue(it.discount)}%` : "—"}</td>
-                      <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmtMoney(numberValue(it.amount), selected.currency)}</td>
+                      <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmtMoney(numberValue(it.amount))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -653,8 +653,8 @@ export const DeliveryChallan: React.FC = () => {
                 <div className="mt-1 h-24 border border-gray-200 rounded-md p-3 text-sm text-gray-700">{apiText(selectedDoc?.notes) || selected.note}</div>
               </div>
               <div className="border border-gray-200 rounded-md overflow-hidden self-start">
-                <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.sub_total ?? selectedDb.subTotal), selected.currency)}</span></div>
-                <div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-200"><span className="font-semibold text-gray-900">Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.total ?? selectedDb.total), selected.currency)}</span></div>
+                <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.sub_total ?? selectedDb.subTotal))}</span></div>
+                <div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-200"><span className="font-semibold text-gray-900">Total</span><span className="font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.total ?? selectedDb.total))}</span></div>
               </div>
             </div>
 

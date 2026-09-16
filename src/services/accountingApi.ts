@@ -851,5 +851,29 @@ export async function fetchAccountReport(path: string, params?: Record<string, u
   return api.get<any>(path, { params });
 }
 
+/** Account dashboard hub — company / staff / customer / vendor. */
+export type AccountDashboardPayload = {
+  stats?: Record<string, number>;
+  monthlyCustomerPayments?: { month: string; customer_payments?: number; payments?: number }[];
+  monthlyVendorPayments?: { month: string; vendor_payments?: number; payments?: number }[];
+  monthlyPayments?: { month: string; payments?: number }[];
+  recentRevenues?: Record<string, unknown>[];
+  recentExpenses?: Record<string, unknown>[];
+  recentActivities?: Record<string, unknown>[];
+  recentReturnInvoices?: Record<string, unknown>[];
+  recentCreditNotes?: Record<string, unknown>[];
+  recentDebitNotes?: Record<string, unknown>[];
+};
+
+export async function fetchAccountDashboard(): Promise<AccountDashboardPayload> {
+  try {
+    const data = await api.get<AccountDashboardPayload>("/dashboard/account");
+    return (data && typeof data === "object" ? data : {}) as AccountDashboardPayload;
+  } catch {
+    const data = await api.get<AccountDashboardPayload>("/account/dashboard");
+    return (data && typeof data === "object" ? data : {}) as AccountDashboardPayload;
+  }
+}
+
 export const ACCOUNT_TYPE_KINDS = ["asset", "liability", "equity", "revenue", "expense"] as const;
 export const NORMAL_BALANCES = ["debit", "credit"] as const;

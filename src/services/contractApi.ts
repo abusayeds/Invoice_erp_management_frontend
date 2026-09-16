@@ -163,7 +163,13 @@ function readTypeCatalog(): string[] {
 }
 
 function writeTypeCatalog(names: string[]) {
-  const unique = [...new Map(names.map((n) => [n.toLowerCase(), n.trim()]).filter(([, n]) => n)).values()];
+  const unique = [
+    ...new Map(
+      names
+        .map((n) => [n.toLowerCase(), n.trim()] as [string, string])
+        .filter(([, n]) => Boolean(n)),
+    ).values(),
+  ];
   localStorage.setItem(TYPE_CATALOG_KEY, JSON.stringify(unique));
 }
 

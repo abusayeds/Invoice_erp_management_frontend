@@ -101,7 +101,7 @@ export interface PdfSettings {
   contactFax: boolean;
   contactFirstLastName: boolean;
   contactMobileBelow: "Name" | "Address";
-  contactAddressAlignment: "Left" | "Right";
+  contactAddressAlignment: "Left" | "Center" | "Right";
 
   /* Summary */
   summaryTotal: boolean;
@@ -117,8 +117,8 @@ export interface PdfSettings {
 
   /* Signature */
   companySign: "Company" | "None";
-  companySignAlignment: "Left" | "Right";
-  contactSignAlignment: "Left" | "Right";
+  companySignAlignment: "Left" | "Center" | "Right";
+  contactSignAlignment: "Left" | "Center" | "Right";
   signatureSize: "Small" | "Medium" | "Large";
   contactSign: boolean;
 

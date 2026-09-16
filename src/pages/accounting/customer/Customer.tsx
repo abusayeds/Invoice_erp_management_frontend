@@ -145,7 +145,7 @@ export const AccountsCustomers: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
-            {rows.map((r) => (
+            {rows.map((r: Row) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3.5 font-medium text-gray-900">{r.name || "—"}</td>
                 <td className="px-4 py-3.5 text-gray-600">{r.companyName || "—"}</td>

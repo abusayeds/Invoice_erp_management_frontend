@@ -738,7 +738,7 @@ export const SetSalaryDetail: React.FC = () => {
       {modal?.kind === "basicSalary" && (
         <ModalShell title="Edit Basic Salary" onClose={() => setModal(null)} onSubmit={submitBasicSalary} submitLabel="Update">
           <Field label="Basic Salary" required>
-            <input type="number" min={0} value={draft.amount ?? ""} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter basic salary" className={inputCls} />
+            <input type="number" min={0} value={String(draft.amount ?? "")} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter basic salary" className={inputCls} />
           </Field>
         </ModalShell>
       )}
@@ -766,7 +766,7 @@ export const SetSalaryDetail: React.FC = () => {
             </select>
           </Field>
           <Field label="Amount" required>
-            <input type="number" min={0} value={draft.amount ?? ""} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
+            <input type="number" min={0} value={String(draft.amount ?? "")} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
           </Field>
         </ModalShell>
       )}
@@ -792,7 +792,7 @@ export const SetSalaryDetail: React.FC = () => {
             </select>
           </Field>
           <Field label="Amount" required>
-            <input type="number" min={0} value={draft.amount ?? ""} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
+            <input type="number" min={0} value={String(draft.amount ?? "")} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
           </Field>
           <Field label="Start Date" required>
             <input type="date" value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
@@ -813,14 +813,14 @@ export const SetSalaryDetail: React.FC = () => {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Total Days" required>
-              <input type="number" min={0} value={draft.days ?? ""} onChange={(e) => setDraft({ ...draft, days: e.target.value })} placeholder="Enter total days" className={inputCls} />
+              <input type="number" min={0} value={String(draft.days ?? "")} onChange={(e) => setDraft({ ...draft, days: e.target.value })} placeholder="Enter total days" className={inputCls} />
             </Field>
             <Field label="Hours" required>
-              <input type="number" min={0} value={draft.hours ?? ""} onChange={(e) => setDraft({ ...draft, hours: e.target.value })} placeholder="Enter hours" className={inputCls} />
+              <input type="number" min={0} value={String(draft.hours ?? "")} onChange={(e) => setDraft({ ...draft, hours: e.target.value })} placeholder="Enter hours" className={inputCls} />
             </Field>
           </div>
           <Field label="Rate" required>
-            <input type="number" min={0} value={draft.rate ?? ""} onChange={(e) => setDraft({ ...draft, rate: e.target.value })} placeholder="Enter rate" className={inputCls} />
+            <input type="number" min={0} value={String(draft.rate ?? "")} onChange={(e) => setDraft({ ...draft, rate: e.target.value })} placeholder="Enter rate" className={inputCls} />
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Start Date" required>

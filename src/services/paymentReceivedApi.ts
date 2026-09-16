@@ -4,6 +4,7 @@ import type { TPartyPagination } from "./customerTypes";
 export interface BackendPaymentReceivedDoc {
   _id: string;
   customer_id?: string | { _id?: string; name?: string; businessProfile?: { companyName?: string } } | null;
+  customer_name?: string;
   invoice_id?: string | { _id?: string; invoice_number?: string } | null;
   invoice_number?: string;
   payment_number?: string;

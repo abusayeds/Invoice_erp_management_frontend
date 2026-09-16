@@ -82,7 +82,7 @@ const mapPaymentRow = (doc: BackendPaymentReceivedDoc): Payment => ({
 });
 
 const sortFields = ["Name", "First Name", "Last Name", "Payment date", "Payment #", "Amount"];
-const sortDirections = ["Ascending", "Descending"];
+const sortDirections: Array<"Ascending" | "Descending"> = ["Ascending", "Descending"];
 const statusList = ["All", "Trash"];
 const dateRanges = ["All", "Today", "This Week", "Last Week", "This Month", "Last 30 Days", "Last Month", "Last 90 Days", "This Year", "Last Year", "Date Range"];
 
@@ -611,8 +611,8 @@ export const PaymentReceived: React.FC = () => {
         return (
           <PdfPreviewModal
             docType="paymentReceived"
-            recordId={batchIds.length ? batchIds[0] : d.id}
-            recordIds={batchIds.length > 1 ? batchIds : undefined}
+            recordId={0}
+            backendId={batchIds[0] || selected?.backendId || (d._id ? String(d._id) : undefined)}
             title={batchIds.length > 1 ? `Payment Receipts (${batchIds.length})` : `Payment Receipt `}
             onClose={() => setModal(null)}
           />

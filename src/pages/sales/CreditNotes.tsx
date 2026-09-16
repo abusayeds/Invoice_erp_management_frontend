@@ -114,7 +114,7 @@ const lineItems: LineItem[] = [
 ];
 
 const sortFields = ["Name", "First Name", "Last Name", "Credit note date", "Credit Note #", "Status", "Total"];
-const sortDirections = ["Ascending", "Descending"];
+const sortDirections: Array<"Ascending" | "Descending"> = ["Ascending", "Descending"];
 const statusList: (Status | "All" | "Trash")[] = ["All", "Unused", "Partially Used", "Used", "Trash"];
 const CN_TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const CN_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };

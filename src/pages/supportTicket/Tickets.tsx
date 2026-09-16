@@ -259,14 +259,14 @@ const Tickets: React.FC = () => {
               onChange={(id, opt) => {
                 setCategoryFilterId(id);
                 setCategoryFilterName(opt?.name || "");
-                setPage(1);
-              }}
+                  setPage(1);
+                }}
               onSearch={searchTicketCategories}
               placeholder="Filter by category…"
-            />
-          </div>
+              />
+            </div>
           {categoryFilterId && (
-            <button
+              <button
               type="button"
               className="text-xs text-blue-600 hover:underline"
               onClick={() => {
@@ -276,7 +276,7 @@ const Tickets: React.FC = () => {
               }}
             >
               Clear category
-            </button>
+              </button>
           )}
           <select
             value={accountFilter}
@@ -292,8 +292,8 @@ const Tickets: React.FC = () => {
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </option>
             ))}
-          </select>
-        </div>
+              </select>
+            </div>
 
         <table className="w-full text-sm min-w-[1000px]">
           <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
@@ -303,49 +303,49 @@ const Tickets: React.FC = () => {
                 <button type="button" onClick={() => { setSortAsc(!sortAsc); setPage(1); }} className="flex items-center gap-1 hover:text-gray-900">
                   Created <ArrowUpDown className="w-3 h-3" />
                 </button>
-              </th>
+                </th>
               {["Account", "Customer", "Subject", "Category", "Status", "Actions"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
               ))}
-            </tr>
-          </thead>
+              </tr>
+            </thead>
           <tbody className="bg-white divide-y divide-gray-100">
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3.5 font-mono text-gray-800">{r.ticketId || "—"}</td>
                 <td className="px-4 py-3.5 text-gray-600">{r.createdAt || "—"}</td>
                 <td className="px-4 py-3.5 capitalize text-gray-600">{r.accountType}</td>
-                <td className="px-4 py-3.5">
+                  <td className="px-4 py-3.5">
                   <div className="font-medium text-gray-900">{r.name || "—"}</div>
                   <div className="text-xs text-gray-500">{r.email || ""}</div>
-                </td>
+                  </td>
                 <td className="px-4 py-3.5 text-gray-900 max-w-[220px] truncate">{r.subject}</td>
-                <td className="px-4 py-3.5">
+                  <td className="px-4 py-3.5">
                   <span className="inline-flex px-2 py-0.5 rounded-full text-xs text-white" style={{ backgroundColor: r.categoryColor }}>
                     {r.categoryName}
                   </span>
-                </td>
+                  </td>
                 <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || "bg-gray-100 text-gray-600")}</td>
-                <td className="px-4 py-3.5">
+                  <td className="px-4 py-3.5">
                   <div className="flex items-center gap-1.5">
                     <button type="button" onClick={() => setDetailId(r.id)} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded hover:bg-indigo-50">
-                      <Eye className="w-4 h-4" />
-                    </button>
+                        <Eye className="w-4 h-4" />
+                      </button>
                     <button type="button" onClick={() => setDeleteTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             {!isLoading && rows.length === 0 && (
               <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">No tickets found.</td></tr>
             )}
             {isLoading && (
               <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">Loading…</td></tr>
             )}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
       </ListShell>
 
       {createOpen && (
@@ -404,7 +404,7 @@ const Tickets: React.FC = () => {
             <Field label="Description" required>
               <textarea value={createDraft.description} onChange={(e) => setCreateDraft({ ...createDraft, description: e.target.value })} rows={5} className={inputCls} />
             </Field>
-          </div>
+              </div>
         </ModalShell>
       )}
 
@@ -423,7 +423,7 @@ const Tickets: React.FC = () => {
                 <div><span className="text-gray-500">Ticket ID:</span> {detail.ticket_id}</div>
                 <div><span className="text-gray-500">Customer:</span> {detail.name} ({detail.email})</div>
                 <div className="col-span-2"><span className="text-gray-500">Description:</span><p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.description}</p></div>
-              </div>
+          </div>
 
               <Field label="Status">
                 <div className="flex gap-2">
@@ -433,7 +433,7 @@ const Tickets: React.FC = () => {
                     ))}
                   </select>
                   <button type="button" onClick={() => void saveStatus()} className="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Update</button>
-                </div>
+          </div>
               </Field>
 
               <Field label="Internal note">
@@ -441,7 +441,7 @@ const Tickets: React.FC = () => {
                 <button type="button" onClick={() => void saveNote()} className="mt-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Save note</button>
               </Field>
 
-              <div>
+                  <div>
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Conversation</h4>
                 <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-200 rounded-md p-3 bg-gray-50">
                   {conversations.length === 0 && <p className="text-xs text-gray-500">No replies yet.</p>}
@@ -451,12 +451,12 @@ const Tickets: React.FC = () => {
                       <p className="text-gray-800 whitespace-pre-wrap">{c.description}</p>
                     </div>
                   ))}
-                </div>
+                  </div>
                 <textarea value={replyDraft} onChange={(e) => setReplyDraft(e.target.value)} rows={3} className={`${inputCls} mt-3`} placeholder="Write a reply…" />
                 <button type="button" onClick={() => void sendReply()} className="mt-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Send reply</button>
-              </div>
-            </div>
-          )}
+                    </div>
+                </div>
+              )}
         </ModalShell>
       )}
 

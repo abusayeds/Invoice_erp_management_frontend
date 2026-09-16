@@ -488,7 +488,7 @@ export const Bills: React.FC = () => {
     const ids = [...checked];
     await repo.removeMany("bills", ids);
     showToast(`${ids.length} ${ids.length === 1 ? "bill" : "bills"} moved to trash`, "success");
-    if (ids.includes(selectedId)) setSelectedId(bills.find((b) => !ids.includes(b.id))?.id ?? 0);
+    if (ids.includes(Number(selectedId))) setSelectedId(bills.find((b) => !ids.includes(b.id))?.id ?? 0);
     setConfirmAction(null);
     exitSelect();
   };

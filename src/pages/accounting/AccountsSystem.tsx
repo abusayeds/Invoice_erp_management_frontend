@@ -66,18 +66,25 @@ export const AccountingSystem: React.FC = () => {
     sort: buildListSortParam(tab === "revenue" || tab === "expense" ? "category_name" : "name", "Ascending"),
   };
 
-  const { data, isLoading } = useQuery({
+  type SystemListResult = Awaited<
+    | ReturnType<typeof fetchAccountCategories>
+    | ReturnType<typeof fetchAccountTypes>
+    | ReturnType<typeof fetchRevenueCategories>
+    | ReturnType<typeof fetchExpenseCategories>
+  >;
+
+  const { data, isLoading } = useQuery<SystemListResult>({
     queryKey: ["account-system", tab, page, perPage, search],
-    queryFn: () => {
+    queryFn: async (): Promise<SystemListResult> => {
       if (tab === "categories") return fetchAccountCategories(listParams);
       if (tab === "types") return fetchAccountTypes(listParams);
       if (tab === "revenue") return fetchRevenueCategories(listParams);
       return fetchExpenseCategories(listParams);
     },
-    placeholderData: (prev) => prev,
+    placeholderData: (prev: SystemListResult | undefined) => prev,
   });
 
-  const rows = data?.rows ?? [];
+  const rows = (data?.rows ?? []) as Array<Record<string, any>>;
   const total = data?.pagination?.totalData ?? 0;
   const invalidate = () => qc.invalidateQueries({ queryKey: ["account-system"] });
 

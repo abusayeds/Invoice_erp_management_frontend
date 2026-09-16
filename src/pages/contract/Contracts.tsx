@@ -175,12 +175,12 @@ const Contracts: React.FC = () => {
               </th>
               {["Number", "Party", "Type", "Value", "Status", "Dates", "Actions"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-600">{h}</th>
-              ))}
-            </tr>
-          </thead>
+            ))}
+          </tr>
+        </thead>
           <tbody className="bg-white divide-y divide-gray-100">
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
+            <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3.5 font-medium text-gray-900">{r.subject || "—"}</td>
                 <td className="px-4 py-3.5 font-mono text-gray-600">{r.number || "—"}</td>
                 <td className="px-4 py-3.5 text-gray-600">{r.partyName || "—"}</td>
@@ -189,36 +189,36 @@ const Contracts: React.FC = () => {
                 <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || "bg-gray-100 text-gray-600")}</td>
                 <td className="px-4 py-3.5 text-gray-600 text-xs whitespace-nowrap">
                   {r.startDate || "—"} → {r.endDate || "—"}
-                </td>
-                <td className="px-4 py-3.5">
+              </td>
+              <td className="px-4 py-3.5">
                   <div className="flex items-center gap-1.5">
                     <button type="button" onClick={() => { setDraft({ ...emptyDraft(), ...{ id: r.id, number: r.number, subject: r.subject, partyName: r.partyName, value: String(r.value), type: r.type, typeName: r.type, startDate: r.startDate, endDate: r.endDate, status: r.status, description: r.description, duration: String(r.duration) } }); setModal("view"); }} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded hover:bg-indigo-50">
-                      <Eye className="w-4 h-4" />
-                    </button>
+                    <Eye className="w-4 h-4" />
+                  </button>
                     <button type="button" onClick={() => openEdit(r)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50">
                       <Edit className="w-4 h-4" />
-                    </button>
+                  </button>
                     <button type="button" onClick={() => setDeleteTarget(r)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
             {!isLoading && rows.length === 0 && (
               <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">No contracts found.</td></tr>
             )}
             {isLoading && (
               <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">Loading…</td></tr>
             )}
-          </tbody>
-        </table>
+        </tbody>
+      </table>
       </ListShell>
 
       {(modal === "create" || modal === "edit") && (
         <ModalShell title={modal === "edit" ? "Edit Contract" : "Create Contract"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"} wide>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
               <Field label="Subject" required>
                 <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className={inputCls} />
               </Field>
@@ -251,7 +251,7 @@ const Contracts: React.FC = () => {
                   {CONTRACT_STATUSES.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
-                </select>
+              </select>
               </Field>
               <Field label="Start date">
                 <input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
@@ -280,7 +280,7 @@ const Contracts: React.FC = () => {
             <p><span className="text-gray-500">Status:</span> {draft.status}</p>
             <p><span className="text-gray-500">Dates:</span> {draft.startDate || "—"} → {draft.endDate || "—"}</p>
             <p className="whitespace-pre-wrap border border-gray-200 rounded-md p-3 bg-gray-50">{draft.description || "No description"}</p>
-          </div>
+                    </div>
         </ModalShell>
       )}
 

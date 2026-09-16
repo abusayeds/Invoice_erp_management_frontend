@@ -84,7 +84,7 @@ export const VendorPayments: React.FC = () => {
     setLoadingOutstanding(true);
     try {
       const list = await fetchVendorOutstanding(id);
-      setAllocs(list.map((o) => ({ ...o, allocated: 0 })));
+      setAllocs(list.map((o: { invoiceId: string; invoiceNumber: string; outstanding: number }) => ({ ...o, allocated: 0 })));
     } catch (e: any) {
       showToast(e?.message || "Could not load outstanding bills", "error");
     } finally {

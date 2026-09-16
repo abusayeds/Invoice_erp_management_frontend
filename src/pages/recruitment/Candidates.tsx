@@ -22,25 +22,25 @@ import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
 
 const emptyDraft = () => ({
   id: "",
-  firstName: "",
-  lastName: "",
-  email: "",
-  phone: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
   gender: "",
   dob: "",
   country: "",
   state: "",
   city: "",
-  currentCompany: "",
-  currentPosition: "",
+    currentCompany: "",
+    currentPosition: "",
   experienceYears: "",
   currentSalary: "",
   expectedSalary: "",
-  noticePeriod: "",
+    noticePeriod: "",
   skills: "",
-  education: "",
-  portfolioUrl: "",
-  linkedinUrl: "",
+    education: "",
+    portfolioUrl: "",
+    linkedinUrl: "",
   status: "New",
   applicationDate: "",
   jobId: "",
@@ -176,9 +176,9 @@ export const Candidates: React.FC = () => {
         setFilterValue={setStatusFilter}
         filterLabel="Status"
       >
-        <table className="w-full text-sm min-w-[1100px]">
-          <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
-            <tr>
+          <table className="w-full text-sm min-w-[1100px]">
+            <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+              <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                 <button
                   type="button"
@@ -196,9 +196,9 @@ export const Candidates: React.FC = () => {
                   {h}
                 </th>
               ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3.5 font-medium text-gray-900">{r.fullName}</td>
@@ -266,16 +266,16 @@ export const Candidates: React.FC = () => {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              ))}
             {!isLoading && rows.length === 0 && (
-              <tr>
+                <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                  No candidates found.
-                </td>
-              </tr>
-            )}
+                    No candidates found.
+                  </td>
+                </tr>
+              )}
             {isLoading && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
@@ -283,8 +283,8 @@ export const Candidates: React.FC = () => {
                 </td>
               </tr>
             )}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
       </ListShell>
 
       {modal && (
@@ -327,7 +327,7 @@ export const Candidates: React.FC = () => {
                   className={inputCls}
                 />
               </Field>
-            </div>
+        </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Job posting" required>
                 <AsyncSearchSelect
@@ -368,7 +368,7 @@ export const Candidates: React.FC = () => {
                   className={inputCls}
                 />
               </Field>
-            </div>
+      </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Gender">
                 <input
@@ -393,7 +393,7 @@ export const Candidates: React.FC = () => {
                   className={inputCls}
                 />
               </Field>
-            </div>
+          </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Country">
                 <input
@@ -416,7 +416,7 @@ export const Candidates: React.FC = () => {
                   className={inputCls}
                 />
               </Field>
-            </div>
+        </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Current company">
                 <input
@@ -448,7 +448,7 @@ export const Candidates: React.FC = () => {
                   className={inputCls}
                 />
               </Field>
-            </div>
+      </div>
             <Field label="Skills">
               <input
                 value={draft.skills}
@@ -463,7 +463,7 @@ export const Candidates: React.FC = () => {
                 className={inputCls}
               />
             </Field>
-          </div>
+    </div>
         </ModalShell>
       )}
 

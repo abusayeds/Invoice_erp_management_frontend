@@ -397,7 +397,7 @@ const RecruitmentSystemSetup: React.FC = () => {
       <div className="bg-white border-b border-gray-200 px-4 pt-3 overflow-x-auto">
         <div className="flex gap-1 min-w-max">
           {TABS.map((t) => (
-            <button
+        <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
@@ -408,9 +408,9 @@ const RecruitmentSystemSetup: React.FC = () => {
               }`}
             >
               {t.label}
-            </button>
+        </button>
           ))}
-        </div>
+      </div>
       </div>
 
       {isCrud ? (
@@ -438,8 +438,8 @@ const RecruitmentSystemSetup: React.FC = () => {
           >
             <table className="w-full text-sm min-w-[800px]">
               <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">
                     <button
                       type="button"
                       onClick={() => {
@@ -450,15 +450,15 @@ const RecruitmentSystemSetup: React.FC = () => {
                     >
                       Name <ArrowUpDown className="w-3 h-3" />
                     </button>
-                  </th>
+              </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Description</th>
                   {tab === "onboardingChecklists" && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Default</th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Actions</th>
-                </tr>
-              </thead>
+            </tr>
+          </thead>
               <tbody className="bg-white divide-y divide-gray-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -467,14 +467,14 @@ const RecruitmentSystemSetup: React.FC = () => {
                     {tab === "onboardingChecklists" && (
                       <td className="px-4 py-3.5 text-gray-600">
                         {(r as OnboardingChecklistRow).isDefault ? "Yes" : "No"}
-                      </td>
+                </td>
                     )}
                     <td className="px-4 py-3.5">
                       {chip(statusLabel(rowActive(r)), STATUS_CHIP[statusLabel(rowActive(r))] || STATUS_CHIP.Active)}
-                    </td>
+                </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1.5">
-                        <button
+                    <button
                           type="button"
                           onClick={() => {
                             setDraft({
@@ -488,20 +488,20 @@ const RecruitmentSystemSetup: React.FC = () => {
                             setModal("edit");
                           }}
                           className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
                           type="button"
                           onClick={() => setDeleteTarget({ id: r.id, name: r.name })}
                           className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
                 {!isLoading && rows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
@@ -516,8 +516,8 @@ const RecruitmentSystemSetup: React.FC = () => {
                     </td>
                   </tr>
                 )}
-              </tbody>
-            </table>
+          </tbody>
+        </table>
           </ListShell>
 
           {modal && (
@@ -529,17 +529,17 @@ const RecruitmentSystemSetup: React.FC = () => {
             >
               <div className="space-y-4">
                 <Field label="Name" required>
-                  <input
+            <input
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                     className={inputCls}
                   />
                 </Field>
                 <Field label="Description">
-                  <textarea
+            <textarea
                     value={draft.description}
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                    rows={3}
+              rows={3}
                     className={inputCls}
                   />
                 </Field>
@@ -565,7 +565,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                         <option value="false">Inactive</option>
                       </select>
                     </Field>
-                  </div>
+        </div>
                 ) : (
                   <Field label="Status">
                     <select
@@ -578,7 +578,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                     </select>
                   </Field>
                 )}
-              </div>
+            </div>
             </ModalShell>
           )}
 
@@ -595,14 +595,14 @@ const RecruitmentSystemSetup: React.FC = () => {
         <div className="p-4 sm:p-6 max-w-4xl">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-            <button
+                          <button
               type="button"
               onClick={() => void saveSettings()}
               className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               <Save className="w-4 h-4" /> Save
-            </button>
-          </div>
+                          </button>
+                        </div>
 
           {settingsQ.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
 
@@ -610,7 +610,7 @@ const RecruitmentSystemSetup: React.FC = () => {
             <div className="space-y-4 bg-white border border-gray-200 rounded-lg p-4">
               {Object.keys(brandForm).map((k) => (
                 <Field key={k} label={k.replace(/_/g, " ")}>
-                  <input
+              <input
                     value={brandForm[k]}
                     onChange={(e) => setBrandForm({ ...brandForm, [k]: e.target.value })}
                     className={inputCls}
@@ -632,7 +632,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                       className={inputCls}
                     />
                   ) : (
-                    <input
+                  <input
                       value={aboutForm[k]}
                       onChange={(e) => setAboutForm({ ...aboutForm, [k]: e.target.value })}
                       className={inputCls}
@@ -640,7 +640,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                   )}
                 </Field>
               ))}
-            </div>
+                </div>
           )}
 
           {tab === "applicationTips" && (
@@ -657,23 +657,23 @@ const RecruitmentSystemSetup: React.FC = () => {
                     className={inputCls}
                     placeholder="Tip text"
                   />
-                  <button
+            <button
                     type="button"
                     onClick={() => setTips(tips.filter((t) => t.id !== tip.id))}
                     className="p-2 text-red-500 hover:bg-red-50 rounded"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              <button
+            </button>
+              </div>
+            ))}
+            <button
                 type="button"
                 onClick={() => setTips([...tips, { id: uid(), text: "" }])}
                 className="inline-flex items-center gap-1 text-sm text-blue-600"
               >
                 <Plus className="w-4 h-4" /> Add tip
-              </button>
-            </div>
+            </button>
+          </div>
           )}
 
           {tab === "whatHappensNext" && (
@@ -681,7 +681,7 @@ const RecruitmentSystemSetup: React.FC = () => {
               {steps.map((s, idx) => (
                 <div key={s.id} className="border border-gray-100 rounded-md p-3 space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
+                  <input
                       value={s.title}
                       onChange={(e) => {
                         const next = [...steps];
@@ -691,7 +691,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                       className={inputCls}
                       placeholder="Title"
                     />
-                    <input
+                  <input
                       value={s.icon}
                       onChange={(e) => {
                         const next = [...steps];
@@ -700,8 +700,8 @@ const RecruitmentSystemSetup: React.FC = () => {
                       }}
                       className={inputCls}
                       placeholder="Icon name"
-                    />
-                  </div>
+                  />
+                </div>
                   <textarea
                     value={s.description}
                     onChange={(e) => {
@@ -713,30 +713,30 @@ const RecruitmentSystemSetup: React.FC = () => {
                     className={inputCls}
                     placeholder="Description"
                   />
-                  <button
+            <button
                     type="button"
                     onClick={() => setSteps(steps.filter((x) => x.id !== s.id))}
                     className="text-xs text-red-500"
                   >
                     Remove
-                  </button>
+            </button>
                 </div>
               ))}
-              <button
+            <button
                 type="button"
                 onClick={() => setSteps([...steps, { id: uid(), title: "", icon: "", description: "" }])}
                 className="inline-flex items-center gap-1 text-sm text-blue-600"
               >
                 <Plus className="w-4 h-4" /> Add step
-              </button>
-            </div>
+            </button>
+          </div>
           )}
 
           {tab === "needHelp" && (
             <div className="space-y-4 bg-white border border-gray-200 rounded-lg p-4">
               {Object.keys(needHelpForm).map((k) => (
                 <Field key={k} label={k.replace(/_/g, " ")}>
-                  <input
+              <input
                     value={needHelpForm[k]}
                     onChange={(e) => setNeedHelpForm({ ...needHelpForm, [k]: e.target.value })}
                     className={inputCls}
@@ -750,7 +750,7 @@ const RecruitmentSystemSetup: React.FC = () => {
             <div className="space-y-4 bg-white border border-gray-200 rounded-lg p-4">
               {faqs.map((f, idx) => (
                 <div key={f.id} className="border border-gray-100 rounded-md p-3 space-y-2">
-                  <input
+              <input
                     value={f.question}
                     onChange={(e) => {
                       const next = [...faqs];
@@ -778,16 +778,16 @@ const RecruitmentSystemSetup: React.FC = () => {
                   >
                     Remove
                   </button>
-                </div>
-              ))}
-              <button
+              </div>
+            ))}
+            <button
                 type="button"
                 onClick={() => setFaqs([...faqs, { id: uid(), question: "", answer: "" }])}
                 className="inline-flex items-center gap-1 text-sm text-blue-600"
-              >
-                <Plus className="w-4 h-4" /> Add FAQ
-              </button>
-            </div>
+            >
+              <Plus className="w-4 h-4" /> Add FAQ
+            </button>
+          </div>
           )}
 
           {tab === "offerLetterTemplate" && (
@@ -800,7 +800,7 @@ const RecruitmentSystemSetup: React.FC = () => {
                 />
               </Field>
               <Field label="Content">
-                <textarea
+              <textarea
                   value={offerTpl.content}
                   onChange={(e) => setOfferTpl({ ...offerTpl, content: e.target.value })}
                   rows={12}
@@ -824,10 +824,10 @@ const RecruitmentSystemSetup: React.FC = () => {
                         {k}
                       </span>
                     ))}
-                  </div>
-                </div>
+          </div>
+        </div>
               )}
-            </div>
+          </div>
           )}
         </div>
       )}
