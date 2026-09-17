@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Check, Info } from "lucide-react";
 import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
 import { db } from "@/lib/db/db";
+import { useAppSettings, isLayoutSettingOn, DOC_LAYOUTS, type DocLayoutId } from "@/lib/db/appSettings";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
@@ -62,6 +63,44 @@ export const CreateInvoiceForm: React.FC<{
   const collection = isProforma ? "proformas" : isEstimate ? "estimates" : "invoices";
   const docLabel = isProforma ? "Proforma Invoice" : isEstimate ? "Estimate" : "Invoice";
   const pdfDocType = isProforma ? "proformaInvoice" : isEstimate ? "estimate" : "invoice";
+  const settingsSection = isProforma ? "doc:proformaInvoice" : isEstimate ? "doc:estimate" : "doc:invoice";
+  const layoutId: DocLayoutId = isProforma ? "proformaInvoice" : isEstimate ? "estimate" : "invoice";
+  const layout = DOC_LAYOUTS[layoutId];
+  const docSettings = useAppSettings(settingsSection);
+  const show = (key: string) => isLayoutSettingOn(layout.fieldKeys, docSettings?.fieldVisibility, key);
+  const showCol = (key: string) => isLayoutSettingOn(layout.columnKeys, docSettings?.columns, key);
+  const showSum = (key: string) => isLayoutSettingOn(layout.summaryKeys, docSettings?.summary, key);
+  const showPay = (key: string) => layout.showPayment && !!docSettings?.payment?.[key];
+  const lineOption = docSettings?.general?.lineOption || "Both";
+  const allowProduct = lineOption === "Both" || lineOption === "Product";
+  const allowService = lineOption === "Both" || lineOption === "Service";
+  const qtyMode = docSettings?.columnsQuantity || "Show for Both";
+  const showQtyCol = layout.showQuantitySelect && (
+    qtyMode === "Show for Both" || qtyMode === "Show for Product" || qtyMode === "Show for Service"
+  );
+  const showQtyFor = (kind: "product" | "service") => {
+    if (!showQtyCol) return false;
+    if (qtyMode === "Show for Both") return true;
+    if (qtyMode === "Show for Product") return kind === "product";
+    return kind === "service";
+  };
+  const negParen = showSum("Negative Value format with ( )");
+  const showLineTax = showSum("Show Line Total with Tax");
+  const descFullWidth = showCol("Line description full width");
+  const showItemName = (kind: "product" | "service") =>
+    kind === "product" ? showCol("Product Name") : showCol("Service Name");
+  const showDesc = showCol("Description");
+  const showBuyPriceSug = showCol("Buy Price in Suggestion List");
+  const showSugPrice = (layout.columnKeys as readonly string[]).includes("Buy Price in Suggestion List")
+    ? showBuyPriceSug
+    : true;
+  const showStockSug = showCol("Stock In Suggestion List");
+  const showDescSug = showCol("Description In Suggestion List");
+  const showItemCodeSug = showCol("Item Code in Suggestion List");
+  const autoFit = showCol("Auto Fit");
+  const createPublicUrl = layout.showPublicUrl && docSettings?.general?.createPublicUrlInEmail !== false;
+  const markSentOnPrint = isLayoutSettingOn(layout.printKeys, docSettings?.printEmail, "Mark as Sent on Print");
+  const markSentOnEmail = isLayoutSettingOn(layout.printKeys, docSettings?.printEmail, "Mark as Sent on Email/WhatsApp");
 
   const customers = useCollection<any>("customers", "name");
   const products = useCollection<any>("products", "name");
@@ -172,7 +211,14 @@ export const CreateInvoiceForm: React.FC<{
   const [currency, setCurrency] = useState(invoice?.currency || "BDT");
   const [subTitle, setSubTitle] = useState(invoice?.subTitle ?? "");
   const [poNumber, setPoNumber] = useState(invoice?.poNumber ?? "");
+  const [poDate, setPoDate] = useState(invoice?.poDate ?? "");
+  const [recipientName, setRecipientName] = useState(invoice?.recipientName ?? "");
+  const [salesperson, setSalesperson] = useState(invoice?.salesperson ?? "");
   const [shippingMethod, setShippingMethod] = useState(invoice?.shippingMethod ?? "");
+  const [shippingTax, setShippingTax] = useState(String(invoice?.shippingTax ?? ""));
+  const [customCharges, setCustomCharges] = useState(String(invoice?.customCharges ?? ""));
+  const [roundOff, setRoundOff] = useState(String(invoice?.roundOff ?? ""));
+  const [cashDenomination, setCashDenomination] = useState(invoice?.cashDenomination ?? "");
   const [discountBeforeTax, setDiscountBeforeTax] = useState(!!invoice?.discountBeforeTax);
   const [recurring, setRecurring] = useState(invoice?.recurring ?? "None");
   const [recurringUntil, setRecurringUntil] = useState(invoice?.recurringUntil ?? new Date().toLocaleDateString("en-US"));
@@ -193,7 +239,30 @@ export const CreateInvoiceForm: React.FC<{
   const [sortRecent, setSortRecent] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const [colMenuOpen, setColMenuOpen] = useState(false);
-  const [cols, setCols] = useState({ qty: true, mrp: true, tax: true, discount: false, autoFit: true });
+  const [cols, setCols] = useState({
+    qty: true,
+    mrp: true,
+    tax: true,
+    discount: true,
+    autoFit: true,
+  });
+  // Sync column visibility from App Settings (local gear can still override for this session).
+  useEffect(() => {
+    setCols({
+      qty: showQtyCol,
+      mrp: showCol("MRP"),
+      tax: showCol("Tax"),
+      discount: showCol("Discount"),
+      autoFit: showCol("Auto Fit"),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    docSettings?.columns?.MRP,
+    docSettings?.columns?.Tax,
+    docSettings?.columns?.Discount,
+    docSettings?.columns?.["Auto Fit"],
+    docSettings?.columnsQuantity,
+  ]);
   const colMenuRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -240,9 +309,25 @@ export const CreateInvoiceForm: React.FC<{
   const subTotal = rows.reduce((s, r) => s + lineAmount(r), 0);
   const inlineDiscount = rows.reduce((s, r) => s + r.qty * r.rate * ((r.discount || 0) / 100), 0);
   const taxTotal = rows.reduce((s, r) => s + lineAmount(r) * ((TAX_RATE[r.taxId] || 0) / 100), 0);
-  const shippingNum = parseFloat(shippingCost) || 0;
-  const total = subTotal + taxTotal + shippingNum;
-  const moneyWithCurrency = (amount: number) => formatCurrencyValue(amount, currency);
+  const shippingNum = show("Shipping Cost And Method") ? (parseFloat(shippingCost) || 0) : 0;
+  const shippingTaxNum = show("Shipping Tax") ? (parseFloat(shippingTax) || 0) : 0;
+  const customChargesNum = showSum("Custom Charges") ? (parseFloat(customCharges) || 0) : 0;
+  const roundOffNum = showSum("Round Off") ? (parseFloat(roundOff) || 0) : 0;
+  const totalQty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const rawTotal = subTotal + taxTotal + shippingNum + shippingTaxNum + customChargesNum + roundOffNum;
+  const total = rawTotal;
+  const moneyWithCurrency = (amount: number) => {
+    const formatted = formatCurrencyValue(amount, currency);
+    if (negParen && amount < 0) {
+      return `(${formatCurrencyValue(Math.abs(amount), currency)})`;
+    }
+    return formatted;
+  };
+  const lineDisplayAmount = (r: DraftRow) => {
+    const base = lineAmount(r);
+    if (!showLineTax) return base;
+    return base * (1 + (TAX_RATE[r.taxId] || 0) / 100);
+  };
   const custDisabled = customerId === "" && !custQuery.trim();
 
   const persist = async (): Promise<{ id: number; number: string; backendId?: string } | null> => {
@@ -260,9 +345,10 @@ export const CreateInvoiceForm: React.FC<{
       items, subTotal: +subTotal.toFixed(2), tax: +taxTotal.toFixed(2), shipping: shippingNum,
       total: +total.toFixed(2), amountPaid: 0, amountDue: +total.toFixed(2),
       notes, terms, internalNotes, currency,
-      subTitle, poNumber, shippingMethod, discountBeforeTax, recurring,
+      subTitle, poNumber, poDate, recipientName, salesperson,
+      shippingMethod, shippingTax, discountBeforeTax, recurring,
       recurringUntil: isRecurringActive(recurring) ? recurringUntil : "",
-      deposit, docDiscount, shippingCost,
+      deposit, docDiscount, shippingCost, customCharges, roundOff, cashDenomination,
       paymentMethod: isInvoice ? selectedPaymentMethods : [],
       payment_method: isInvoice ? selectedPaymentMethods : [],
       inlineDiscount: +inlineDiscount.toFixed(2),
@@ -323,6 +409,9 @@ export const CreateInvoiceForm: React.FC<{
       if (!saved) return;
       onSaved(saved.id);
       setLastSaved(saved);
+      if (markSentOnEmail) {
+        void repo.update(collection, saved.id, { status: "Sent" }).catch(() => undefined);
+      }
       setEmailOpen(true);
     } catch {
       /* keep form open on backend failure */
@@ -345,6 +434,9 @@ export const CreateInvoiceForm: React.FC<{
       }
       if (action === "print") {
         void printServerPdf(pdfDocType, saved.id, saved.backendId).catch(() => undefined);
+        if (markSentOnPrint) {
+          void repo.update(collection, saved.id, { status: "Sent" }).catch(() => undefined);
+        }
         finishSave(saved.id);
         return;
       }
@@ -367,6 +459,12 @@ export const CreateInvoiceForm: React.FC<{
 
   const custRecord = customerId ? customers.find((c) => c.id === customerId) : null;
   const custName = custRecord?.name || custQuery;
+  useEffect(() => {
+    if (!showSum("Contact Note as Default Note") || invoice?.notes) return;
+    const note = (custRecord as any)?.notes || (custRecord as any)?.note;
+    if (typeof note === "string" && note.trim()) setNotes(note);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, docSettings?.summary?.["Contact Note as Default Note"]]);
   const custEmail = (customerEmail || custRecord?.email || "").trim();
   const docNumber = invoice?.number?.replace?.("#", "") || "80";
   const formTitle = isEdit ? `Edit ${docLabel}` : `Create ${docLabel}`;
@@ -420,6 +518,15 @@ export const CreateInvoiceForm: React.FC<{
               <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
           </div>
+          {show("Due Date") && (
+            <div className="relative fl-wrap">
+              <label className="fl-label">Due Date</label>
+              <div className="relative">
+                <input value={due} onChange={(e) => setDue(e.target.value)} placeholder=" " className={DOC_FIELD} />
+                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
         </div>
 
         {addrOpen && (
@@ -428,44 +535,63 @@ export const CreateInvoiceForm: React.FC<{
               <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" defaultChecked className="accent-blue-600" /> Billing</label>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={updateToCustomer} onChange={() => setUpdateToCustomer((v) => !v)} className="accent-blue-600" /> Update to customer</label>
             </div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" defaultChecked className="accent-blue-600" /> Shipping</label>
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
-            </div>
+            {show("Shipping Address") ? (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" defaultChecked className="accent-blue-600" /> Shipping</label>
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
+              </div>
+            ) : (
+              <div />
+            )}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div className="relative fl-wrap"><label className="fl-label">Street 1</label><input value={billing.street1} onChange={(e) => setBilling((b) => ({ ...b, street1: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative"><input value={billing.street2} onChange={(e) => setBilling((b) => ({ ...b, street2: e.target.value }))} placeholder="Street 2" className={DOC_FIELD} /></div>
+                {show("Street 1") && <div className="relative fl-wrap"><label className="fl-label">Street 1</label><input value={billing.street1} onChange={(e) => setBilling((b) => ({ ...b, street1: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                {show("Street 2") && <div className="relative"><input value={billing.street2} onChange={(e) => setBilling((b) => ({ ...b, street2: e.target.value }))} placeholder="Street 2" className={DOC_FIELD} /></div>}
               </div>
               <div className="grid grid-cols-4 gap-3">
-                <div className="relative fl-wrap"><label className="fl-label">City</label><input value={billing.city} onChange={(e) => setBilling((b) => ({ ...b, city: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative"><input value={billing.state} onChange={(e) => setBilling((b) => ({ ...b, state: e.target.value }))} placeholder="State" className={DOC_FIELD} /></div>
-                <div className="relative fl-wrap"><label className="fl-label">Zip Code</label><input value={billing.zip} onChange={(e) => setBilling((b) => ({ ...b, zip: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative fl-wrap"><label className="fl-label">Country</label><input value={billing.country} onChange={(e) => setBilling((b) => ({ ...b, country: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
+                {show("City") && <div className="relative fl-wrap"><label className="fl-label">City</label><input value={billing.city} onChange={(e) => setBilling((b) => ({ ...b, city: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                {show("State") && <div className="relative"><input value={billing.state} onChange={(e) => setBilling((b) => ({ ...b, state: e.target.value }))} placeholder="State" className={DOC_FIELD} /></div>}
+                {show("Zip Code") && <div className="relative fl-wrap"><label className="fl-label">Zip Code</label><input value={billing.zip} onChange={(e) => setBilling((b) => ({ ...b, zip: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                {show("Country") && <div className="relative fl-wrap"><label className="fl-label">Country</label><input value={billing.country} onChange={(e) => setBilling((b) => ({ ...b, country: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
               </div>
             </div>
-            <div className={`space-y-3 ${sameAsBilling ? "opacity-60 pointer-events-none" : ""}`}>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative fl-wrap"><label className="fl-label">Street 1</label><input value={shipVal("street1")} onChange={(e) => setShipping((s) => ({ ...s, street1: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative"><input value={shipVal("street2")} onChange={(e) => setShipping((s) => ({ ...s, street2: e.target.value }))} placeholder="Street 2" className={DOC_FIELD} /></div>
+            {show("Shipping Address") && (
+              <div className={`space-y-3 ${sameAsBilling ? "opacity-60 pointer-events-none" : ""}`}>
+                <div className="grid grid-cols-2 gap-3">
+                  {show("Street 1") && <div className="relative fl-wrap"><label className="fl-label">Street 1</label><input value={shipVal("street1")} onChange={(e) => setShipping((s) => ({ ...s, street1: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                  {show("Street 2") && <div className="relative"><input value={shipVal("street2")} onChange={(e) => setShipping((s) => ({ ...s, street2: e.target.value }))} placeholder="Street 2" className={DOC_FIELD} /></div>}
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {show("City") && <div className="relative fl-wrap"><label className="fl-label">City</label><input value={shipVal("city")} onChange={(e) => setShipping((s) => ({ ...s, city: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                  {show("State") && <div className="relative"><input value={shipVal("state")} onChange={(e) => setShipping((s) => ({ ...s, state: e.target.value }))} placeholder="State" className={DOC_FIELD} /></div>}
+                  {show("Zip Code") && <div className="relative fl-wrap"><label className="fl-label">Zip Code</label><input value={shipVal("zip")} onChange={(e) => setShipping((s) => ({ ...s, zip: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                  {show("Country") && <div className="relative fl-wrap"><label className="fl-label">Country</label><input value={shipVal("country")} onChange={(e) => setShipping((s) => ({ ...s, country: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>}
+                </div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="relative fl-wrap"><label className="fl-label">City</label><input value={shipVal("city")} onChange={(e) => setShipping((s) => ({ ...s, city: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative"><input value={shipVal("state")} onChange={(e) => setShipping((s) => ({ ...s, state: e.target.value }))} placeholder="State" className={DOC_FIELD} /></div>
-                <div className="relative fl-wrap"><label className="fl-label">Zip Code</label><input value={shipVal("zip")} onChange={(e) => setShipping((s) => ({ ...s, zip: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-                <div className="relative fl-wrap"><label className="fl-label">Country</label><input value={shipVal("country")} onChange={(e) => setShipping((s) => ({ ...s, country: e.target.value }))} placeholder=" " className={DOC_FIELD} /></div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <input value={subTitle} onChange={(e) => setSubTitle(e.target.value)} placeholder="Sub Title" className={DOC_FIELD} />
-          <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO #" className={DOC_FIELD} />
-          <div className="md:col-span-2">
-            <input value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="Shipping Method" className={DOC_FIELD} />
-          </div>
-          {isInvoice ? (
+          {show("Sub Title") && <input value={subTitle} onChange={(e) => setSubTitle(e.target.value)} placeholder="Sub Title" className={DOC_FIELD} />}
+          {show("PO #") && <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO #" className={DOC_FIELD} />}
+          {show("P.O. Date") && (
+            <div className="relative fl-wrap">
+              <label className="fl-label">P.O. Date</label>
+              <div className="relative">
+                <input value={poDate} onChange={(e) => setPoDate(e.target.value)} placeholder=" " className={DOC_FIELD} />
+                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
+          {show("Recipient name") && <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" className={DOC_FIELD} />}
+          {show("Salesperson") && <input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson" className={DOC_FIELD} />}
+          {show("Shipping Cost And Method") && (
+            <div className="md:col-span-2">
+              <input value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="Shipping Method" className={DOC_FIELD} />
+            </div>
+          )}
+          {isInvoice && show("Payment Methods") ? (
             <div className="md:col-span-2 relative">
               <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Payment Methods</label>
               <button type="button" onClick={() => setPaymentMethodsOpen(true)} className="flex min-h-[46px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2.5 text-left hover:border-gray-400">
@@ -479,16 +605,16 @@ export const CreateInvoiceForm: React.FC<{
                 <span className="inline-flex items-center gap-1 text-sm text-gray-600"><Pencil className="w-4 h-4" /></span>
               </button>
             </div>
-          ) : (
-            <div className="md:col-span-2 min-h-[46px] rounded-md border border-gray-300 bg-white flex items-center px-3 text-sm text-gray-400">Payment Methods</div>
-          )}
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
-          <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
-            <input type="checkbox" checked={discountBeforeTax} onChange={() => setDiscountBeforeTax((v) => !v)} className="accent-blue-600" />
-            Discount before tax
-          </label>
+          {show("Apply discount before tax") && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
+              <input type="checkbox" checked={discountBeforeTax} onChange={() => setDiscountBeforeTax((v) => !v)} className="accent-blue-600" />
+              Discount before tax
+            </label>
+          )}
           <div className="relative fl-wrap">
             <label className="fl-label">Recurring</label>
             <select value={recurring} onChange={(e) => setRecurring(e.target.value)} className={DOC_FIELD}>
@@ -508,24 +634,33 @@ export const CreateInvoiceForm: React.FC<{
           )}
         </div>
 
-        <div ref={itemsRef} className="border border-gray-300 rounded-md overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+        <div ref={itemsRef} className={`border border-gray-300 rounded-md ${autoFit ? "overflow-x-auto" : "overflow-x-auto"}`}>
+          <table className={`w-full text-sm ${autoFit ? "min-w-[760px]" : "min-w-[760px]"}`}>
             <thead><tr className="bg-gray-100 text-gray-500 text-xs"><th className="text-left font-semibold px-4 py-2.5 w-14">Sr. No.</th><th className="text-left font-semibold px-2 py-2.5">Items</th>{cols.qty && <th className="text-right font-semibold px-2 py-2.5">Quantity</th>}{cols.mrp && <th className="text-right font-semibold px-2 py-2.5">MRP</th>}<th className="text-right font-semibold px-2 py-2.5">Rate</th>{cols.tax && <th className="text-left font-semibold px-2 py-2.5">Tax</th>}{cols.discount && <th className="text-right font-semibold px-2 py-2.5">Discount</th>}<th className="text-right font-semibold px-4 py-2.5">Amount</th><th className="w-8" /></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className="border-t border-gray-300 align-top">
                   <td className="px-4 py-3 text-gray-700">{i + 1}</td>
-                  <td className="px-2 py-2 relative">
+                  <td className={`px-2 py-2 relative ${descFullWidth ? "min-w-[280px]" : ""}`}>
                     <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
-                    <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
-                    <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className="w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5" />
+                    {showItemName(r.kind) && (
+                      <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
+                    )}
+                    {showDesc && (
+                      <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className={`w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5 ${descFullWidth ? "block" : ""}`} />
+                    )}
                     {sugRow === i && (
                       <div className="absolute left-2 right-0 top-full z-30 mt-1 max-w-xl bg-white border border-gray-300 rounded-md shadow-xl overflow-hidden">
                         <div className="max-h-56 overflow-y-auto custom-scrollbar">
                           {suggestionsFor(r).map((c) => (
                             <button key={c.key} type="button" onClick={() => pickSuggestion(i, c.key)} className="w-full flex items-center justify-between gap-6 px-4 py-2.5 text-sm hover:bg-gray-100 text-left">
-                              <span className="text-gray-900 truncate">{c.name}</span>
-                              <span className="text-gray-600 flex-shrink-0">{moneyWithCurrency(c.rate)}</span>
+                              <span className="text-gray-900 truncate">
+                                {c.name}
+                                {showItemCodeSug && <span className="text-gray-400 text-xs ml-2">{c.key}</span>}
+                                {showDescSug && (c as any).description ? <span className="block text-xs text-gray-500 truncate">{(c as any).description}</span> : null}
+                                {showStockSug && (c as any).stock != null ? <span className="block text-xs text-gray-500">Stock: {(c as any).stock}</span> : null}
+                              </span>
+                              {showSugPrice && <span className="text-gray-600 flex-shrink-0">{moneyWithCurrency(c.rate)}</span>}
                             </button>
                           ))}
                         </div>
@@ -536,7 +671,15 @@ export const CreateInvoiceForm: React.FC<{
                       </div>
                     )}
                   </td>
-                  {cols.qty && <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.qty} onChange={(e) => setQty(i, Number(e.target.value))} className="w-14 bg-transparent text-sm text-right outline-none" /></td>}
+                  {cols.qty && (
+                    <td className="px-2 py-3 text-right">
+                      {showQtyFor(r.kind) ? (
+                        <input type="number" min={0} value={r.qty} onChange={(e) => setQty(i, Number(e.target.value))} className="w-14 bg-transparent text-sm text-right outline-none" />
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  )}
                   {cols.mrp && <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.mrp || ""} onChange={(e) => setMrp(i, Number(e.target.value))} className="w-16 bg-transparent text-sm text-right outline-none" /></td>}
                   <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.rate} onChange={(e) => setRate(i, Number(e.target.value))} className="w-20 bg-transparent text-sm text-right outline-none" /></td>
                   {cols.tax && (
@@ -554,15 +697,15 @@ export const CreateInvoiceForm: React.FC<{
                       </span>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{moneyWithCurrency(lineAmount(r))}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{moneyWithCurrency(lineDisplayAmount(r))}</td>
                   <td className="px-2 py-3 text-right"><button type="button" onClick={() => removeRow(i)} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="flex items-center gap-4 px-4 py-2.5 border-t border-gray-300">
-            <button type="button" onClick={() => addRow("product")} className="flex items-center gap-1.5 text-sm text-blue-600"><Plus className="w-4 h-4" /> Add Product</button>
-            <button type="button" onClick={() => addRow("service")} className="flex items-center gap-1.5 text-sm text-blue-600"><Plus className="w-4 h-4" /> Add Service</button>
+            {allowProduct && <button type="button" onClick={() => addRow("product")} className="flex items-center gap-1.5 text-sm text-blue-600"><Plus className="w-4 h-4" /> Add Product</button>}
+            {allowService && <button type="button" onClick={() => addRow("service")} className="flex items-center gap-1.5 text-sm text-blue-600"><Plus className="w-4 h-4" /> Add Service</button>}
             <div className="relative ml-auto" ref={colMenuRef}>
               <button type="button" title="Columns" onClick={() => setColMenuOpen((o) => !o)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600"><Settings className="w-4 h-4" /></button>
               {colMenuOpen && (
@@ -580,18 +723,47 @@ export const CreateInvoiceForm: React.FC<{
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="space-y-4">
-            <div><label className="text-xs text-gray-500">Terms &amp; Conditions</label><textarea value={terms} onChange={(e) => setTerms(e.target.value)} className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
-            <div><label className="text-xs text-gray-500">Internal Notes</label><textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} placeholder="Internal Notes" className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
+            {show("Terms & Conditions") && (
+              <div><label className="text-xs text-gray-500">Terms &amp; Conditions</label><textarea value={terms} onChange={(e) => setTerms(e.target.value)} className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
+            )}
+            {show("Internal Notes") && (
+              <div><label className="text-xs text-gray-500">Internal Notes</label><textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} placeholder="Internal Notes" className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
+            )}
           </div>
           <div className="space-y-4">
-            <div><label className="text-xs text-gray-500">Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
-            <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
+            {show("Notes") && (
+              <div><label className="text-xs text-gray-500">Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" /></div>
+            )}
+            {show("Attachment") && <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />}
+            {isInvoice && showPay("Cash Received Denomination") && (
+              <div>
+                <label className="text-xs text-gray-500">Cash Received Denomination</label>
+                <textarea value={cashDenomination} onChange={(e) => setCashDenomination(e.target.value)} placeholder="e.g. 500×2, 100×3" className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none bg-white" />
+              </div>
+            )}
           </div>
           <div className="border border-gray-300 rounded-md overflow-hidden self-start bg-white">
+            {showSum("Total Quantity") && (
+              <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Total Quantity</span><span className="font-semibold text-gray-900">{totalQty}</span></div>
+            )}
             <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Sub Total</span><span className="font-semibold text-gray-900">{moneyWithCurrency(subTotal)}</span></div>
+            {showSum("Inline Discount") && inlineDiscount > 0 && (
+              <div className="flex justify-between px-4 py-2 text-sm"><span className="text-gray-700">Inline Discount</span><span className="font-semibold text-gray-900">{moneyWithCurrency(inlineDiscount)}</span></div>
+            )}
             <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Deposit</span><input value={deposit} onChange={(e) => setDeposit(e.target.value)} placeholder="30 or 30%" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
             <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Discount</span><input value={docDiscount} onChange={(e) => setDocDiscount(e.target.value)} placeholder="30 or 30%" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
-            <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Shipping Cost</span><input value={shippingCost} onChange={(e) => setShippingCost(e.target.value)} placeholder="Shipping Cost" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
+            {show("Shipping Cost And Method") && (
+              <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Shipping Cost</span><input value={shippingCost} onChange={(e) => setShippingCost(e.target.value)} placeholder="Shipping Cost" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
+            )}
+            {show("Shipping Tax") && (
+              <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Shipping Tax</span><input value={shippingTax} onChange={(e) => setShippingTax(e.target.value)} placeholder="0" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
+            )}
+            {showSum("Custom Charges") && (
+              <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Custom Charges</span><input value={customCharges} onChange={(e) => setCustomCharges(e.target.value)} placeholder="0" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
+            )}
+            {showSum("Round Off") && (
+              <div className="flex justify-between items-center px-4 py-2 text-sm gap-2"><span className="text-gray-700">Round Off</span><input value={roundOff} onChange={(e) => setRoundOff(e.target.value)} placeholder="0" className="w-28 text-right text-sm border border-gray-300 rounded px-2 py-1 bg-white" /></div>
+            )}
             <div className="flex justify-between px-4 py-2.5 text-sm border-t border-gray-300"><span className="text-gray-700">Total</span><span className="font-semibold text-gray-900">{moneyWithCurrency(total)}</span></div>
             <div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-300"><span className="font-semibold text-gray-900">Amount Due</span><span className="font-semibold text-gray-900">{moneyWithCurrency(total)}</span></div>
           </div>
@@ -611,6 +783,8 @@ export const CreateInvoiceForm: React.FC<{
         bodyText={`Dear ${custName}\n\n${docLabel} #: ${lastSaved?.number || docNumber}\nTotal: ${moneyWithCurrency(total)}`}
         attachmentLabel={lastSaved ? `${docLabel} ${lastSaved.number}` : undefined}
         emailNav={EMAIL_NAV[mode]}
+        /* createPublicUrl reserved for email template link when backend supports it */
+        key={createPublicUrl ? "pub-on" : "pub-off"}
       />
       {previewOpen && lastSaved && (
         <PdfPreviewModal

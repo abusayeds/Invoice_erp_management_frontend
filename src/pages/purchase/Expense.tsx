@@ -24,6 +24,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, CreateContactModal } from "@/lib/db";
+import { useAppSettings, isExpenseSettingOn } from "@/lib/db/appSettings";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { updateExpense } from "@/services/accountingApi";
@@ -249,6 +250,10 @@ const FieldSelect: React.FC<{ label?: string; display: React.ReactNode; children
 };
 
 const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (id: number) => void }> = ({ initial, onClose, onSaved }) => {
+  const expenseSettings = useAppSettings("expense");
+  const showPaymentType = isExpenseSettingOn(expenseSettings?.paymentType, true);
+  const showRoundOff = isExpenseSettingOn(expenseSettings?.roundOff, false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const vendors = useCollection<any>("vendors", "name");
   const [vendorId, setVendorId] = useState<number | null>(initial?.vendorId ?? null);
   /* vendor finder — same behavior as the Customer field on create invoice /
@@ -282,13 +287,15 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
   const [description, setDescription] = useState(initial?.notes ?? "");
   const [number] = useState(initial?.number?.replace("#", "") ?? "");
   const [attachment, setAttachment] = useState(initial?.Attachment || initial?.attachments || "");
+  const [roundOff, setRoundOff] = useState(initial?.roundOff != null ? String(initial.roundOff) : "");
 
   const vendorName = vendorId != null ? vendors.find((v) => v.id === vendorId)?.name || "" : vendorQuery;
   const vendorMatches = vendors.filter((v) => v.name.toLowerCase().includes(vendorQuery.toLowerCase()));
   const amt = parseMoney(amount);
   const ship = parseMoney(shipping);
+  const roundOffNum = showRoundOff ? (parseMoney(roundOff) || 0) : 0;
   const taxLines = EXP_TAXES.filter((t) => taxIds.has(t.id)).map((t) => ({ ...t, value: +((amt * t.rate) / 100).toFixed(2) }));
-  const total = +(amt + ship + (inclusive ? 0 : taxLines.reduce((s, t) => s + t.value, 0))).toFixed(2);
+  const total = +(amt + ship + roundOffNum + (inclusive ? 0 : taxLines.reduce((s, t) => s + t.value, 0))).toFixed(2);
   const toggleTax = (id: number) => setTaxIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const save = async () => {
@@ -300,8 +307,8 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
       vid = (await repo.add("vendors", { name: vendorQuery.trim(), status: "Active", payable: 0 })) as number;
     }
     const rec = {
-      vendorId: vid, category: category.trim(), taxIds: [...taxIds], inclusive, paymentType: payType,
-      amount: amt, shipping: ship, total, date, recurring, upTo: recurring === "Never" ? "" : upTo,
+      vendorId: vid, category: category.trim(), taxIds: [...taxIds], inclusive, paymentType: showPaymentType ? payType : "",
+      amount: amt, shipping: ship, roundOff: roundOffNum, total, date, recurring, upTo: recurring === "Never" ? "" : upTo,
       notes: description,
       Attachment: attachment,
       attachments: attachment,
@@ -326,7 +333,7 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
       <div className="module-title-bar">
         <h1 className="text-lg font-semibold text-gray-900">{initial?.id ? "Edit Expense" : "Create Expense"}</h1>
         <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
           <button onClick={save} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
         </div>
@@ -393,11 +400,13 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
             )}
           </FieldSelect>
           {/* Payment Type (reference dropdown) */}
-          <FieldSelect label="Payment Type" display={payType || <span className="text-gray-400">Payment Type</span>}>
-            {(close) => payTypes.map((m) => (
-              <button key={m} onClick={() => { setPayType(m); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{m} {m === payType && <Check className="w-4 h-4 text-blue-600" />}</button>
-            ))}
-          </FieldSelect>
+          {showPaymentType && (
+            <FieldSelect label="Payment Type" display={payType || <span className="text-gray-400">Payment Type</span>}>
+              {(close) => payTypes.map((m) => (
+                <button key={m} onClick={() => { setPayType(m); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{m} {m === payType && <Check className="w-4 h-4 text-blue-600" />}</button>
+              ))}
+            </FieldSelect>
+          )}
           <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
         </div>
 
@@ -417,6 +426,9 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
             <FloatBox label="Expense Amount *"><input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder=" " className={fieldCls} /></FloatBox>
             <FloatBox label="Shipping Cost"><input value={shipping} onChange={(e) => setShipping(e.target.value)} placeholder=" " className={fieldCls} /></FloatBox>
           </div>
+          {showRoundOff && (
+            <FloatBox label="Round Off"><input value={roundOff} onChange={(e) => setRoundOff(e.target.value)} placeholder="0" className={fieldCls} /></FloatBox>
+          )}
           <div className={`grid gap-3 ${recurring !== "Never" ? "grid-cols-2" : "grid-cols-1"}`}>
             <FieldSelect label="Recurring" display={recurring}>
               {(close) => recurringOptions.map((r) => (
@@ -437,6 +449,9 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
           <div className="border border-gray-200 rounded-md overflow-hidden">
             <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Expense Amount</span><span className="font-semibold text-gray-900">{fmtMoney(amt)}</span></div>
             {ship > 0 && <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Shipping Cost</span><span className="font-semibold text-gray-900">{fmtMoney(ship)}</span></div>}
+            {showRoundOff && roundOffNum !== 0 && (
+              <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Round Off</span><span className="font-semibold text-gray-900">{fmtMoney(roundOffNum)}</span></div>
+            )}
             {!inclusive && taxLines.map((t) => (
               <div key={t.id} className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>{t.name} {t.rate}% on {fmtMoney(amt)}</span><span>{fmtMoney(t.value)}</span></div>
             ))}
@@ -451,12 +466,16 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
           onSaved={(id: number, name: string) => { setVendorId(id); setVendorQuery(name); }}
         />
       )}
+      {settingsOpen && <AppSettingsModal initialTab="Expense" onClose={() => setSettingsOpen(false)} />}
     </section>
   );
 };
 
 export const Expenses: React.FC = () => {
   const queryClient = useQueryClient();
+  const expenseSettings = useAppSettings("expense");
+  const showPaymentTypeDetail = isExpenseSettingOn(expenseSettings?.paymentType, true);
+  const showRoundOffDetail = isExpenseSettingOn(expenseSettings?.roundOff, false);
   const location = useLocation();
   const navigate = useNavigate();
   const dbExpenses = useCollection<any>("expenses");
@@ -774,7 +793,9 @@ export const Expenses: React.FC = () => {
               <FloatField label="Vendor" value={selected.vendor} readOnly />
               <FloatField label="Category *" value={selected.category} readOnly />
               <FloatField label="Default Taxes" value={(selectedDb.taxIds || []).length ? EXP_TAXES.filter((t) => selectedDb.taxIds.includes(t.id)).map((t) => t.name).join(", ") : selected.defaultTaxes || "—"} readOnly />
-              <FloatField label="Payment Type" value={selectedDb.paymentType || "—"} readOnly />
+              {showPaymentTypeDetail && (
+                <FloatField label="Payment Type" value={selectedDb.paymentType || "—"} readOnly />
+              )}
               <DocAttachmentField
                 compact
                 value={selectedDb?.Attachment || selectedDb?.attachments || ""}
@@ -816,6 +837,9 @@ export const Expenses: React.FC = () => {
               <div className="border border-gray-200 rounded-md overflow-hidden">
                 <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Expense Amount</span><span className="font-semibold text-gray-900">{fmtMoney(selectedDb.amount || 0)}</span></div>
                 {(selectedDb.shipping || 0) > 0 && <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Shipping Cost</span><span className="font-semibold text-gray-900">{fmtMoney(selectedDb.shipping)}</span></div>}
+                {showRoundOffDetail && (selectedDb.roundOff || 0) !== 0 && (
+                  <div className="flex justify-between px-4 py-2.5 text-sm"><span className="text-gray-700">Round Off</span><span className="font-semibold text-gray-900">{fmtMoney(selectedDb.roundOff || 0)}</span></div>
+                )}
                 {!selectedDb.inclusive && EXP_TAXES.filter((t) => (selectedDb.taxIds || []).includes(t.id)).map((t) => (
                   <div key={t.id} className="flex justify-between px-4 py-2 text-xs text-gray-500"><span>{t.name} {t.rate}% on {fmtMoney(selectedDb.amount || 0)}</span><span>{fmtMoney(((selectedDb.amount || 0) * t.rate) / 100)}</span></div>
                 ))}

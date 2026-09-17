@@ -16,6 +16,7 @@ import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFo
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { downloadDocPdf } from "@/lib/db";
+import { useAppSettings, isCustomerFieldVisible } from "@/lib/db/appSettings";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -486,6 +487,8 @@ const EditCustomer: React.FC<{
 }> = ({ doc, onClose, onSaved }) => {
   const qc = useQueryClient();
   const isCreate = doc === null;
+  const customerSettings = useAppSettings("customer");
+  const show = (key: string) => isCustomerFieldVisible(customerSettings?.fieldVisibility, key);
   const [tab, setTab] = useState<"Details" | "Settings">("Details");
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
   const switchTab = (t: "Details" | "Settings") => {
@@ -510,6 +513,8 @@ const EditCustomer: React.FC<{
   const set = (k: keyof CustomerFormData, v: any) => setF((p) => ({ ...p, [k]: v }));
   const [sameAsBilling, setSameAsBilling] = useState(f.sameAsBilling);
   const [emailEditing, setEmailEditing] = useState(!f.email);
+  /** Settings-only field (no backend column) — still respect Field Visibility. */
+  const [taxpayerType, setTaxpayerType] = useState("Regular");
 
   const ship = (k: "Street1" | "Street2" | "Zip" | "City" | "State" | "Country") =>
     sameAsBilling ? (f as any)[k.charAt(0).toLowerCase() + k.slice(1)] : (f as any)["ship" + k];
@@ -577,86 +582,130 @@ const EditCustomer: React.FC<{
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6">
             <div className="space-y-6">
               <EditField label="Company Name" value={f.name} onChange={(v) => set("name", v)} />
-              <div className="grid grid-cols-2 gap-4"><EditField label="Reg. No" value={f.regNo} onChange={(v) => set("regNo", v)} /><EditField label="Tax ID" value={f.taxId} onChange={(v) => set("taxId", v)} /></div>
-              <div className="grid grid-cols-2 gap-4"><EditField label="Business Phone" value={f.phone} onChange={(v) => set("phone", v)} /><EditField label="Fax" value={f.fax} onChange={(v) => set("fax", v)} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                {show("Reg. No") && <EditField label="Reg. No" value={f.regNo} onChange={(v) => set("regNo", v)} />}
+                {show("GSTIN / VAT Number") && <EditField label="GSTIN / VAT Number" value={f.taxId} onChange={(v) => set("taxId", v)} />}
+              </div>
+              {show("Taxpayer Type") && (
+                <EditSelect
+                  label="Taxpayer Type"
+                  value={taxpayerType}
+                  options={["Regular", "Composition", "Unregistered", "Consumer"]}
+                  onChange={setTaxpayerType}
+                />
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {show("Business Phone") && <EditField label="Business Phone" value={f.phone} onChange={(v) => set("phone", v)} />}
+                {show("Fax") && <EditField label="Fax" value={f.fax} onChange={(v) => set("fax", v)} />}
+              </div>
             </div>
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4"><EditField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} /><EditField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} /></div>
-              <div className="relative">
-                <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Email</label>
-                {f.email && !emailEditing ? (
-                  <div className={`${editFieldCls} flex items-center`}>
-                    <span className="inline-flex items-center gap-1.5 bg-gray-100 border border-gray-300 rounded-full pl-3 pr-1.5 py-0.5 text-sm text-gray-800">
-                      {f.email}
-                      <button type="button" onClick={() => { set("email", ""); setEmailEditing(true); }} className="w-4 h-4 flex items-center justify-center rounded-full bg-gray-400 text-white hover:bg-gray-500"><X className="w-3 h-3" /></button>
-                    </span>
-                  </div>
-                ) : (
-                  <input
-                    value={f.email}
-                    onChange={(e) => set("email", e.target.value)}
-                    onBlur={() => f.email.trim() && setEmailEditing(false)}
-                    onKeyDown={(e) => e.key === "Enter" && f.email.trim() && setEmailEditing(false)}
-                    placeholder="Email"
-                    className={editFieldCls}
-                  />
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4"><EditField label="Mobile" value={f.mobile} onChange={(v) => set("mobile", v)} /><EditField label="Home Phone" value={f.homePhone} onChange={(v) => set("homePhone", v)} /></div>
               <div className="grid grid-cols-2 gap-4">
-                <DateField label="Birthday" value={f.birthday} onChange={(v) => set("birthday", v)} />
-                <DateField label="Anniversary" value={f.anniversary} onChange={(v) => set("anniversary", v)} />
+                <EditField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} />
+                {show("Last Name") && <EditField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} />}
+              </div>
+              {show("Email") && (
+                <div className="relative">
+                  <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Email</label>
+                  {f.email && !emailEditing ? (
+                    <div className={`${editFieldCls} flex items-center`}>
+                      <span className="inline-flex items-center gap-1.5 bg-gray-100 border border-gray-300 rounded-full pl-3 pr-1.5 py-0.5 text-sm text-gray-800">
+                        {f.email}
+                        <button type="button" onClick={() => { set("email", ""); setEmailEditing(true); }} className="w-4 h-4 flex items-center justify-center rounded-full bg-gray-400 text-white hover:bg-gray-500"><X className="w-3 h-3" /></button>
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      value={f.email}
+                      onChange={(e) => set("email", e.target.value)}
+                      onBlur={() => f.email.trim() && setEmailEditing(false)}
+                      onKeyDown={(e) => e.key === "Enter" && f.email.trim() && setEmailEditing(false)}
+                      placeholder="Email"
+                      className={editFieldCls}
+                    />
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {show("Mobile") && <EditField label="Mobile" value={f.mobile} onChange={(v) => set("mobile", v)} />}
+                {show("Home Phone") && <EditField label="Home Phone" value={f.homePhone} onChange={(v) => set("homePhone", v)} />}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {show("Birthday") && <DateField label="Birthday" value={f.birthday} onChange={(v) => set("birthday", v)} />}
+                {show("Anniversary") && <DateField label="Anniversary" value={f.anniversary} onChange={(v) => set("anniversary", v)} />}
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6 pt-2">
             <div className="flex items-center justify-between"><span className="text-sm font-semibold text-gray-900">Address</span><span className="text-xs text-gray-400">Billing</span></div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
-              <span className="text-xs text-gray-400">Shipping</span>
-            </div>
+            {show("Entire Shipping Address") ? (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
+                <span className="text-xs text-gray-400">Shipping</span>
+              </div>
+            ) : (
+              <div />
+            )}
             <div className="space-y-4">
               <EditField label="Street 1" value={f.street1} onChange={(v) => set("street1", v)} />
-              <EditField label="Street 2" value={f.street2} onChange={(v) => set("street2", v)} placeholder="Street 2" />
-              <div className="grid grid-cols-3 gap-3"><EditField label="Zip" value={f.zip} onChange={(v) => set("zip", v)} /><EditField label="City" value={f.city} onChange={(v) => set("city", v)} /><EditField label="State" value={f.state} onChange={(v) => set("state", v)} placeholder="State" /></div>
-              <EditField label="Country" value={f.country} onChange={(v) => set("country", v)} />
+              {show("Street 2") && <EditField label="Street 2" value={f.street2} onChange={(v) => set("street2", v)} placeholder="Street 2" />}
+              <div className="grid grid-cols-3 gap-3">
+                {show("Zip Code") && <EditField label="Zip Code" value={f.zip} onChange={(v) => set("zip", v)} />}
+                {show("City") && <EditField label="City" value={f.city} onChange={(v) => set("city", v)} />}
+                {show("State") && <EditField label="State" value={f.state} onChange={(v) => set("state", v)} placeholder="State" />}
+              </div>
+              {show("Country") && <EditField label="Country" value={f.country} onChange={(v) => set("country", v)} />}
             </div>
-            <div className="space-y-4">
-              {shipField("Street 1", "Street1")}
-              {shipField("Street 2", "Street2")}
-              <div className="grid grid-cols-3 gap-3">{shipField("Zip", "Zip")}{shipField("City", "City")}{shipField("State", "State")}</div>
-              {shipField("Country", "Country")}
-            </div>
+            {show("Entire Shipping Address") && (
+              <div className="space-y-4">
+                {shipField("Street 1", "Street1")}
+                {show("Street 2") && shipField("Street 2", "Street2")}
+                <div className="grid grid-cols-3 gap-3">
+                  {show("Zip Code") && shipField("Zip Code", "Zip")}
+                  {show("City") && shipField("City", "City")}
+                  {show("State") && shipField("State", "State")}
+                </div>
+                {show("Country") && shipField("Country", "Country")}
+              </div>
+            )}
           </div>
 
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-            <RichTextEditor value={f.bank} onChange={(html) => set("bank", html)} placeholder="Bank Details" />
-          </div>
+          {show("Bank Details") && (
+            <div className="pt-2">
+              <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
+              <RichTextEditor value={f.bank} onChange={(html) => set("bank", html)} placeholder="Bank Details" />
+            </div>
+          )}
         </div>
       ) : (
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <EditSelect label="Currency" value={f.currency} options={CURRENCIES} onChange={(v) => set("currency", v)} />
-            <EditField label="Default Taxes (Service)" value={f.defaultTaxService} onChange={(v) => set("defaultTaxService", v)} />
-            <EditField label="Default Taxes (Product)" value={f.defaultTaxProduct} onChange={(v) => set("defaultTaxProduct", v)} />
-            <EditField label="Hourly Rate" value={f.hourlyRate} onChange={(v) => set("hourlyRate", v)} placeholder="Hourly Rate" />
+            {show("Currency") && <EditSelect label="Currency" value={f.currency} options={CURRENCIES} onChange={(v) => set("currency", v)} />}
+            {show("Default Taxes (Services)") && <EditField label="Default Taxes (Services)" value={f.defaultTaxService} onChange={(v) => set("defaultTaxService", v)} />}
+            {show("Default Taxes (Product)") && <EditField label="Default Taxes (Product)" value={f.defaultTaxProduct} onChange={(v) => set("defaultTaxProduct", v)} />}
+            {show("Hourly Rate") && <EditField label="Hourly Rate" value={f.hourlyRate} onChange={(v) => set("hourlyRate", v)} placeholder="Hourly Rate" />}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <div className="lg:col-span-2">
-              <EditSelect label="Payment Terms (Sales)" value={f.paymentTerms} options={PAYMENT_TERMS} onChange={(v) => set("paymentTerms", v)} />
+            {show("Payment Terms (Sales)") && (
+              <div className="lg:col-span-2">
+                <EditSelect label="Payment Terms (Sales)" value={f.paymentTerms} options={PAYMENT_TERMS} onChange={(v) => set("paymentTerms", v)} />
+              </div>
+            )}
+            {show("Opening Balance") && <EditField label="Opening Balance" value={f.openingBalance} onChange={(v) => set("openingBalance", v)} placeholder="Opening Balance" />}
+            {show("Opening Balance Date") && <DateField label="Opening Balance Date" value={f.openingBalanceDate} onChange={(v) => set("openingBalanceDate", v)} />}
+          </div>
+          {show("Notes") && (
+            <div>
+              <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={5} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-y" />
             </div>
-            <EditField label="Opening Balance" value={f.openingBalance} onChange={(v) => set("openingBalance", v)} placeholder="Opening Balance" />
-            <DateField label="Opening Balance Date" value={f.openingBalanceDate} onChange={(v) => set("openingBalanceDate", v)} />
-          </div>
-          <div>
-            <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={5} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-y" />
-          </div>
-          <div className="flex items-center gap-6">
-            <span className="text-sm font-semibold text-gray-900">Payment Reminder</span>
-            <Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} />
-          </div>
+          )}
+          {show("Payment Reminder") && (
+            <div className="flex items-center gap-6">
+              <span className="text-sm font-semibold text-gray-900">Payment Reminder</span>
+              <Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} />
+            </div>
+          )}
           <div className="flex items-center gap-6">
             <span className="text-sm font-semibold text-gray-900">Contact Login</span>
             <Toggle on={!!f.isLoginRequired} onChange={() => set("isLoginRequired", !f.isLoginRequired)} />
@@ -675,6 +724,8 @@ export const Customers: React.FC = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const location = useLocation();
+  const customerSettings = useAppSettings("customer");
+  const showField = (key: string) => isCustomerFieldVisible(customerSettings?.fieldVisibility, key);
   const navSelectedId = (location.state as { selectedId?: string; openCreate?: boolean } | null)?.selectedId;
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
 
@@ -935,8 +986,20 @@ export const Customers: React.FC = () => {
   const profile = doc?.businessProfile ?? {};
   const billing = profile.billing_address ?? {};
   const shipping = profile.shipping_address ?? {};
-  const billingLines = [billing.address_line_1, billing.address_line_2, [billing.city, billing.zip_code].filter(Boolean).join(" "), billing.state, billing.country].filter(Boolean);
-  const shippingLines = [shipping.address_line_1, shipping.address_line_2, [shipping.city, shipping.zip_code].filter(Boolean).join(" "), shipping.state, shipping.country].filter(Boolean);
+  const billingLines = [
+    billing.address_line_1,
+    showField("Street 2") ? billing.address_line_2 : null,
+    [showField("City") ? billing.city : null, showField("Zip Code") ? billing.zip_code : null].filter(Boolean).join(" ") || null,
+    showField("State") ? billing.state : null,
+    showField("Country") ? billing.country : null,
+  ].filter(Boolean);
+  const shippingLines = [
+    shipping.address_line_1,
+    showField("Street 2") ? shipping.address_line_2 : null,
+    [showField("City") ? shipping.city : null, showField("Zip Code") ? shipping.zip_code : null].filter(Boolean).join(" ") || null,
+    showField("State") ? shipping.state : null,
+    showField("Country") ? shipping.country : null,
+  ].filter(Boolean);
 
   const stmtSummary = { amount: money(0), paid: money(0), balance: money(0) };
 
@@ -1158,37 +1221,44 @@ export const Customers: React.FC = () => {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                 {[
                   ["Company", profile.companyName || selected.name],
-                  ["Reg. No", profile.registration_number || "—"],
-                  ["Tax ID", profile.tax_number || "—"],
-                  ["Business Phone", profile.business_phone || "—"],
-                  ["Fax", profile.fax || "—"],
-                  ["Email", doc?.email || "—"],
+                  showField("Reg. No") ? ["Reg. No", profile.registration_number || "—"] : null,
+                  showField("GSTIN / VAT Number") ? ["GSTIN / VAT Number", profile.tax_number || "—"] : null,
+                  showField("Business Phone") ? ["Business Phone", profile.business_phone || "—"] : null,
+                  showField("Fax") ? ["Fax", profile.fax || "—"] : null,
+                  showField("Email") ? ["Email", doc?.email || "—"] : null,
                   ["First Name", (doc?.name ?? "").split(" ")[0] || "—"],
-                  ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"],
-                  ["Mobile Number", doc?.phone || "—"],
-                  ["Home Phone", profile.home_phone || "—"],
-                  ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"],
-                  ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"],
-                ].map(([k, v]) => (
-                  <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{v}</div></div>
-                ))}
+                  showField("Last Name") ? ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"] : null,
+                  showField("Mobile") ? ["Mobile Number", doc?.phone || "—"] : null,
+                  showField("Home Phone") ? ["Home Phone", profile.home_phone || "—"] : null,
+                  showField("Birthday") ? ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"] : null,
+                  showField("Anniversary") ? ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"] : null,
+                ].filter(Boolean).map((pair) => {
+                  const [k, v] = pair as [string, string];
+                  return (
+                    <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{v}</div></div>
+                  );
+                })}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
                 <div>
                   <div className="text-xs text-gray-500 mb-1">Billing Address</div>
                   <div className="text-sm text-gray-800 leading-relaxed">{billingLines.length ? billingLines.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
                 </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
-                  <div className="text-sm text-gray-800 leading-relaxed">{shippingLines.length ? shippingLines.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
+                {showField("Entire Shipping Address") && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
+                    <div className="text-sm text-gray-800 leading-relaxed">{shippingLines.length ? shippingLines.map((l, i) => <div key={i}>{l}</div>) : "—"}</div>
+                  </div>
+                )}
+              </div>
+              {showField("Bank Details") && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
+                  {profile.bank_details
+                    ? <div className="text-sm text-gray-800 leading-relaxed [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
+                    : <div className="text-sm text-gray-400">—</div>}
                 </div>
-              </div>
-              <div className="pt-4 border-t border-gray-200">
-                <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-                {profile.bank_details
-                  ? <div className="text-sm text-gray-800 leading-relaxed [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
-                  : <div className="text-sm text-gray-400">—</div>}
-              </div>
+              )}
             </div>
           )}
 
@@ -1197,47 +1267,52 @@ export const Customers: React.FC = () => {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[
-                  ["Currency", doc?.currency || "$ USD"],
-                  ["Default Taxes (Service)", typeof profile.default_tax_service_id === "object" ? (profile.default_tax_service_id as any)?.name ?? "None" : "None"],
-                  ["Default Taxes (Product)", typeof profile.default_tax_product_id === "object" ? (profile.default_tax_product_id as any)?.name ?? "None" : "None"],
-                  ["Hourly Rate", profile.hourly_rate ? money(profile.hourly_rate) : "—"],
-                  ["Payment Terms (Sales)", profile.payment_terms || "Default Company"],
-                  ["Opening Balance", profile.opening_balance ? money(profile.opening_balance) : "—"],
-                  ["Opening Balance Date", profile.opening_balance_date ? String(profile.opening_balance_date).slice(0, 10) : "—"],
-                ].map(([k, v]) => (
-                  <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
-                ))}
+                  showField("Currency") ? ["Currency", doc?.currency || "$ USD"] : null,
+                  showField("Default Taxes (Services)") ? ["Default Taxes (Services)", typeof profile.default_tax_service_id === "object" ? (profile.default_tax_service_id as any)?.name ?? "None" : "None"] : null,
+                  showField("Default Taxes (Product)") ? ["Default Taxes (Product)", typeof profile.default_tax_product_id === "object" ? (profile.default_tax_product_id as any)?.name ?? "None" : "None"] : null,
+                  showField("Hourly Rate") ? ["Hourly Rate", profile.hourly_rate ? money(profile.hourly_rate) : "—"] : null,
+                  showField("Payment Terms (Sales)") ? ["Payment Terms (Sales)", profile.payment_terms || "Default Company"] : null,
+                  showField("Opening Balance") ? ["Opening Balance", profile.opening_balance ? money(profile.opening_balance) : "—"] : null,
+                  showField("Opening Balance Date") ? ["Opening Balance Date", profile.opening_balance_date ? String(profile.opening_balance_date).slice(0, 10) : "—"] : null,
+                ].filter(Boolean).map((pair) => {
+                  const [k, v] = pair as [string, string];
+                  return (
+                    <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
+                  );
+                })}
               </div>
-              {profile.notes && (
+              {showField("Notes") && profile.notes && (
                 <div className="pt-4 border-t border-gray-200">
                   <div className="text-xs text-gray-500 mb-1">Notes</div>
                   <div className="text-sm text-gray-800">{profile.notes}</div>
                 </div>
               )}
               <div className="space-y-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center justify-between max-w-sm">
-                  <span className="text-sm text-gray-700">Payment Reminder</span>
-                  <Toggle
-                    on={profile.payment_reminder !== false}
-                    onChange={() => {
-                      if (!selected._id) return;
-                      updateCustomer(selected._id, { ...docToForm(doc!), paymentReminder: !(profile.payment_reminder !== false) })
-                        .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
-                    }}
-                  />
+                  {showField("Payment Reminder") && (
+                    <div className="flex items-center justify-between max-w-sm">
+                      <span className="text-sm text-gray-700">Payment Reminder</span>
+                      <Toggle
+                        on={profile.payment_reminder !== false}
+                        onChange={() => {
+                          if (!selected._id) return;
+                          updateCustomer(selected._id, { ...docToForm(doc!), paymentReminder: !(profile.payment_reminder !== false) })
+                            .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between max-w-sm">
+                    <span className="text-sm text-gray-700">Contact Login</span>
+                    <Toggle
+                      on={profile.is_login_required ?? false}
+                      onChange={() => {
+                        if (!selected._id) return;
+                        updateCustomer(selected._id, { ...docToForm(doc!), isLoginRequired: !(profile.is_login_required ?? false) })
+                          .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between max-w-sm">
-                  <span className="text-sm text-gray-700">Contact Login</span>
-                  <Toggle
-                    on={profile.is_login_required ?? false}
-                    onChange={() => {
-                      if (!selected._id) return;
-                      updateCustomer(selected._id, { ...docToForm(doc!), isLoginRequired: !(profile.is_login_required ?? false) })
-                        .then(() => qc.invalidateQueries({ queryKey: ["customer", selected._id] }));
-                    }}
-                  />
-                </div>
-              </div>
             </div>
           )}
           </TabSlide>

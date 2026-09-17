@@ -61,6 +61,7 @@ import {
   Underline,
 } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
+import { useAppSettings, isVendorFieldVisible } from "@/lib/db/appSettings";
 
 /* ── Constants ─────────────────────────────────────────────────── */
 const sortFields = ["Name", "First Name", "Last Name", "Created On", "Payable", "Total", "Due", "Paid"];
@@ -378,6 +379,9 @@ const VendorForm: React.FC<{
 }> = ({ title, doc, onClose, onSaved }) => {
   const qc = useQueryClient();
   const isCreate = doc === null;
+  const vendorSettings = useAppSettings("vendor");
+  const show = (key: string) => isVendorFieldVisible(vendorSettings?.fieldVisibility, key);
+  const [taxpayerType, setTaxpayerType] = useState("Regular");
   const [tab, setTab] = useState<"Details" | "Settings">("Details");
   const [tabDir, setTabDir] = useState<"" | "left" | "right">("");
   const switchTab = (t: "Details" | "Settings") => {
@@ -448,66 +452,106 @@ const VendorForm: React.FC<{
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6">
             <div className="space-y-6">
               <VField label="Company Name" value={f.name} onChange={(v) => set("name", v)} />
-              <div className="grid grid-cols-2 gap-4"><VField label="Reg. No" value={f.regNo} onChange={(v) => set("regNo", v)} /><VField label="Tax ID" value={f.taxId} onChange={(v) => set("taxId", v)} /></div>
-              <div className="grid grid-cols-2 gap-4"><VField label="Business Phone" value={f.phone} onChange={(v) => set("phone", v)} /><VField label="Fax" value={f.fax} onChange={(v) => set("fax", v)} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                {show("Reg. No") && <VField label="Reg. No" value={f.regNo} onChange={(v) => set("regNo", v)} />}
+                {show("GSTIN / VAT Number") && <VField label="GSTIN / VAT Number" value={f.taxId} onChange={(v) => set("taxId", v)} />}
+              </div>
+              {show("Taxpayer Type") && (
+                <div className="relative fl-wrap">
+                  <label className="fl-label">Taxpayer Type</label>
+                  <select value={taxpayerType} onChange={(e) => setTaxpayerType(e.target.value)} className={fieldCls}>
+                    {["Regular", "Composition", "Unregistered", "Consumer"].map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {show("Business Phone") && <VField label="Business Phone" value={f.phone} onChange={(v) => set("phone", v)} />}
+                {show("Fax") && <VField label="Fax" value={f.fax} onChange={(v) => set("fax", v)} />}
+              </div>
             </div>
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4"><VField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} /><VField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} /></div>
-              <VField label="Email" value={f.email} onChange={(v) => set("email", v)} type="email" />
-              <div className="grid grid-cols-2 gap-4"><VField label="Mobile" value={f.mobile} onChange={(v) => set("mobile", v)} /><VField label="Home Phone" value={f.homePhone} onChange={(v) => set("homePhone", v)} /></div>
-              <div className="grid grid-cols-2 gap-4"><VField label="Birthday" value={f.birthday} onChange={(v) => set("birthday", v)} type="date" /><VField label="Anniversary" value={f.anniversary} onChange={(v) => set("anniversary", v)} type="date" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <VField label="First Name" value={f.firstName} onChange={(v) => set("firstName", v)} />
+                {show("Last Name") && <VField label="Last Name" value={f.lastName} onChange={(v) => set("lastName", v)} />}
+              </div>
+              {show("Email") && <VField label="Email" value={f.email} onChange={(v) => set("email", v)} type="email" />}
+              <div className="grid grid-cols-2 gap-4">
+                {show("Mobile") && <VField label="Mobile" value={f.mobile} onChange={(v) => set("mobile", v)} />}
+                {show("Home Phone") && <VField label="Home Phone" value={f.homePhone} onChange={(v) => set("homePhone", v)} />}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {show("Birthday") && <VField label="Birthday" value={f.birthday} onChange={(v) => set("birthday", v)} type="date" />}
+                {show("Anniversary") && <VField label="Anniversary" value={f.anniversary} onChange={(v) => set("anniversary", v)} type="date" />}
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6 pt-2">
             <div className="flex items-center justify-between"><span className="text-sm font-semibold text-gray-900">Address</span><span className="text-xs text-gray-400">Billing</span></div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
-              <span className="text-xs text-gray-400">Shipping</span>
-            </div>
+            {show("Entire Shipping Address") ? (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sameAsBilling} onChange={() => setSameAsBilling((v) => !v)} className="accent-blue-600" /> Same as Billing</label>
+                <span className="text-xs text-gray-400">Shipping</span>
+              </div>
+            ) : (
+              <div />
+            )}
             <div className="space-y-4">
               <VField label="Street 1" value={f.street1} onChange={(v) => set("street1", v)} />
-              <VField label="Street 2" value={f.street2} onChange={(v) => set("street2", v)} />
+              {show("Street 2") && <VField label="Street 2" value={f.street2} onChange={(v) => set("street2", v)} />}
               <div className="grid grid-cols-3 gap-3">
-                <VField label="Zip" value={f.zip} onChange={(v) => set("zip", v)} />
-                <VField label="City" value={f.city} onChange={(v) => set("city", v)} />
-                <VField label="State" value={f.state} onChange={(v) => set("state", v)} />
+                {show("Zip Code") && <VField label="Zip Code" value={f.zip} onChange={(v) => set("zip", v)} />}
+                {show("City") && <VField label="City" value={f.city} onChange={(v) => set("city", v)} />}
+                {show("State") && <VField label="State" value={f.state} onChange={(v) => set("state", v)} />}
               </div>
-              <VField label="Country" value={f.country} onChange={(v) => set("country", v)} />
+              {show("Country") && <VField label="Country" value={f.country} onChange={(v) => set("country", v)} />}
             </div>
-            <div className={`space-y-4 ${sameAsBilling ? "opacity-60 pointer-events-none" : ""}`}>
-              <VField label="Street 1" value={shipVal("Street1")} onChange={(v) => set("shipStreet1", v)} disabled={sameAsBilling} />
-              <VField label="Street 2" value={shipVal("Street2")} onChange={(v) => set("shipStreet2", v)} disabled={sameAsBilling} />
-              <div className="grid grid-cols-3 gap-3">
-                <VField label="Zip" value={shipVal("Zip")} onChange={(v) => set("shipZip", v)} disabled={sameAsBilling} />
-                <VField label="City" value={shipVal("City")} onChange={(v) => set("shipCity", v)} disabled={sameAsBilling} />
-                <VField label="State" value={shipVal("State")} onChange={(v) => set("shipState", v)} disabled={sameAsBilling} />
+            {show("Entire Shipping Address") && (
+              <div className={`space-y-4 ${sameAsBilling ? "opacity-60 pointer-events-none" : ""}`}>
+                <VField label="Street 1" value={shipVal("Street1")} onChange={(v) => set("shipStreet1", v)} disabled={sameAsBilling} />
+                {show("Street 2") && <VField label="Street 2" value={shipVal("Street2")} onChange={(v) => set("shipStreet2", v)} disabled={sameAsBilling} />}
+                <div className="grid grid-cols-3 gap-3">
+                  {show("Zip Code") && <VField label="Zip Code" value={shipVal("Zip")} onChange={(v) => set("shipZip", v)} disabled={sameAsBilling} />}
+                  {show("City") && <VField label="City" value={shipVal("City")} onChange={(v) => set("shipCity", v)} disabled={sameAsBilling} />}
+                  {show("State") && <VField label="State" value={shipVal("State")} onChange={(v) => set("shipState", v)} disabled={sameAsBilling} />}
+                </div>
+                {show("Country") && <VField label="Country" value={shipVal("Country")} onChange={(v) => set("shipCountry", v)} disabled={sameAsBilling} />}
               </div>
-              <VField label="Country" value={shipVal("Country")} onChange={(v) => set("shipCountry", v)} disabled={sameAsBilling} />
-            </div>
+            )}
           </div>
 
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-            <div className="border border-gray-300 rounded-md overflow-hidden">
-              <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 bg-gray-50">
-                {[Bold, Italic, Underline].map((Ic, i) => <button key={i} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-700"><Ic className="w-4 h-4" /></button>)}
-                <span className="w-px h-5 bg-gray-300 mx-1" />
-                <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200"><span className="w-4 h-4 rounded bg-gray-900 border border-gray-300" /></button>
-                <select className="ml-1 text-xs border border-gray-300 rounded px-1.5 py-1 bg-white"><option>10</option><option>14</option><option>16</option><option>18</option><option>24</option></select>
+          {show("Bank Details") && (
+            <div className="pt-2">
+              <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
+              <div className="border border-gray-300 rounded-md overflow-hidden">
+                <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 bg-gray-50">
+                  {[Bold, Italic, Underline].map((Ic, i) => <button key={i} type="button" className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-700"><Ic className="w-4 h-4" /></button>)}
+                  <span className="w-px h-5 bg-gray-300 mx-1" />
+                  <button type="button" className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200"><span className="w-4 h-4 rounded bg-gray-900 border border-gray-300" /></button>
+                  <select className="ml-1 text-xs border border-gray-300 rounded px-1.5 py-1 bg-white"><option>10</option><option>14</option><option>16</option><option>18</option><option>24</option></select>
+                </div>
+                <textarea value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder="Bank Details" className="w-full h-28 p-3 text-sm text-gray-800 outline-none resize-none" />
               </div>
-              <textarea value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder="Bank Details" className="w-full h-28 p-3 text-sm text-gray-800 outline-none resize-none" />
             </div>
-          </div>
+          )}
         </div>
       ) : (
         <div className="p-6 space-y-6 max-w-2xl">
           <div className="grid grid-cols-2 gap-6">
-            <VField label="Currency" value={f.currency} onChange={(v) => set("currency", v)} />
-            <VField label="Payment Terms (Purchases)" value={f.paymentTerms} onChange={(v) => set("paymentTerms", v)} />
+            {show("Currency") && <VField label="Currency" value={f.currency} onChange={(v) => set("currency", v)} />}
+            {show("Payment Terms (Sales)") && <VField label="Payment Terms (Purchases)" value={f.paymentTerms} onChange={(v) => set("paymentTerms", v)} />}
+            {show("Opening Balance") && <VField label="Opening Balance" value={f.openingBalance} onChange={(v) => set("openingBalance", v)} />}
+            {show("Opening Balance Date") && <VField label="Opening Balance Date" value={f.openingBalanceDate} onChange={(v) => set("openingBalanceDate", v)} type="date" />}
           </div>
+          {show("Notes") && (
+            <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={4} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-y" />
+          )}
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Payment Reminder</span><Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} /></div>
+            {show("Payment Reminder") && (
+              <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Payment Reminder</span><Toggle on={f.paymentReminder} onChange={() => set("paymentReminder", !f.paymentReminder)} /></div>
+            )}
             <div className="flex items-center justify-between max-w-sm"><span className="text-sm text-gray-700">Contact Login</span><Toggle on={!!f.isLoginRequired} onChange={() => set("isLoginRequired", !f.isLoginRequired)} /></div>
           </div>
         </div>
@@ -522,6 +566,8 @@ export const Vendors: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const vendorSettings = useAppSettings("vendor");
+  const showField = (key: string) => isVendorFieldVisible(vendorSettings?.fieldVisibility, key);
   const navSelectedId = (location.state as { selectedId?: string; openCreate?: boolean } | null)?.selectedId;
   const openCreateFromNav = !!(location.state as { openCreate?: boolean } | null)?.openCreate;
 
@@ -623,10 +669,26 @@ export const Vendors: React.FC = () => {
   const profile = doc?.businessProfile ?? {};
   const billing = profile.billing_address ?? {};
   const shipping = profile.shipping_address ?? {};
-  const billingLine1 = [billing.address_line_1, billing.address_line_2].filter(Boolean).join(", ");
-  const billingLine2 = [billing.city, billing.state, billing.country, billing.zip_code].filter(Boolean).join(", ");
-  const shippingLine1 = [shipping.address_line_1, shipping.address_line_2].filter(Boolean).join(", ");
-  const shippingLine2 = [shipping.city, shipping.state, shipping.country, shipping.zip_code].filter(Boolean).join(", ");
+  const billingLine1 = [
+    billing.address_line_1,
+    showField("Street 2") ? billing.address_line_2 : null,
+  ].filter(Boolean).join(", ");
+  const billingLine2 = [
+    showField("City") ? billing.city : null,
+    showField("State") ? billing.state : null,
+    showField("Country") ? billing.country : null,
+    showField("Zip Code") ? billing.zip_code : null,
+  ].filter(Boolean).join(", ");
+  const shippingLine1 = [
+    shipping.address_line_1,
+    showField("Street 2") ? shipping.address_line_2 : null,
+  ].filter(Boolean).join(", ");
+  const shippingLine2 = [
+    showField("City") ? shipping.city : null,
+    showField("State") ? shipping.state : null,
+    showField("Country") ? shipping.country : null,
+    showField("Zip Code") ? shipping.zip_code : null,
+  ].filter(Boolean).join(", ");
 
   const stmtTx = [
     ...venBills.map((b) => ({ ts: b.ts || 0, date: b.date, details: `Bill ${b.number}`, amount: b.total || 0, paid: 0 })),
@@ -1027,14 +1089,23 @@ export const Vendors: React.FC = () => {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
                 {[
                   ["Company", profile.companyName || selected.name],
-                  ["Reg. No", profile.registration_number || "—"], ["Tax ID", profile.tax_number || "—"],
-                  ["Business Phone", profile.business_phone || "—"], ["Fax", profile.fax || "—"],
-                  ["First Name", (doc?.name ?? "").split(" ")[0] || "—"], ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"], ["Email", doc?.email || "—"],
-                  ["Mobile Number", doc?.phone || "—"], ["Home Phone", profile.home_phone || "—"],
-                  ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"], ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"],
-                ].map(([k, v]) => (
-                  <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
-                ))}
+                  showField("Reg. No") ? ["Reg. No", profile.registration_number || "—"] : null,
+                  showField("GSTIN / VAT Number") ? ["GSTIN / VAT Number", profile.tax_number || "—"] : null,
+                  showField("Business Phone") ? ["Business Phone", profile.business_phone || "—"] : null,
+                  showField("Fax") ? ["Fax", profile.fax || "—"] : null,
+                  ["First Name", (doc?.name ?? "").split(" ")[0] || "—"],
+                  showField("Last Name") ? ["Last Name", (doc?.name ?? "").split(" ").slice(1).join(" ") || "—"] : null,
+                  showField("Email") ? ["Email", doc?.email || "—"] : null,
+                  showField("Mobile") ? ["Mobile Number", doc?.phone || "—"] : null,
+                  showField("Home Phone") ? ["Home Phone", profile.home_phone || "—"] : null,
+                  showField("Birthday") ? ["Birthday", profile.birthday ? String(profile.birthday).slice(0, 10) : "—"] : null,
+                  showField("Anniversary") ? ["Anniversary", profile.anniversary ? String(profile.anniversary).slice(0, 10) : "—"] : null,
+                ].filter(Boolean).map((pair) => {
+                  const [k, v] = pair as [string, string];
+                  return (
+                    <div key={k}><div className="text-xs text-gray-500">{k}</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{v}</div></div>
+                  );
+                })}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
                 <div>
@@ -1043,40 +1114,62 @@ export const Vendors: React.FC = () => {
                     {billingLine1 || billingLine2 ? (<>{billingLine1}{billingLine1 && billingLine2 && <br />}{billingLine2}</>) : "—"}
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
-                  <div className="text-sm text-gray-800 leading-relaxed">
-                    {shippingLine1 || shippingLine2 ? (<>{shippingLine1}{shippingLine1 && shippingLine2 && <br />}{shippingLine2}</>) : "—"}
+                {showField("Entire Shipping Address") && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Shipping Address</div>
+                    <div className="text-sm text-gray-800 leading-relaxed">
+                      {shippingLine1 || shippingLine2 ? (<>{shippingLine1}{shippingLine1 && shippingLine2 && <br />}{shippingLine2}</>) : "—"}
+                    </div>
                   </div>
+                )}
+              </div>
+              {showField("Bank Details") && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
+                  {profile.bank_details
+                    ? <div className="text-sm text-gray-800 whitespace-pre-line [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
+                    : <div className="text-sm text-gray-400">—</div>}
                 </div>
-              </div>
-              <div className="pt-4 border-t border-gray-200">
-                <div className="text-sm font-semibold text-gray-900 mb-2">Bank Details</div>
-                {profile.bank_details
-                  ? <div className="text-sm text-gray-800 whitespace-pre-line [&_b]:font-bold" dangerouslySetInnerHTML={{ __html: profile.bank_details }} />
-                  : <div className="text-sm text-gray-400">—</div>}
-              </div>
+              )}
             </div>
           )}
 
           {tab === "Settings" && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-6 max-w-2xl">
-                <div><div className="text-xs text-gray-500">Currency</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{doc?.currency || "$ USD"}</div></div>
-                <div><div className="text-xs text-gray-500">Payment Terms (Purchases)</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{profile.payment_terms || "Default Company"}</div></div>
+                {showField("Currency") && (
+                  <div><div className="text-xs text-gray-500">Currency</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{doc?.currency || "$ USD"}</div></div>
+                )}
+                {showField("Payment Terms (Sales)") && (
+                  <div><div className="text-xs text-gray-500">Payment Terms (Purchases)</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{profile.payment_terms || "Default Company"}</div></div>
+                )}
+                {showField("Opening Balance") && (
+                  <div><div className="text-xs text-gray-500">Opening Balance</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{profile.opening_balance != null ? money(Number(profile.opening_balance)) : "—"}</div></div>
+                )}
+                {showField("Opening Balance Date") && (
+                  <div><div className="text-xs text-gray-500">Opening Balance Date</div><div className="text-sm font-semibold text-gray-900 mt-0.5">{profile.opening_balance_date ? String(profile.opening_balance_date).slice(0, 10) : "—"}</div></div>
+                )}
               </div>
-              <div className="space-y-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center justify-between max-w-sm">
-                  <span className="text-sm text-gray-700">Payment Reminder</span>
-                  <Toggle
-                    on={profile.payment_reminder !== false}
-                    onChange={() => {
-                      if (!selected._id || !doc) return;
-                      updateVendor(selected._id, { ...docToForm(doc), paymentReminder: !(profile.payment_reminder !== false) })
-                        .then(() => qc.invalidateQueries({ queryKey: ["vendor", selected._id] }));
-                    }}
-                  />
+              {showField("Notes") && profile.notes && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Notes</div>
+                  <div className="text-sm text-gray-800">{profile.notes}</div>
                 </div>
+              )}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                {showField("Payment Reminder") && (
+                  <div className="flex items-center justify-between max-w-sm">
+                    <span className="text-sm text-gray-700">Payment Reminder</span>
+                    <Toggle
+                      on={profile.payment_reminder !== false}
+                      onChange={() => {
+                        if (!selected._id || !doc) return;
+                        updateVendor(selected._id, { ...docToForm(doc), paymentReminder: !(profile.payment_reminder !== false) })
+                          .then(() => qc.invalidateQueries({ queryKey: ["vendor", selected._id] }));
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between max-w-sm">
                   <span className="text-sm text-gray-700">Contact Login</span>
                   <Toggle

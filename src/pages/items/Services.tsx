@@ -16,6 +16,7 @@ import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFo
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo, money, parseMoney } from "@/lib/db";
+import { useAppSettings } from "@/lib/db/appSettings";
 import { buildListSortParam } from "@/lib/listSort";
 import {
   fetchServices,
@@ -183,6 +184,8 @@ const MergeModal: React.FC<{
 
 /* ── Service form (Create / Edit, replaces detail) ─────────────── */
 const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClose: () => void; onSave?: (d: any) => void }> = ({ mode, service, onClose, onSave }) => {
+  const serviceSettings = useAppSettings("service");
+  const showSac = serviceSettings?.sac !== false;
   const [name, setName] = useState(service?.name ?? "");
   const [sac, setSac] = useState(service && service.sac !== "—" ? service.sac : "");
   const [qty, setQty] = useState(service?.qty ?? "1");
@@ -191,7 +194,7 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
   const [tax, setTax] = useState(service?.tax ?? taxList[0]);
   const [note, setNote] = useState(service?.note ?? "");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const handleSave = () => { onSave?.({ name, sac, qty, unit, rate, tax, note }); onClose(); };
+  const handleSave = () => { onSave?.({ name, sac: showSac ? sac : "", qty, unit, rate, tax, note }); onClose(); };
   return (
     <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
@@ -206,7 +209,7 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
       <SectionBar title="Details" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-5 px-6 py-5">
         <FloatField label="Service name *" value={name} onChange={setName} placeholder="Service name" />
-        <FloatField label="SAC" value={sac} onChange={setSac} placeholder="SAC" />
+        {showSac && <FloatField label="SAC" value={sac} onChange={setSac} placeholder="SAC" />}
       </div>
 
       <SectionBar title="Quantity" />
@@ -239,6 +242,8 @@ const ServiceForm: React.FC<{ mode: "create" | "edit"; service?: Service; onClos
 /* ── Component ──────────────────────────────────────────────────── */
 export const Services: React.FC = () => {
   const queryClient = useQueryClient();
+  const serviceSettings = useAppSettings("service");
+  const showSacDetail = serviceSettings?.sac !== false;
   const [selectedId, setSelectedId] = useState("");
   const [sortBy, setSortBy] = useState("Created On");
   const [sortDir] = useState<"Ascending" | "Descending">("Descending");
@@ -500,7 +505,7 @@ export const Services: React.FC = () => {
           <SectionBar title="Details" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-5 px-6 py-5">
             <Stat label="Service name *" value={selected.name} />
-            <Stat label="SAC" value={selected.sac} />
+            {showSacDetail && <Stat label="SAC" value={selected.sac} />}
           </div>
 
           {/* ── Quantity ── */}

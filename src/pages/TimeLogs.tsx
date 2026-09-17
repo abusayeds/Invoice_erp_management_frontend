@@ -16,6 +16,8 @@ import { ListEmptyState } from "@/components/ListEmptyState";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo } from "@/lib/db";
+import { useAppSettings, isTimeLogColumnOn } from "@/lib/db/appSettings";
+import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import {
   Search,
   Plus,
@@ -182,21 +184,49 @@ const InOutModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 /* ── Edit / Create Time Log form (replaces detail) ─────────────── */
+const parseRoundingMins = (rounding: string | undefined): number => {
+  const n = parseInt(String(rounding || "0").replace(/\D/g, ""), 10);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Round total minutes up to the nearest step (0 = no rounding). */
+const roundMinutes = (totalMins: number, step: number): number => {
+  if (!step || step <= 0) return totalMins;
+  return Math.ceil(totalMins / step) * step;
+};
+
 const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () => void; onSave?: (d: any) => void }> = ({ mode, log, onClose, onSave }) => {
+  const timeLogSettings = useAppSettings("timeLog");
+  const roundingStep = parseRoundingMins(timeLogSettings?.rounding);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [inout, setInout] = useState(false);
   const init = (log?.hours ?? "00:00").split(":");
-  const [hh] = useState(init[0] || "00");
-  const [mm] = useState(init[1] || "00");
+  const [hh, setHh] = useState(init[0] || "00");
+  const [mm, setMm] = useState(init[1] || "00");
   const [project, setProject] = useState(log?.project ?? "");
   const [task, setTask] = useState(log?.task ?? "");
   const [notes, setNotes] = useState(log?.notes ?? "");
-  const handleSave = () => { onSave?.({ project, task, notes, hours: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}` }); onClose(); };
+  const [dateVal, setDateVal] = useState(mode === "edit" ? (log?.dateLabel || "6/21/2026") : "6/21/2026");
+  const handleSave = () => {
+    let totalMins = (parseInt(hh, 10) || 0) * 60 + (parseInt(mm, 10) || 0);
+    totalMins = roundMinutes(totalMins, roundingStep);
+    const rh = String(Math.floor(totalMins / 60)).padStart(2, "0");
+    const rm = String(totalMins % 60).padStart(2, "0");
+    onSave?.({
+      project,
+      task,
+      notes,
+      hours: `${rh}:${rm}`,
+      date: dateVal,
+    });
+    onClose();
+  };
   return (
     <section className="flex-1 overflow-y-auto custom-scrollbar m-2 bg-white border border-gray-300 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">{mode === "create" ? "Create Time Log" : "Edit Time Log"}</h1>
         <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
           <button onClick={handleSave} className="px-5 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-medium">Save</button>
         </div>
@@ -205,8 +235,12 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
       {/* big hh:mm display + In/Out */}
       <div className="relative px-6 py-10 border-b border-gray-200">
         <div className="text-center">
-          <div className="text-6xl font-light text-gray-900 tracking-wide">{hh} : {mm}</div>
-          <div className="text-sm text-gray-500 mt-1">hh : mm</div>
+          <div className="text-6xl font-light text-gray-900 tracking-wide">
+            <input value={hh} onChange={(e) => setHh(e.target.value.replace(/\D/g, "").slice(0, 2))} className="w-20 text-center bg-transparent outline-none" />
+            {" : "}
+            <input value={mm} onChange={(e) => setMm(e.target.value.replace(/\D/g, "").slice(0, 2))} className="w-20 text-center bg-transparent outline-none" />
+          </div>
+          <div className="text-sm text-gray-500 mt-1">hh : mm{roundingStep > 0 ? ` · round ${roundingStep} mins` : ""}</div>
         </div>
         <button onClick={() => setInout(true)} className="absolute right-6 top-1/2 -translate-y-1/2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-200 text-gray-800 text-sm font-medium hover:bg-gray-300">
           <Clock className="w-4 h-4" /> In/Out
@@ -217,21 +251,21 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
       <div className="px-6 py-6 max-w-2xl space-y-6">
         <div className="relative fl-wrap">
           <label className="fl-label">Date *</label>
-          <input defaultValue={mode === "edit" ? "6/21/2026" : "6/21/2026"} placeholder=" " className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600" />
+          <input value={dateVal} onChange={(e) => setDateVal(e.target.value)} placeholder=" " className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600" />
           <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
         </div>
         <div className="flex items-center gap-3">
           <input value={project} onChange={(e) => setProject(e.target.value)} placeholder="Project" className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-600" />
-          <button className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"><Plus className="w-4 h-4" /></button>
+          <button type="button" className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"><Plus className="w-4 h-4" /></button>
         </div>
         <div className="flex items-center gap-3">
           <input value={task} onChange={(e) => setTask(e.target.value)} placeholder="Task" className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-600" />
-          <button className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"><Plus className="w-4 h-4" /></button>
+          <button type="button" className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"><Plus className="w-4 h-4" /></button>
         </div>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="w-full h-32 border border-gray-300 rounded-md p-3 text-sm text-gray-700 outline-none resize-none focus:ring-1 focus:ring-blue-600" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="w-full h-28 px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none resize-none focus:ring-1 focus:ring-blue-600" />
       </div>
-
       {inout && <InOutModal onClose={() => setInout(false)} />}
+      {settingsOpen && <AppSettingsModal initialTab="Time Log" onClose={() => setSettingsOpen(false)} />}
     </section>
   );
 };
@@ -239,6 +273,11 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
 /* ── Component ──────────────────────────────────────────────────── */
 export const TimeLogs: React.FC = () => {
   const dbLogs = useCollection<any>("timelogs");
+  const timeLogSettings = useAppSettings("timeLog");
+  const includeProjectInv = isTimeLogColumnOn(timeLogSettings?.columns, "Include Project in Create Invoice");
+  const includeDateInv = isTimeLogColumnOn(timeLogSettings?.columns, "Include Date in Create Invoice");
+  const includeNotesInv = isTimeLogColumnOn(timeLogSettings?.columns, "Include Notes in Create Invoice");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const logs: TLog[] = useMemo(() => [...dbLogs].sort((a, b) => b.id - a.id), [dbLogs]);
   const [selectedId, setSelectedId] = useState(2);
   const [sortBy, setSortBy] = useState("Date");
@@ -296,7 +335,30 @@ export const TimeLogs: React.FC = () => {
   const pauseTimer = () => setTimer((p) => (p ? { ...p, active: false } : p));
   const stopTimer = () => setTimer(null);
 
-  const markInvoiced = () => { repo.update("timelogs", selectedId, { invoiced: true }); };
+  const markInvoiced = async () => {
+    if (!selected) return;
+    const descParts: string[] = [];
+    if (includeProjectInv && selected.project) descParts.push(`Project: ${selected.project}`);
+    if (includeDateInv && selected.dateLabel) descParts.push(`Date: ${selected.dateLabel}`);
+    if (includeNotesInv && selected.notes) descParts.push(selected.notes);
+    const description = descParts.join(" · ") || selected.task || "Time log";
+    const hrs = selected.hours || "00:00";
+    const [h, m] = hrs.split(":").map((x) => parseInt(x, 10) || 0);
+    const qty = +(h + m / 60).toFixed(2) || 1;
+    const n = await repo.nextNumber("invoices");
+    await repo.add("invoices", {
+      number: "#" + n,
+      customerId: null,
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      due: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      ts: Date.now(),
+      status: "Draft",
+      items: [{ id: 1, name: selected.task || "Time Log", description, qty, rate: 0, taxId: 1, discount: 0, amount: 0 }],
+      subTotal: 0, tax: 0, total: 0, amountPaid: 0, amountDue: 0,
+      notes: includeNotesInv ? (selected.notes || "") : "",
+    });
+    await repo.update("timelogs", selectedId, { invoiced: true });
+  };
 
   const ctrlBtn = "w-7 h-7 flex items-center justify-center rounded-full text-white";
 
@@ -415,7 +477,7 @@ export const TimeLogs: React.FC = () => {
           <div className="module-title-bar">
             <h1 className="text-lg font-semibold text-gray-900">Time Log Details</h1>
             <div className="flex items-center gap-2">
-              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setSettingsOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
 
               {/* timer controls */}
               {active ? (
@@ -457,6 +519,7 @@ export const TimeLogs: React.FC = () => {
           <div className="px-6 py-5 text-sm text-gray-700">{selected.notes || "No Notes"}</div>
         </section>
       )}
+      {settingsOpen && <AppSettingsModal initialTab="Time Log" onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 };

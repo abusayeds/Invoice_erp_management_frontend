@@ -2,9 +2,9 @@
  * File: src/components/modals/AppSettingsModal.tsx
  * Shared App Settings modal (matches the Moon Invoice reference, Qayd theme).
  * Header: title · search (filters tabs) · reset (current tab → defaults) ·
- * Cancel · Save. Left rail: 18 tabs. Right pane per tab; the 9 document
- * tabs share one pane component but each edits its OWN draft/storage row
- * (`app:doc:<key>`) so options never leak between document types.
+ * Cancel · Save. Left rail: settings tabs (border under Whatsapp). Right pane
+ * per tab; document tabs share one pane but each edits its OWN draft/storage
+ * row (`app:doc:<key>`) so options never leak between document types.
  * Draft model: all sections load into `drafts` on mount, edits stay local,
  * Save persists every section, Cancel/Esc discards.
  */
@@ -15,6 +15,16 @@ import {
   getAppSettings, saveAppSettings, resetAppSettings, syncAppSettingsFromBackend,
   getExchangeRates, saveExchangeRates, ExchangeRate,
   SECTION_DEFAULTS, DOC_TYPES, MODULE_NAMES, DocSettings,
+  CUSTOMER_FIELD_KEYS,
+  VENDOR_FIELD_KEYS,
+  INVOICE_PAYMENT_KEYS,
+  ORDER_GENERAL_KEYS,
+  ORDER_COLUMN_KEYS,
+  ORDER_SUMMARY_KEYS,
+  ORDER_CHECKOUT_KEYS,
+  ORDER_PAYMENT_KEYS,
+  type OrderSettings,
+  DOC_LAYOUTS, TAB_TO_DOC_LAYOUT, type DocLayoutId,
 } from "@/lib/db/appSettings";
 import { applyTheme } from "@/lib/theme";
 import { showToast } from "@/utils/toast";
@@ -93,54 +103,108 @@ const Accordion: React.FC<{ title: string; open: boolean; onToggle: () => void; 
 );
 
 /* ── per-document pane (shared UI, isolated draft) ─────────────── */
-const DocSettingsPane: React.FC<{ draft: DocSettings; onChange: (d: DocSettings) => void }> = ({ draft, onChange }) => {
+const DocSettingsPane: React.FC<{
+  draft: DocSettings;
+  onChange: (d: DocSettings) => void;
+  layoutId?: DocLayoutId | null;
+}> = ({ draft, onChange, layoutId = null }) => {
   const [open, setOpen] = useState<string | null>("Field Visibility");
   const patch = (p: Partial<DocSettings>) => onChange({ ...draft, ...p });
   const sec = (title: string, body: React.ReactNode) => (
     <Accordion title={title} open={open === title} onToggle={() => setOpen((o) => (o === title ? null : title))}>{body}</Accordion>
   );
+  const layout = layoutId ? DOC_LAYOUTS[layoutId] : null;
+  const fvEntries = layout
+    ? layout.fieldKeys.map((k) => [k, draft.fieldVisibility?.[k] !== false] as const)
+    : Object.entries(draft.fieldVisibility || {});
+  const colKeys = layout ? [...layout.columnKeys] : (Object.keys(draft.columns || {}) as string[]);
+  const nameCols = colKeys.filter((k) => k === "Service Name" || k === "Product Name" || k === "Description" || k === "Service name");
+  const restCols = colKeys.filter((k) => !nameCols.includes(k));
+  const sumBefore = ["Total Quantity", "Round Off", "Negative Value format with ( )"];
+  const sumEntries = layout
+    ? layout.summaryKeys.map((k) => [k, draft.summary?.[k] !== false] as const)
+    : Object.entries(draft.summary || {});
+  const sumTop = sumEntries.filter(([k]) => sumBefore.includes(k));
+  const sumBottom = sumEntries.filter(([k]) => !sumBefore.includes(k));
+  const printEntries = layout
+    ? layout.printKeys.map((k) => [k, draft.printEmail?.[k] !== false] as const)
+    : Object.entries(draft.printEmail || {});
+  const showQuantitySelect = layout ? layout.showQuantitySelect : true;
+  const showPublicUrl = layout?.showPublicUrl === true;
+  const showPayment = layout?.showPayment === true;
+  const showTrackPoStock = layout?.showTrackPurchaseOrdersInStock === true;
   return (
     <div>
-      {sec("Field Visibility", Object.entries(draft.fieldVisibility).map(([k, v]) => (
-        <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ fieldVisibility: { ...draft.fieldVisibility, [k]: nv } })} /></Row>
+      {sec("Field Visibility", fvEntries.map(([k, v]) => (
+        <Row key={k} label={k}><Toggle on={!!v} onChange={(nv) => patch({ fieldVisibility: { ...draft.fieldVisibility, [k]: nv } })} /></Row>
       )))}
       {sec("General", (
-        <Row label="Line Option"><Select value={draft.general.lineOption} options={["Both", "Service", "Product"]} onChange={(v) => patch({ general: { lineOption: v as any } })} /></Row>
+        <>
+          <Row label="Line Option"><Select value={draft.general.lineOption} options={["Both", "Service", "Product"]} onChange={(v) => patch({ general: { ...draft.general, lineOption: v as any } })} /></Row>
+          {showTrackPoStock && (
+            <Row label="Track Purchase Orders in Stock">
+              <Toggle
+                on={draft.general.trackPurchaseOrdersInStock !== false}
+                onChange={(nv) => patch({ general: { ...draft.general, trackPurchaseOrdersInStock: nv } })}
+              />
+            </Row>
+          )}
+          {showPublicUrl && (
+            <Row label="Create Public URL in Email">
+              <Toggle
+                on={draft.general.createPublicUrlInEmail !== false}
+                onChange={(nv) => patch({ general: { ...draft.general, createPublicUrlInEmail: nv } })}
+              />
+            </Row>
+          )}
+        </>
       ))}
       {sec("Columns", (
         <>
-          {Object.entries(draft.columns).slice(0, 3).map(([k, v]) => (
-            <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ columns: { ...draft.columns, [k]: nv } })} /></Row>
+          {nameCols.map((k) => (
+            <Row key={k} label={k}><Toggle on={draft.columns?.[k] !== false} onChange={(nv) => patch({ columns: { ...draft.columns, [k]: nv } })} /></Row>
           ))}
-          <Row label="Quantity"><Select value={draft.columnsQuantity} options={["Show for Both", "Show for Product", "Show for Service"]} onChange={(v) => patch({ columnsQuantity: v as any })} width="min-w-[160px]" /></Row>
-          {Object.entries(draft.columns).slice(3).map(([k, v]) => (
-            <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ columns: { ...draft.columns, [k]: nv } })} /></Row>
+          {showQuantitySelect && (
+            <Row label="Quantity"><Select value={draft.columnsQuantity} options={["Show for Both", "Show for Product", "Show for Service"]} onChange={(v) => patch({ columnsQuantity: v as any })} width="min-w-[160px]" /></Row>
+          )}
+          {restCols.map((k) => (
+            <Row key={k} label={k}><Toggle on={draft.columns?.[k] !== false} onChange={(nv) => patch({ columns: { ...draft.columns, [k]: nv } })} /></Row>
           ))}
         </>
       ))}
       {sec("Summary", (
         <>
-          {Object.entries(draft.summary).slice(0, 3).map(([k, v]) => (
-            <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ summary: { ...draft.summary, [k]: nv } })} /></Row>
+          {sumTop.map(([k, v]) => (
+            <Row key={k} label={k}><Toggle on={!!v} onChange={(nv) => patch({ summary: { ...draft.summary, [k]: nv } })} /></Row>
           ))}
           <Row label="Subtotal with tax"><Select value={draft.summarySubtotalWithTax} options={["Default", "Including Tax", "Excluding Tax"]} onChange={(v) => patch({ summarySubtotalWithTax: v as any })} /></Row>
-          {Object.entries(draft.summary).slice(3).map(([k, v]) => (
-            <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ summary: { ...draft.summary, [k]: nv } })} /></Row>
+          {sumBottom.map(([k, v]) => (
+            <Row key={k} label={k}><Toggle on={!!v} onChange={(nv) => patch({ summary: { ...draft.summary, [k]: nv } })} /></Row>
           ))}
         </>
       ))}
       {sec("Print & Email", (
         <>
-          {Object.entries(draft.printEmail).map(([k, v]) => (
-            <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ printEmail: { ...draft.printEmail, [k]: nv } })} /></Row>
+          {printEntries.map(([k, v]) => (
+            <Row key={k} label={k}><Toggle on={!!v} onChange={(nv) => patch({ printEmail: { ...draft.printEmail, [k]: nv } })} /></Row>
           ))}
           <Row label="Number of Copies on Print">
             <span className="flex items-center gap-2">
               <Select value={draft.printCopies} options={["Single Copy", "Two Copies", "Three Copies"]} onChange={(v) => patch({ printCopies: v as any })} />
-              <button className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><Pencil className="w-3.5 h-3.5" /></button>
+              <button type="button" className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><Pencil className="w-3.5 h-3.5" /></button>
             </span>
           </Row>
         </>
+      ))}
+      {showPayment && sec("Payment", (
+        INVOICE_PAYMENT_KEYS.map((k) => (
+          <Row key={k} label={k}>
+            <Toggle
+              on={!!draft.payment?.[k]}
+              onChange={(nv) => patch({ payment: { ...(draft.payment || {}), [k]: nv } })}
+            />
+          </Row>
+        ))
       ))}
     </div>
   );
@@ -299,8 +363,14 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
 
   const body = useMemo(() => {
     if (!draft) return <div className="p-8 text-center text-sm text-gray-400">Loading…</div>;
+    if (tab === "Order") {
+      return <OrderSettingsPane draft={draft as OrderSettings} onChange={setDraft} />;
+    }
     const docKey = docKeyForTab(tab);
-    if (docKey) return <DocSettingsPane draft={draft} onChange={setDraft} />;
+    if (docKey) {
+      const layoutId = TAB_TO_DOC_LAYOUT[tab] ?? null;
+      return <DocSettingsPane draft={draft} onChange={setDraft} layoutId={layoutId} />;
+    }
     switch (tab) {
       case "General":
         return (
@@ -361,8 +431,9 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
           </div>
         );
       case "Customer":
+        return <PartySettingsPane draft={draft} onChange={setDraft} orderedKeys={[...CUSTOMER_FIELD_KEYS]} />;
       case "Vendor":
-        return <PartySettingsPane draft={draft} onChange={setDraft} />;
+        return <PartySettingsPane draft={draft} onChange={setDraft} orderedKeys={[...VENDOR_FIELD_KEYS]} />;
       case "Expense":
         return (
           <div className="border border-gray-200 rounded-md">
@@ -427,14 +498,134 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
   );
 };
 
-/* ── Product tab pane ──────────────────────────────────────────── */
-const PartySettingsPane: React.FC<{ draft: any; onChange: (d: any) => void }> = ({ draft, onChange }) => {
+/* ── Order (POS) settings pane ─────────────────────────────────── */
+const OrderSettingsPane: React.FC<{
+  draft: OrderSettings;
+  onChange: (d: OrderSettings) => void;
+}> = ({ draft, onChange }) => {
+  const [open, setOpen] = useState<string | null>("General");
+  const patch = (p: Partial<OrderSettings>) => onChange({ ...draft, ...p });
+  const sec = (title: string, body: React.ReactNode) => (
+    <Accordion title={title} open={open === title} onToggle={() => setOpen((o) => (o === title ? null : title))}>{body}</Accordion>
+  );
+  return (
+    <div>
+      {sec("General", ORDER_GENERAL_KEYS.map((k) => (
+        <Row key={k} label={k}>
+          <Toggle
+            on={draft.general?.[k] !== false}
+            onChange={(nv) => patch({ general: { ...draft.general, [k]: nv } })}
+          />
+        </Row>
+      )))}
+      {sec("Columns", ORDER_COLUMN_KEYS.map((k) => (
+        <Row key={k} label={k}>
+          <Toggle
+            on={draft.columns?.[k] !== false}
+            onChange={(nv) => patch({ columns: { ...draft.columns, [k]: nv } })}
+          />
+        </Row>
+      )))}
+      {sec("Summary", (
+        <>
+          <Row label="Subtotal with tax">
+            <Select
+              value={draft.summarySubtotalWithTax || "Default"}
+              options={["Default", "Including Tax", "Excluding Tax"]}
+              onChange={(v) => patch({ summarySubtotalWithTax: v as OrderSettings["summarySubtotalWithTax"] })}
+            />
+          </Row>
+          {ORDER_SUMMARY_KEYS.map((k) => (
+            <Row key={k} label={k}>
+              <Toggle
+                on={draft.summary?.[k] !== false}
+                onChange={(nv) => patch({ summary: { ...draft.summary, [k]: nv } })}
+              />
+            </Row>
+          ))}
+        </>
+      ))}
+      {sec("Print & Email", (
+        <>
+          <Row label="Default Print">
+            <Select
+              value={draft.printEmail?.defaultPrint || "KOT"}
+              options={["KOT", "Receipt", "Both"]}
+              onChange={(v) => patch({
+                printEmail: { ...draft.printEmail, defaultPrint: v as OrderSettings["printEmail"]["defaultPrint"] },
+              })}
+              width="min-w-[120px]"
+            />
+          </Row>
+          <Row label="Delivery Date">
+            <Select
+              value={draft.printEmail?.deliveryDate || "Show"}
+              options={["Show", "Hide"]}
+              onChange={(v) => patch({
+                printEmail: { ...draft.printEmail, deliveryDate: v as OrderSettings["printEmail"]["deliveryDate"] },
+              })}
+              width="min-w-[120px]"
+            />
+          </Row>
+          <Row label="Number of Copies on Print">
+            <Select
+              value={draft.printCopies || "Single Copy"}
+              options={["Single Copy", "Two Copies", "Three Copies"]}
+              onChange={(v) => patch({ printCopies: v as OrderSettings["printCopies"] })}
+            />
+          </Row>
+        </>
+      ))}
+      {sec("Checkout", (
+        <>
+          {ORDER_CHECKOUT_KEYS.map((k) => (
+            <Row key={k} label={k}>
+              <Toggle
+                on={draft.checkout?.keepAmountEditable !== false}
+                onChange={(nv) => patch({ checkout: { ...draft.checkout, keepAmountEditable: nv } })}
+              />
+            </Row>
+          ))}
+          <Row label="Default Order Type">
+            <Select
+              value={draft.checkout?.defaultOrderType || "Manual Select"}
+              options={["Manual Select", "Dine In", "Takeaway", "Delivery"]}
+              onChange={(v) => patch({
+                checkout: { ...draft.checkout, defaultOrderType: v as OrderSettings["checkout"]["defaultOrderType"] },
+              })}
+              width="min-w-[150px]"
+            />
+          </Row>
+        </>
+      ))}
+      {sec("Payment", ORDER_PAYMENT_KEYS.map((k) => (
+        <Row key={k} label={k}>
+          <Toggle
+            on={!!draft.payment?.[k]}
+            onChange={(nv) => patch({ payment: { ...(draft.payment || {}), [k]: nv } })}
+          />
+        </Row>
+      )))}
+    </div>
+  );
+};
+
+/* ── Customer / Vendor field visibility ─────────────────────────── */
+const PartySettingsPane: React.FC<{
+  draft: any;
+  onChange: (d: any) => void;
+  /** When set, render toggles in this order (Customer list). */
+  orderedKeys?: readonly string[];
+}> = ({ draft, onChange, orderedKeys }) => {
   const [open, setOpen] = useState<string | null>("Field Visibility");
   const fields = (draft?.fieldVisibility || {}) as Record<string, boolean>;
+  const entries = orderedKeys
+    ? orderedKeys.map((k) => [k, fields[k] !== false] as const)
+    : Object.entries(fields);
   return (
     <div>
       <Accordion title="Field Visibility" open={open === "Field Visibility"} onToggle={() => setOpen((o) => (o === "Field Visibility" ? null : "Field Visibility"))}>
-        {Object.entries(fields).map(([k, v]) => (
+        {entries.map(([k, v]) => (
           <Row key={k} label={k}>
             <Toggle on={!!v} onChange={(nv) => onChange({ ...draft, fieldVisibility: { ...fields, [k]: nv } })} />
           </Row>
@@ -445,21 +636,52 @@ const PartySettingsPane: React.FC<{ draft: any; onChange: (d: any) => void }> = 
 };
 
 /* ── Product tab pane ──────────────────────────────────────────── */
+const PRODUCT_FV_KEYS = ["HSN", "Inventory", "MRP"] as const;
 const ProductPane: React.FC<{ draft: any; patch: (p: any) => void }> = ({ draft, patch }) => {
   const [open, setOpen] = useState<string | null>("Field Visibility");
+  const fv = draft.fieldVisibility || {};
   return (
     <div>
       <Accordion title="Field Visibility" open={open === "Field Visibility"} onToggle={() => setOpen((o) => (o === "Field Visibility" ? null : "Field Visibility"))}>
-        {Object.entries(draft.fieldVisibility as Record<string, boolean>).map(([k, v]) => (
-          <Row key={k} label={k}><Toggle on={v} onChange={(nv) => patch({ fieldVisibility: { ...draft.fieldVisibility, [k]: nv } })} /></Row>
+        {PRODUCT_FV_KEYS.map((k) => (
+          <Row key={k} label={k}>
+            <Toggle
+              on={fv[k] !== false}
+              onChange={(nv) => patch({ fieldVisibility: { ...fv, [k]: nv } })}
+            />
+          </Row>
         ))}
       </Accordion>
       <Accordion title="General" open={open === "General"} onToggle={() => setOpen((o) => (o === "General" ? null : "General"))}>
-        <Row label="Product Image on Line Item"><Toggle on={draft.productImage} onChange={(v) => patch({ productImage: v })} /></Row>
-        <Row label="Allow adding products with zero stock"><Select value={draft.zeroStock} options={["Yes, Allow", "No, Don't Allow", "Warn Me"]} onChange={(v) => patch({ zeroStock: v })} /></Row>
+        <Row label="Product Image on Line Item"><Toggle on={!!draft.productImage} onChange={(v) => patch({ productImage: v })} /></Row>
+        <Row label="Allow adding products with zero stock"><Select value={draft.zeroStock || "Yes, Allow"} options={["Yes, Allow", "No, Don't Allow", "Warn Me"]} onChange={(v) => patch({ zeroStock: v })} /></Row>
       </Accordion>
       <Accordion title="Stock" open={open === "Stock"} onToggle={() => setOpen((o) => (o === "Stock" ? null : "Stock"))}>
-        <Row label="Product Stock"><Toggle on={draft.productStock} onChange={(v) => patch({ productStock: v })} /></Row>
+        <Row label="Product Stock"><Toggle on={draft.productStock !== false} onChange={(v) => patch({ productStock: v })} /></Row>
+        <Row label="Out of Stock Items (Online Store)">
+          <Select
+            value={draft.outOfStockOnlineStore || "Hide"}
+            options={["Hide", "Show"]}
+            onChange={(v) => patch({ outOfStockOnlineStore: v })}
+            width="min-w-[110px]"
+          />
+        </Row>
+      </Accordion>
+      <Accordion title="Checkout" open={open === "Checkout"} onToggle={() => setOpen((o) => (o === "Checkout" ? null : "Checkout"))}>
+        <Row label="Product Price on Checkout">
+          <Toggle
+            on={draft.checkout?.productPriceOnCheckout !== false}
+            onChange={(v) => patch({ checkout: { ...(draft.checkout || {}), productPriceOnCheckout: v } })}
+          />
+        </Row>
+        <Row label="Product Image Size">
+          <Select
+            value={draft.checkout?.productImageSize || "Medium"}
+            options={["Small", "Medium", "Large"]}
+            onChange={(v) => patch({ checkout: { ...(draft.checkout || {}), productImageSize: v } })}
+            width="min-w-[120px]"
+          />
+        </Row>
       </Accordion>
     </div>
   );

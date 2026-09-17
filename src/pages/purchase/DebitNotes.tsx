@@ -725,8 +725,21 @@ export const DebitNotes: React.FC = () => {
             </div>
           </div>
         </section>
-      ) : editMode ? (
-        <EditDebitNote dn={selected} onClose={() => setEditMode(false)} />
+      ) : editMode && selectedDb?.id ? (
+        <CreateDocForm
+          collection="debitNotes"
+          title="Edit Debit Note"
+          party="vendors"
+          buy
+          creditTotals
+          record={selectedDb}
+          onClose={() => setEditMode(false)}
+          onSaved={(id) => {
+            setEditMode(false);
+            setSelectedId(String(id));
+            void queryClient.invalidateQueries({ queryKey: ["debit-notes-list"] });
+          }}
+        />
       ) : (
         <section className="module-detail-panel custom-scrollbar">
           <div className="relative flex-1 overflow-hidden flex flex-col">

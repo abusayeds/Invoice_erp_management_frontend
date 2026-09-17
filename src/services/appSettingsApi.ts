@@ -73,6 +73,9 @@ export const MODULE_UI_TO_API: Record<string, string> = {
   "Delivery Note": "delivery_note",
   "Time Log": "time_log",
   "Purchase Order": "purchase_order",
+  Order: "order",
+  Customer: "customer",
+  Vendor: "vendor",
   Project: "project",
   Team: "team",
   "Payment Received": "payment_received",
@@ -94,6 +97,7 @@ const MODULE_API_TO_UI: Record<string, string> = Object.fromEntries(
 const FV_UI_TO_API: Record<string, string> = {
   "Due Date": "due_date",
   "Shipping Address": "shipping_address",
+  "Internal Notes": "internal_notes",
   "Street 1": "street1",
   "Street 2": "street2",
   "Zip Code": "zip_code",
@@ -102,8 +106,10 @@ const FV_UI_TO_API: Record<string, string> = {
   Country: "country",
   "Sub Title": "sub_title",
   "PO #": "po",
+  "P.O. Date": "po_date",
   "Recipient name": "recipient_name",
   "Shipping Cost And Method": "shipping_cost_and_method",
+  "Shipping Tax": "shipping_tax",
   Salesperson: "salesperson",
   "Payment Methods": "payment_methods",
   "Payment Type": "payment_type",
@@ -117,7 +123,8 @@ const FV_API_TO_UI: Record<string, string> = Object.fromEntries(
 );
 
 const COL_UI_TO_API: Record<string, string> = {
-  "Service name": "service_name",
+  "Service Name": "service_name",
+  "Service name": "service_name", // legacy label
   "Product Name": "product_name",
   Description: "description",
   Discount: "discount",
@@ -127,18 +134,32 @@ const COL_UI_TO_API: Record<string, string> = {
   "Stock In Suggestion List": "stock_in_suggestion_list",
   "Description In Suggestion List": "description_in_suggestion_list",
   "Buy Price in Suggestion List": "buy_price_in_suggestion_list",
+  "Sell Price in Suggestion List": "sell_price_in_suggestion_list",
   "Item Code in Suggestion List": "item_code_in_suggestion_list",
   "Auto Fit": "auto_fit",
 };
-const COL_API_TO_UI: Record<string, string> = Object.fromEntries(
-  Object.entries(COL_UI_TO_API).map(([ui, apiKey]) => [apiKey, ui]),
-);
+const COL_API_TO_UI: Record<string, string> = {
+  service_name: "Service Name",
+  product_name: "Product Name",
+  description: "Description",
+  discount: "Discount",
+  mrp: "MRP",
+  tax: "Tax",
+  line_description_full_width: "Line description full width",
+  stock_in_suggestion_list: "Stock In Suggestion List",
+  description_in_suggestion_list: "Description In Suggestion List",
+  buy_price_in_suggestion_list: "Buy Price in Suggestion List",
+  sell_price_in_suggestion_list: "Sell Price in Suggestion List",
+  item_code_in_suggestion_list: "Item Code in Suggestion List",
+  auto_fit: "Auto Fit",
+};
 
 const SUM_UI_TO_API: Record<string, string> = {
   "Total Quantity": "total_quantity",
   "Round Off": "round_off",
   "Negative Value format with ( )": "negative_value_format",
   "Contact Note as Default Note": "contact_note_as_default_note",
+  "Custom Charges": "custom_charges",
   "Show Line Total with Tax": "show_line_total_with_tax",
   // "Inline Discount" is UI-only — not sent to API
 };
@@ -153,6 +174,13 @@ const PRINT_UI_TO_API: Record<string, string> = {
 };
 const PRINT_API_TO_UI: Record<string, string> = Object.fromEntries(
   Object.entries(PRINT_UI_TO_API).map(([ui, apiKey]) => [apiKey, ui]),
+);
+
+const PAYMENT_UI_TO_API: Record<string, string> = {
+  "Cash Received Denomination": "cash_received_denomination",
+};
+const PAYMENT_API_TO_UI: Record<string, string> = Object.fromEntries(
+  Object.entries(PAYMENT_UI_TO_API).map(([ui, apiKey]) => [apiKey, ui]),
 );
 
 const mapBoolRecord = (
@@ -268,6 +296,18 @@ export function apiProductToUi(api: any, fallback: any) {
           ? "Yes, Allow"
           : fallback.zeroStock,
     productStock: api.stock?.product_stock ?? fallback.productStock,
+    outOfStockOnlineStore:
+      api.stock?.out_of_stock_items_online_store ?? fallback.outOfStockOnlineStore ?? "Hide",
+    checkout: {
+      productPriceOnCheckout:
+        api.checkout?.product_price_on_checkout ??
+        fallback.checkout?.productPriceOnCheckout ??
+        true,
+      productImageSize:
+        api.checkout?.product_image_size ??
+        fallback.checkout?.productImageSize ??
+        "Medium",
+    },
   };
 }
 
@@ -295,24 +335,37 @@ export function apiDocToUi(api: any, fallback: any) {
   if (!api || typeof api !== "object") return { ...fallback };
   const columnsApi = api.columns || {};
   const { quantity: qty, ...colBools } = columnsApi;
+  const summaryMapped = mapBoolRecord(api.summary, SUM_API_TO_UI, fallback.summary);
   return {
     ...fallback,
     fieldVisibility: mapBoolRecord(api.field_visibility, FV_API_TO_UI, fallback.fieldVisibility),
     general: {
       lineOption: (api.general?.line_option as any) ?? fallback.general?.lineOption ?? "Both",
+      createPublicUrlInEmail:
+        api.general?.create_public_url_in_email ??
+        fallback.general?.createPublicUrlInEmail ??
+        true,
+      trackPurchaseOrdersInStock:
+        api.general?.track_purchase_orders_in_stock ??
+        fallback.general?.trackPurchaseOrdersInStock ??
+        true,
     },
     columns: mapBoolRecord(colBools, COL_API_TO_UI, fallback.columns),
     columnsQuantity: (qty as string) || fallback.columnsQuantity || "Show for Both",
     summary: {
-      ...mapBoolRecord(api.summary, SUM_API_TO_UI, fallback.summary),
+      ...summaryMapped,
       // keep UI-only Inline Discount from fallback if API omits it
-      "Inline Discount": fallback.summary?.["Inline Discount"] ?? true,
+      "Inline Discount":
+        api.summary && "inline_discount" in api.summary
+          ? !!api.summary.inline_discount
+          : fallback.summary?.["Inline Discount"] ?? true,
     },
     summarySubtotalWithTax:
       api.summary?.subtotal_with_tax ?? fallback.summarySubtotalWithTax ?? "Default",
     printEmail: mapBoolRecord(api.print_email, PRINT_API_TO_UI, fallback.printEmail),
     printCopies:
       api.print_email?.number_of_copies_on_print ?? fallback.printCopies ?? "Single Copy",
+    payment: mapBoolRecord(api.payment, PAYMENT_API_TO_UI, fallback.payment),
   };
 }
 
@@ -422,6 +475,11 @@ export function uiSectionToApiPayload(uiSection: string, value: any): Record<str
         },
         stock: {
           product_stock: !!value.productStock,
+          out_of_stock_items_online_store: value.outOfStockOnlineStore || "Hide",
+        },
+        checkout: {
+          product_price_on_checkout: value.checkout?.productPriceOnCheckout !== false,
+          product_image_size: value.checkout?.productImageSize || "Medium",
         },
       };
     case "time_log":
@@ -437,11 +495,17 @@ export function uiSectionToApiPayload(uiSection: string, value: any): Record<str
         },
       };
     default:
-      // document types
+      // document types — additive only; unknown UI-only keys stay local via merge
       return {
         type,
         field_visibility: mapBoolRecordToApi(value.fieldVisibility, FV_UI_TO_API),
-        general: { line_option: value.general?.lineOption || "Both" },
+        general: {
+          line_option: value.general?.lineOption || "Both",
+          create_public_url_in_email: !!value.general?.createPublicUrlInEmail,
+          ...(value.general && "trackPurchaseOrdersInStock" in value.general
+            ? { track_purchase_orders_in_stock: !!value.general.trackPurchaseOrdersInStock }
+            : {}),
+        },
         columns: {
           ...mapBoolRecordToApi(value.columns, COL_UI_TO_API),
           quantity: value.columnsQuantity || "Show for Both",
@@ -449,11 +513,15 @@ export function uiSectionToApiPayload(uiSection: string, value: any): Record<str
         summary: {
           ...mapBoolRecordToApi(value.summary, SUM_UI_TO_API),
           subtotal_with_tax: value.summarySubtotalWithTax || "Default",
+          ...(value.summary && "Inline Discount" in value.summary
+            ? { inline_discount: !!value.summary["Inline Discount"] }
+            : {}),
         },
         print_email: {
           ...mapBoolRecordToApi(value.printEmail, PRINT_UI_TO_API),
           number_of_copies_on_print: value.printCopies || "Single Copy",
         },
+        payment: mapBoolRecordToApi(value.payment, PAYMENT_UI_TO_API),
       };
   }
 }

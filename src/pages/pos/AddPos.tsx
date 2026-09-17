@@ -32,6 +32,7 @@ import {
   posUid,
   warehouseShort,
 } from "@/lib/db/pos";
+import { useAppSettings, isOrderSettingOn } from "@/lib/db/appSettings";
 import { searchBankAccounts } from "@/pages/hrm/hrmShared";
 import { showToast } from "../../utils/toast";
 import {
@@ -139,6 +140,49 @@ export const AddPos: React.FC = () => {
   const [discount, setDiscount] = useState(0);
   const [modal, setModal] = useState<"payment" | "receipt" | null>(null);
   const [receipt, setReceipt] = useState<PosOrder | null>(null);
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [orderType, setOrderType] = useState("Manual Select");
+  const [editableAmount, setEditableAmount] = useState("");
+  const [cashDenomination, setCashDenomination] = useState("");
+  const [roundOff, setRoundOff] = useState(0);
+
+  const orderSettings = useAppSettings("doc:order");
+  const productSettings = useAppSettings("product");
+  const showGen = (k: string) => isOrderSettingOn(orderSettings?.general, k);
+  const showCol = (k: string) => isOrderSettingOn(orderSettings?.columns, k);
+  const showSum = (k: string) => isOrderSettingOn(orderSettings?.summary, k);
+  const discountBeforeTax = showGen("Apply discount before tax");
+  const showShipping = showGen("Shipping Address");
+  const showTotalQty = showCol("Total Quantity");
+  const fullWidthDesc = showCol("Line description full width");
+  const showTaxCol = showCol("Tax");
+  const showDiscountCol = showCol("Discount");
+  const showInlineDiscount = showSum("Inline Discount");
+  const showLineTotalWithTax = showSum("Show Line Total with Tax");
+  const parenNegatives = showSum("Negative Value format with ( )");
+  const showRoundOff = showSum("Round Off");
+  const subtotalMode = orderSettings?.summarySubtotalWithTax || "Default";
+  const showDeliveryDate = (orderSettings?.printEmail?.deliveryDate || "Show") !== "Hide";
+  const defaultPrint = orderSettings?.printEmail?.defaultPrint || "KOT";
+  const keepAmountEditable = orderSettings?.checkout?.keepAmountEditable !== false;
+  const defaultOrderType = orderSettings?.checkout?.defaultOrderType || "Manual Select";
+  const showCashDenom = !!orderSettings?.payment?.["Cash Received Denomination"];
+  const zeroStockMode = productSettings?.zeroStock || "Yes, Allow";
+  const showLineItemImage = !!productSettings?.productImage;
+  const showCheckoutPrice = productSettings?.checkout?.productPriceOnCheckout !== false;
+  const productImageSize = productSettings?.checkout?.productImageSize || "Medium";
+  const imgH = productImageSize === "Small" ? "h-24" : productImageSize === "Large" ? "h-48" : "h-36";
+  const hideOutOfStockOnline = (productSettings?.outOfStockOnlineStore || "Hide") === "Hide";
+
+  useEffect(() => {
+    if (defaultOrderType !== "Manual Select") setOrderType(defaultOrderType);
+  }, [defaultOrderType]);
+
+  const fmtMoney = (n: number) => {
+    if (parenNegatives && n < 0) return `(${money(Math.abs(n))})`;
+    return money(n);
+  };
 
   const stockFor = useCallback(
     (productId: string) => catalogById.get(productId)?.stock ?? 0,
@@ -146,15 +190,22 @@ export const AddPos: React.FC = () => {
   );
 
   const addToCart = (p: CatalogProduct) => {
-    if ((p.stock ?? 0) <= 0) {
-      showToast(`${p.name} is out of stock`, "error");
-      return;
+    const stock = p.stock ?? 0;
+    if (stock <= 0) {
+      if (zeroStockMode === "No, Don't Allow") {
+        showToast(`${p.name} is out of stock`, "error");
+        return;
+      }
+      if (zeroStockMode === "Warn Me") {
+        showToast(`${p.name} is out of stock`, "warning");
+      }
+      // Yes, Allow → continue
     }
     setCart((prev) => {
       const found = prev.find((i) => i.productId === p.id);
       if (found) {
         const maxStock = stockFor(p.id) || p.stock;
-        if (found.qty >= maxStock) {
+        if (maxStock > 0 && found.qty >= maxStock && zeroStockMode === "No, Don't Allow") {
           showToast(`Only ${maxStock} in stock for ${p.name}`, "error");
           return prev;
         }
@@ -215,9 +266,27 @@ export const AddPos: React.FC = () => {
   };
 
   const draft = { items: cart, discount };
-  const subtotal = orderSubtotal(draft);
-  const tax = orderTax(draft);
-  const total = orderTotal(draft);
+  const rawSubtotal = orderSubtotal(draft);
+  const rawTax = (() => {
+    if (!discountBeforeTax || !discount) return orderTax(draft);
+    if (rawSubtotal <= 0) return 0;
+    const ratio = Math.max(0, rawSubtotal - discount) / rawSubtotal;
+    return +cart.reduce((s, i) => s + (i.qty * i.price * i.taxRate) / 100 * ratio, 0).toFixed(2);
+  })();
+  const displaySubtotal =
+    subtotalMode === "Including Tax"
+      ? rawSubtotal + rawTax
+      : subtotalMode === "Excluding Tax"
+        ? rawSubtotal
+        : rawSubtotal;
+  const appliedDiscount = showDiscountCol ? discount : 0;
+  const preRound =
+    discountBeforeTax
+      ? rawSubtotal - appliedDiscount + (showTaxCol ? rawTax : 0)
+      : rawSubtotal + (showTaxCol ? rawTax : 0) - appliedDiscount;
+  const roundOffNum = showRoundOff ? roundOff : 0;
+  const computedTotal = +(preRound + roundOffNum).toFixed(2);
+  const totalQty = cart.reduce((s, i) => s + i.qty, 0);
   const posNumber = nextPosNumber(orders || []);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -234,6 +303,7 @@ export const AddPos: React.FC = () => {
       showToast("Select a warehouse first", "error");
       return;
     }
+    setEditableAmount(String(computedTotal));
     setModal("payment");
   };
 
@@ -249,7 +319,7 @@ export const AddPos: React.FC = () => {
       bankAccount: bankAccountLabel,
       bankAccountId: bankAccountId || undefined,
       items: cart,
-      discount,
+      discount: appliedDiscount,
       status: "Completed",
       createdAt: Date.now(),
     };
@@ -260,6 +330,12 @@ export const AddPos: React.FC = () => {
     setModal("receipt");
     setCart([]);
     setDiscount(0);
+    setShippingAddress("");
+    setDeliveryDate("");
+    setCashDenomination("");
+    setRoundOff(0);
+    setEditableAmount("");
+    if (defaultOrderType === "Manual Select") setOrderType("Manual Select");
   };
 
   const inputCls = "px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30";
@@ -334,6 +410,7 @@ export const AddPos: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             {catalog.map((p) => {
+              if (hideOutOfStockOnline && (p.stock ?? 0) <= 0) return null;
               const imgSrc = hasProductImage(p.image) ? resolveProductImageUrl(p.image) : "";
               return (
               <button
@@ -342,14 +419,18 @@ export const AddPos: React.FC = () => {
                 onClick={() => addToCart(p)}
                 className="bg-white rounded-xl border border-gray-200 hover:border-blue-400 hover:shadow-md text-left overflow-hidden transition-all"
               >
-                <div className="h-36 bg-gray-50 flex items-center justify-center overflow-hidden">
+                <div className={`${imgH} bg-gray-50 flex items-center justify-center overflow-hidden`}>
                   {imgSrc ? <img src={imgSrc} alt={p.name} className="w-full h-full object-cover" /> : <Package className="w-12 h-12 text-blue-200" />}
                 </div>
                 <div className="p-3">
                   <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
                   <p className="text-xs text-gray-400 mt-0.5 truncate">{p.sku || "—"}</p>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm font-bold text-blue-600">{money(p.price)}</span>
+                    {showCheckoutPrice ? (
+                      <span className="text-sm font-bold text-blue-600">{money(p.price)}</span>
+                    ) : (
+                      <span />
+                    )}
                     <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock > 0 ? "bg-gray-100 text-gray-600" : "bg-red-100 text-red-600"}`}>
                       {p.stock ?? 0}
                     </span>
@@ -410,8 +491,11 @@ export const AddPos: React.FC = () => {
             <h3 className="text-base font-semibold text-gray-900">Shopping Cart</h3>
           </div>
           <div className="flex items-center gap-2">
+            {showTotalQty && cart.length > 0 && (
+              <span className="text-xs text-gray-500">Qty {totalQty}</span>
+            )}
             <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-xs flex items-center justify-center font-medium">
-              {cart.reduce((s, i) => s + i.qty, 0)}
+              {totalQty}
             </span>
             {cart.length > 0 && (
               <button onClick={() => setCart([])} title="Clear cart" className="text-red-400 hover:text-red-600">
@@ -431,19 +515,28 @@ export const AddPos: React.FC = () => {
               <p className="text-xs text-gray-400 mt-1">Add products to get started</p>
             </div>
           ) : (
-            cart.map((i) => (
+            cart.map((i) => {
+              const lineTax = +(i.qty * i.price * i.taxRate / 100).toFixed(2);
+              const lineBase = i.qty * i.price;
+              const lineTotal = showLineTotalWithTax ? lineBase + lineTax : lineBase;
+              return (
               <div key={i.productId} className="rounded-lg border border-gray-200 p-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-md bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
-                    {(() => {
-                      const raw = i.image ?? catalogById.get(i.productId)?.image;
-                      const src = hasProductImage(raw) ? resolveProductImageUrl(raw) : "";
-                      return src ? <img src={src} alt={i.name} className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-blue-300" />;
-                    })()}
-                  </div>
+                  {showLineItemImage && (
+                    <div className="w-9 h-9 rounded-md bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                      {(() => {
+                        const raw = i.image ?? catalogById.get(i.productId)?.image;
+                        const src = hasProductImage(raw) ? resolveProductImageUrl(raw) : "";
+                        return src ? <img src={src} alt={i.name} className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-blue-300" />;
+                      })()}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{i.name}</p>
-                    <p className="text-xs text-blue-600">{money(i.price)} each</p>
+                    <p className={`text-sm font-semibold text-gray-900 ${fullWidthDesc ? "whitespace-normal break-words" : "truncate"}`}>{i.name}</p>
+                    <p className="text-xs text-blue-600">{fmtMoney(i.price)} each</p>
+                    {showTaxCol && (
+                      <p className="text-xs text-gray-400">GST ({i.taxRate.toFixed(2)}%)</p>
+                    )}
                   </div>
                   <button onClick={() => setQty(i.productId, 0)} title={`Remove ${i.name}`} className="text-red-400 hover:text-red-600 p-1">
                     <Trash2 className="w-4 h-4" />
@@ -459,37 +552,101 @@ export const AddPos: React.FC = () => {
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <span className="text-sm font-bold text-gray-900">{money(i.qty * i.price)}</span>
+                  <span className="text-sm font-bold text-gray-900">{fmtMoney(lineTotal)}</span>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
         {/* totals */}
         <div className="border-t border-gray-200 px-4 py-4 space-y-2 text-sm">
+          {(showShipping || showDeliveryDate || defaultOrderType === "Manual Select") && (
+            <div className="space-y-2 pb-2 mb-1 border-b border-gray-100">
+              {defaultOrderType === "Manual Select" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-gray-600">Order Type</span>
+                  <select
+                    value={orderType}
+                    onChange={(e) => setOrderType(e.target.value)}
+                    className="px-2 py-1 text-sm border border-gray-300 rounded-md bg-white"
+                  >
+                    {["Manual Select", "Dine In", "Takeaway", "Delivery"].map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {showDeliveryDate && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-gray-600">Delivery Date</span>
+                  <input
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    className="px-2 py-1 text-sm border border-gray-300 rounded-md"
+                  />
+                </div>
+              )}
+              {showShipping && (
+                <div>
+                  <label className="text-xs text-gray-500">Shipping Address</label>
+                  <textarea
+                    value={shippingAddress}
+                    onChange={(e) => setShippingAddress(e.target.value)}
+                    rows={2}
+                    placeholder="Shipping address"
+                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {showTotalQty && (
+            <div className="flex items-center justify-between text-gray-600">
+              <span>Total Quantity</span>
+              <span className="text-gray-900">{totalQty}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-gray-600">
-            <span>Subtotal</span>
-            <span className="text-gray-900">{money(subtotal)}</span>
+            <span>{subtotalMode === "Including Tax" ? "Subtotal (incl. tax)" : subtotalMode === "Excluding Tax" ? "Subtotal (excl. tax)" : "Subtotal"}</span>
+            <span className="text-gray-900">{fmtMoney(displaySubtotal)}</span>
           </div>
-          <div className="flex items-center justify-between text-gray-600">
-            <span>GST ({GST_RATE.toFixed(2)}%)</span>
-            <span className="text-gray-900">{money(tax)}</span>
-          </div>
-          <div className="flex items-center justify-between text-gray-600">
-            <span>Discount</span>
-            <input
-              type="number"
-              min={0}
-              value={discount || ""}
-              placeholder="0"
-              onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-              className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded-md"
-            />
-          </div>
+          {showTaxCol && (
+            <div className="flex items-center justify-between text-gray-600">
+              <span>GST ({GST_RATE.toFixed(2)}%)</span>
+              <span className="text-gray-900">{fmtMoney(rawTax)}</span>
+            </div>
+          )}
+          {showDiscountCol && (
+            <div className="flex items-center justify-between text-gray-600">
+              <span>Discount{showInlineDiscount ? "" : ""}</span>
+              <input
+                type="number"
+                min={0}
+                value={discount || ""}
+                placeholder="0"
+                onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
+                className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded-md"
+              />
+            </div>
+          )}
+          {showRoundOff && (
+            <div className="flex items-center justify-between text-gray-600">
+              <span>Round Off</span>
+              <input
+                type="number"
+                value={roundOff || ""}
+                placeholder="0"
+                onChange={(e) => setRoundOff(Number(e.target.value) || 0)}
+                className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded-md"
+              />
+            </div>
+          )}
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
             <span className="text-base font-semibold text-gray-900">Total</span>
-            <span className="text-lg font-bold text-blue-600">{money(total)}</span>
+            <span className="text-lg font-bold text-blue-600">{fmtMoney(computedTotal)}</span>
           </div>
           <button
             onClick={checkout}
@@ -535,7 +692,7 @@ export const AddPos: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      {["Product", "Qty", "Price", "Taxes", "Tax Amount", "Total"].map((h) => (
+                      {["Product", "Qty", "Price", ...(showTaxCol ? ["Taxes", "Tax Amount"] : []), "Total"].map((h) => (
                         <th key={h} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                       ))}
                     </tr>
@@ -543,17 +700,23 @@ export const AddPos: React.FC = () => {
                   <tbody className="divide-y divide-gray-100">
                     {cart.map((i) => {
                       const lineTax = +(i.qty * i.price * i.taxRate / 100).toFixed(2);
+                      const lineBase = i.qty * i.price;
+                      const lineTotal = showLineTotalWithTax ? lineBase + lineTax : lineBase;
                       return (
                         <tr key={i.productId}>
-                          <td className="px-3 py-2.5">
-                            <p className="font-medium text-gray-900">{i.name}</p>
+                          <td className={`px-3 py-2.5 ${fullWidthDesc ? "" : ""}`}>
+                            <p className={`font-medium text-gray-900 ${fullWidthDesc ? "whitespace-normal break-words" : ""}`}>{i.name}</p>
                             <p className="text-xs text-gray-400">{i.sku}</p>
                           </td>
                           <td className="px-3 py-2.5 text-gray-900">{i.qty}</td>
-                          <td className="px-3 py-2.5 text-gray-900">{money(i.price)}</td>
-                          <td className="px-3 py-2.5 text-gray-600">GST ({i.taxRate.toFixed(2)}%)</td>
-                          <td className="px-3 py-2.5 text-gray-900">{money(lineTax)}</td>
-                          <td className="px-3 py-2.5 font-medium text-gray-900">{money(i.qty * i.price + lineTax)}</td>
+                          <td className="px-3 py-2.5 text-gray-900">{fmtMoney(i.price)}</td>
+                          {showTaxCol && (
+                            <>
+                              <td className="px-3 py-2.5 text-gray-600">GST ({i.taxRate.toFixed(2)}%)</td>
+                              <td className="px-3 py-2.5 text-gray-900">{fmtMoney(lineTax)}</td>
+                            </>
+                          )}
+                          <td className="px-3 py-2.5 font-medium text-gray-900">{fmtMoney(lineTotal)}</td>
                         </tr>
                       );
                     })}
@@ -562,13 +725,55 @@ export const AddPos: React.FC = () => {
               </div>
 
               <div className="mt-4 border border-gray-200 rounded-lg px-4 py-3 space-y-1.5 text-sm">
-                <div className="flex justify-between text-gray-600"><span>Subtotal:</span><span className="text-gray-900">{money(subtotal)}</span></div>
-                <div className="flex justify-between text-gray-600"><span>Tax:</span><span className="text-gray-900">{money(tax)}</span></div>
-                <div className="flex justify-between text-gray-600"><span>Discount:</span><span className="text-gray-900">-{money(discount)}</span></div>
-                <div className="flex justify-between pt-2 border-t border-gray-100">
+                {showTotalQty && (
+                  <div className="flex justify-between text-gray-600"><span>Total Quantity:</span><span className="text-gray-900">{totalQty}</span></div>
+                )}
+                <div className="flex justify-between text-gray-600"><span>Subtotal:</span><span className="text-gray-900">{fmtMoney(displaySubtotal)}</span></div>
+                {showTaxCol && (
+                  <div className="flex justify-between text-gray-600"><span>Tax:</span><span className="text-gray-900">{fmtMoney(rawTax)}</span></div>
+                )}
+                {showDiscountCol && (
+                  <div className="flex justify-between text-gray-600"><span>Discount:</span><span className="text-gray-900">-{fmtMoney(discount)}</span></div>
+                )}
+                {showRoundOff && roundOffNum !== 0 && (
+                  <div className="flex justify-between text-gray-600"><span>Round Off:</span><span className="text-gray-900">{fmtMoney(roundOffNum)}</span></div>
+                )}
+                <div className="flex justify-between pt-2 border-t border-gray-100 items-center gap-2">
                   <span className="text-base font-semibold text-gray-900">Total:</span>
-                  <span className="text-base font-bold text-blue-600">{money(total)}</span>
+                  {keepAmountEditable ? (
+                    <input
+                      type="number"
+                      value={editableAmount}
+                      onChange={(e) => setEditableAmount(e.target.value)}
+                      className="w-32 px-2 py-1 text-right text-base font-bold text-blue-600 border border-gray-300 rounded-md"
+                    />
+                  ) : (
+                    <span className="text-base font-bold text-blue-600">{fmtMoney(computedTotal)}</span>
+                  )}
                 </div>
+                {showCashDenom && (
+                  <div className="pt-2">
+                    <label className="text-xs text-gray-500">Cash Received Denomination</label>
+                    <input
+                      value={cashDenomination}
+                      onChange={(e) => setCashDenomination(e.target.value)}
+                      placeholder="e.g. 500 x 2, 100 x 1"
+                      className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                    />
+                  </div>
+                )}
+                {orderType && orderType !== "Manual Select" && (
+                  <div className="flex justify-between text-gray-600"><span>Order Type:</span><span className="text-gray-900">{orderType}</span></div>
+                )}
+                {showDeliveryDate && deliveryDate && (
+                  <div className="flex justify-between text-gray-600"><span>Delivery Date:</span><span className="text-gray-900">{deliveryDate}</span></div>
+                )}
+                {showShipping && shippingAddress && (
+                  <div className="pt-1 text-gray-600">
+                    <span className="text-xs text-gray-500">Shipping:</span>
+                    <p className="text-gray-900 whitespace-pre-wrap">{shippingAddress}</p>
+                  </div>
+                )}
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
@@ -580,14 +785,28 @@ export const AddPos: React.FC = () => {
       )}
 
       {/* ── receipt modal ── */}
-      {modal === "receipt" && receipt && <ReceiptModal order={receipt} onClose={() => setModal(null)} />}
+      {modal === "receipt" && receipt && (
+        <ReceiptModal
+          order={receipt}
+          onClose={() => setModal(null)}
+          printLabel={defaultPrint === "KOT" ? "Print KOT" : defaultPrint === "Both" ? "Print KOT / Receipt" : "Print"}
+        />
+      )}
     </div>
   );
 };
 
 /* ── receipt modal (also used after Complete Sale) ─────────────── */
 
-export function ReceiptModal({ order, onClose }: { order: PosOrder; onClose: () => void }) {
+export function ReceiptModal({
+  order,
+  onClose,
+  printLabel = "Print",
+}: {
+  order: PosOrder;
+  onClose: () => void;
+  printLabel?: string;
+}) {
   const subtotal = orderSubtotal(order);
   const tax = orderTax(order);
   const total = orderTotal(order);
@@ -686,7 +905,7 @@ export function ReceiptModal({ order, onClose }: { order: PosOrder; onClose: () 
             <Download className="w-4 h-4" /> Download PDF
           </button>
           <button onClick={() => window.print()} className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-sm text-gray-700 rounded-md hover:bg-gray-50">
-            <Printer className="w-4 h-4" /> Print
+            <Printer className="w-4 h-4" /> {printLabel}
           </button>
           <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-sm text-gray-700 rounded-md hover:bg-gray-50">Close</button>
         </div>
