@@ -780,6 +780,7 @@ export const Companies: React.FC = () => {
       }
       setFormOpen(null);
       await loadCompanies();
+      window.dispatchEvent(new Event("qayd:company-changed"));
     } catch (e: any) {
       showToast(e?.message || "Could not save company", "error");
       throw e;
@@ -794,6 +795,7 @@ export const Companies: React.FC = () => {
       /* ignore */
     }
       await loadCompanies();
+      window.dispatchEvent(new Event("qayd:company-changed"));
   };
 
   const handleCardClick = (card: SettingCard) => {

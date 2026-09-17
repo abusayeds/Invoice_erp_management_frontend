@@ -1,6 +1,6 @@
 /**
  * Shared list-sidebar footer: one line — prev | total · count | next.
- * White text/arrows on dark bar. Arrows always visible; disabled when no page.
+ * Theme-aware via `.list-sidebar-footer` (dark bar by default, light in Light theme).
  */
 import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -31,10 +31,10 @@ export function ListSidebarFooter({
   const canNext = !!onPageChange && current < totalPage;
 
   const arrowBtn =
-    "w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-colors disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent text-white hover:bg-slate-600";
+    "w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-colors disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent hover:bg-black/10";
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2.5 border-t border-slate-600 bg-slate-700">
+    <div className="list-sidebar-footer flex items-center gap-2 px-3 py-2.5 border-t">
       <button
         type="button"
         title="Previous page"
@@ -47,8 +47,8 @@ export function ListSidebarFooter({
       </button>
 
       <div className="min-w-0 flex-1 text-center leading-tight">
-        <div className="text-base font-semibold text-white truncate">{total}</div>
-        <div className="text-sm text-white/90 truncate">{countLabel}</div>
+        <div className="text-base font-semibold truncate">{total}</div>
+        <div className="list-sidebar-footer-muted text-sm truncate opacity-90">{countLabel}</div>
       </div>
 
       <button

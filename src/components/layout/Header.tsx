@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -41,6 +42,7 @@ import { MyAccountModal } from "@/components/modals/MyAccountModal";
 import useAuth from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
+import { resolveMediaUrl } from "@/lib/env";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -113,6 +115,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const [companyName, setCompanyName] = useState(displayName);
   const [companyEmail, setCompanyEmail] = useState(displayEmail);
+  const [companyLogo, setCompanyLogo] = useState("");
+  const [logoBroken, setLogoBroken] = useState(false);
   const [isOwner, setIsOwner] = useState(true);
 
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -125,30 +129,46 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [notifications, setNotifications] = useState(sampleNotifications);
   const [announcements, setAnnouncements] = useState(sampleAnnouncements);
   const [notifTab, setNotifTab] = useState<"notifications" | "announcements">("notifications");
+  const [userMenuPos, setUserMenuPos] = useState<{ top: number; right: number } | null>(null);
 
   const createRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const appsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await api.raw.get("/company-register/all");
-        const list = toArray<any>(res.data);
-        const owner = list.find((c) => c.is_owner) || list[0];
-        if (!alive || !owner) return;
-        setCompanyName(String(owner.business_name || displayName).trim() || displayName);
-        setCompanyEmail(String(owner.email || displayEmail).trim() || displayEmail);
-        setIsOwner(!!owner.is_owner || list.length <= 1);
-      } catch {
-        /* keep defaults from auth */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+
+  const loadCompany = React.useCallback(async () => {
+    try {
+      const res = await api.raw.get("/company-register/all");
+      const list = toArray<any>(res.data);
+      const owner = list.find((c) => c.is_owner) || list[0];
+      if (!owner) return;
+      setCompanyName(String(owner.business_name || displayName).trim() || displayName);
+      setCompanyEmail(String(owner.email || displayEmail).trim() || displayEmail);
+      const logo = String(owner.logo || owner.company_logo || "").trim();
+      setCompanyLogo(logo);
+      setLogoBroken(false);
+      setIsOwner(!!owner.is_owner || list.length <= 1);
+    } catch {
+      /* keep defaults from auth */
+    }
   }, [displayName, displayEmail]);
+
+  useEffect(() => {
+    void loadCompany();
+  }, [loadCompany]);
+
+  // Refresh logo/name when returning to the tab or after Companies save.
+  useEffect(() => {
+    const onFocus = () => void loadCompany();
+    const onCompanyChanged = () => void loadCompany();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("qayd:company-changed", onCompanyChanged);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("qayd:company-changed", onCompanyChanged);
+    };
+  }, [loadCompany]);
 
   // Working stopwatch: ticks every second while running; pause holds the value,
   // play resumes from where it stopped.
@@ -167,14 +187,42 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (createRef.current && !createRef.current.contains(e.target as Node)) setShowCreate(false);
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
-      if (userRef.current && !userRef.current.contains(e.target as Node)) setShowUserMenu(false);
-      if (appsRef.current && !appsRef.current.contains(e.target as Node)) setShowApps(false);
+      const t = e.target as Node;
+      if (createRef.current && !createRef.current.contains(t)) setShowCreate(false);
+      if (notifRef.current && !notifRef.current.contains(t)) setShowNotifications(false);
+      if (
+        userRef.current &&
+        !userRef.current.contains(t) &&
+        userMenuRef.current &&
+        !userMenuRef.current.contains(t)
+      ) {
+        setShowUserMenu(false);
+      } else if (userRef.current && !userRef.current.contains(t) && !userMenuRef.current) {
+        setShowUserMenu(false);
+      }
+      if (appsRef.current && !appsRef.current.contains(t)) setShowApps(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!showUserMenu || !userRef.current) {
+      setUserMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const r = userRef.current!.getBoundingClientRect();
+      setUserMenuPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [showUserMenu]);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -191,8 +239,30 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     { label: "Timesheet", path: "/timesheet" },
   ];
 
+  const companyInitial = (companyName || displayName || "?").charAt(0).toUpperCase();
+  const companyLogoUrl = resolveMediaUrl(companyLogo);
+  const showLogo = !!companyLogoUrl && !logoBroken;
+
+  const CompanyAvatar: React.FC<{ size?: string; textSize?: string }> = ({
+    size = "w-8 h-8",
+    textSize = "text-sm",
+  }) => (
+    <div className={`${size} rounded-full bg-blue-600 flex items-center justify-center text-white ${textSize} font-semibold overflow-hidden flex-shrink-0`}>
+      {showLogo ? (
+        <img
+          src={companyLogoUrl}
+          alt={companyName || "Company"}
+          className="w-full h-full object-cover"
+          onError={() => setLogoBroken(true)}
+        />
+      ) : (
+        companyInitial
+      )}
+    </div>
+  );
+
   return (
-    <div className="h-16 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-3">
+    <div className="h-16 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 relative z-40">
       {/* Mobile-only menu toggle */}
       <button
         onClick={onMenuClick}
@@ -359,100 +429,105 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         {/* Company / account menu */}
         <div className="relative" ref={userRef}>
           <button
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
               setShowUserMenu((s) => !s);
               setShowCreate(false);
               setShowNotifications(false);
               setShowApps(false);
             }}
-            className="flex items-center gap-1 px-1 py-1 hover:bg-gray-100 rounded-full transition-colors"
+            className="flex items-center gap-1.5 px-1.5 py-1 hover:bg-gray-100 rounded-full transition-colors"
+            title={companyName || "Company"}
           >
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-              {(companyName || displayName).charAt(0).toUpperCase()}
-            </div>
-            <ChevronDown className="hidden sm:block w-3.5 h-3.5 text-white/70" />
+            <CompanyAvatar />
+            <ChevronDown className={`hidden sm:block w-3.5 h-3.5 text-gray-500 transition-transform ${showUserMenu ? "rotate-180" : ""}`} />
           </button>
 
-          {showUserMenu && (
-            <div className="absolute right-0 top-11 w-[280px] z-50">
-              {/* caret */}
-              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-[#2c333c] rotate-45 border-l border-t border-black/20" />
-              <div className="relative rounded-md bg-[#2c333c] border border-black/30 shadow-2xl overflow-hidden text-white">
-                {/* Profile */}
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
-                    {(companyName || "?").charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[15px] text-white truncate">{companyName}</p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <FileText className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                      {isOwner && (
-                        <span className="px-2 py-0.5 rounded bg-white/15 text-[11px] text-white/90">
-                          Owner
-                        </span>
-                      )}
+          {showUserMenu &&
+            userMenuPos &&
+            createPortal(
+              <div
+                ref={userMenuRef}
+                className="fixed w-[280px] z-[120]"
+                style={{ top: userMenuPos.top, right: userMenuPos.right }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="absolute -top-1.5 right-4 w-3 h-3 bg-white rotate-45 border-l border-t border-gray-200" />
+                <div className="relative rounded-md bg-white border border-gray-200 shadow-2xl overflow-hidden text-gray-900">
+                  <div className="flex items-center gap-3 px-4 py-3.5">
+                    <CompanyAvatar size="w-12 h-12" textSize="text-lg" />
+                    <div className="min-w-0">
+                      <p className="text-[15px] text-gray-900 truncate">{companyName}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <FileText className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                        {isOwner && (
+                          <span className="px-2 py-0.5 rounded bg-gray-100 text-[11px] text-gray-700">
+                            Owner
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="border-t border-white/10" />
+                  <div className="border-t border-gray-100" />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUserMenu(false);
-                    navigate("/companies", { state: { openCreate: true } });
-                  }}
-                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-white hover:bg-white/5 text-left"
-                >
-                  <Plus className="w-4 h-4" strokeWidth={2.2} />
-                  Add Company
-                </button>
-
-                <div className="border-t border-white/10" />
-
-                <div className="px-4 py-3 text-sm text-white/90 truncate">{companyEmail}</div>
-
-                <div className="border-t border-white/10" />
-
-                <Link
-                  to="/settings"
-                  onClick={() => setShowUserMenu(false)}
-                  className="flex items-center gap-2.5 px-4 py-3 text-sm text-white hover:bg-white/5"
-                >
-                  <Settings className="w-4 h-4 text-white/80" />
-                  Settings
-                </Link>
-
-                <div className="border-t border-white/10" />
-
-                <div className="flex items-center justify-between gap-3 px-4 py-3">
                   <button
                     type="button"
                     onClick={() => {
                       setShowUserMenu(false);
-                      setShowMyAccount(true);
+                      navigate("/companies", { state: { openCreate: true } });
                     }}
-                    className="text-sm text-white hover:underline"
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-800 hover:bg-gray-50 text-left"
                   >
-                    My Account
+                    <Plus className="w-4 h-4" strokeWidth={2.2} />
+                    Add Company
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      logout();
-                      navigate("/auth/login");
-                    }}
-                    className="px-3.5 py-1.5 text-sm text-white rounded bg-[#1a1f26] hover:bg-black/50 border border-white/10"
+
+                  <div className="border-t border-gray-100" />
+
+                  <div className="px-4 py-3 text-sm text-gray-600 truncate">{companyEmail}</div>
+
+                  <div className="border-t border-gray-100" />
+
+                  <Link
+                    to="/settings"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 px-4 py-3 text-sm text-gray-800 hover:bg-gray-50"
                   >
-                    Log Out
-                  </button>
+                    <Settings className="w-4 h-4 text-gray-500" />
+                    Settings
+                  </Link>
+
+                  <div className="border-t border-gray-100" />
+
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        setShowMyAccount(true);
+                      }}
+                      className="text-sm text-blue-600 hover:underline font-medium"
+                    >
+                      My Account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        logout();
+                        navigate("/auth/login");
+                      }}
+                      className="px-3.5 py-1.5 text-sm text-gray-800 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200"
+                    >
+                      Log Out
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </div>,
+              document.body,
+            )}
         </div>
       </div>
 

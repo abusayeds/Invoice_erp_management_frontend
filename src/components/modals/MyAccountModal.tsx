@@ -112,21 +112,20 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/55 p-4 overflow-y-auto"
+      className="fixed inset-0 z-[200] flex items-start justify-center bg-black/50 p-4 overflow-y-auto"
       onMouseDown={onClose}
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="w-full max-w-[560px] my-8 rounded-xl overflow-hidden shadow-2xl border border-white/10"
-        style={{ background: "#2a313a", color: "#fff" }}
+        className="w-full max-w-[560px] my-8 rounded-xl overflow-hidden shadow-2xl border border-gray-200 bg-white text-gray-900"
       >
         {/* Header */}
-        <div className="relative flex items-center justify-center h-12 px-3 border-b border-white/10">
-          <h2 className="text-[15px] font-semibold tracking-wide">My Account</h2>
+        <div className="relative flex items-center justify-center h-12 px-3 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-[15px] font-semibold tracking-wide text-gray-900">My Account</h2>
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-3 p-1.5 rounded-md hover:bg-white/10 text-white/80"
+            className="absolute right-3 p-1.5 rounded-md hover:bg-gray-200 text-gray-600"
             title="Close"
           >
             <X className="w-5 h-5" />
@@ -134,7 +133,7 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-sm text-white/60">
+          <div className="flex items-center justify-center gap-2 py-20 text-sm text-gray-500">
             <Loader2 className="w-5 h-5 animate-spin" />
             Loading account…
           </div>
@@ -162,7 +161,7 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
             </div>
 
             <div className="px-5 pt-3 pb-4">
-              <h3 className="text-sm font-semibold mb-3">My Plan</h3>
+              <h3 className="text-sm font-semibold mb-3 text-gray-900">My Plan</h3>
               {plan ? (
                 <PlanCard
                   icon={plan.status === "Expired" ? ShoppingBag : FileText}
@@ -186,14 +185,14 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
               )}
             </div>
 
-            <div className="mx-5 mb-6 rounded-lg overflow-hidden border border-white/10">
+            <div className="mx-5 mb-6 rounded-lg overflow-hidden border border-gray-200">
               <img
                 src={myAccountPromo}
                 alt="Dashboard preview"
                 className="w-full h-auto max-h-[320px] object-cover object-top block"
               />
             </div>
-            <p className="text-center text-sm font-medium text-white/90 px-5 pb-6">
+            <p className="text-center text-sm font-medium text-gray-800 px-5 pb-6">
               One plan for All Platform Apps
             </p>
           </>
@@ -211,21 +210,21 @@ const Field: React.FC<{
   onEdit: () => void;
 }> = ({ label, value, verified, onEdit }) => (
   <div>
-    <label className="block text-xs text-white/55 mb-1.5">{label}</label>
-    <div className="flex items-center gap-2 h-11 px-3 rounded-md border border-white/15 bg-[#1f252c]">
+    <label className="block text-xs text-gray-500 mb-1.5">{label}</label>
+    <div className="flex items-center gap-2 h-11 px-3 rounded-md border border-gray-200 bg-gray-50">
       {verified ? (
         <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
           <BadgeCheck className="w-3.5 h-3.5 text-white" />
         </span>
       ) : (
-        <span className="w-5 h-5 rounded-full border border-white/20 flex-shrink-0" />
+        <span className="w-5 h-5 rounded-full border border-gray-300 flex-shrink-0" />
       )}
-      <span className="flex-1 min-w-0 text-sm text-white truncate">{value}</span>
-      {verified ? <span className="text-xs text-blue-400 flex-shrink-0">Verified</span> : null}
+      <span className="flex-1 min-w-0 text-sm text-gray-900 truncate">{value}</span>
+      {verified ? <span className="text-xs text-blue-600 flex-shrink-0">Verified</span> : null}
       <button
         type="button"
         onClick={onEdit}
-        className="p-1 rounded hover:bg-white/10 text-white/80 flex-shrink-0"
+        className="p-1 rounded hover:bg-gray-200 text-gray-600 flex-shrink-0"
         title="Edit"
       >
         <Pencil className="w-4 h-4" />
@@ -243,28 +242,28 @@ const PlanCard: React.FC<{
   actionLabel: string;
   onAction: () => void;
 }> = ({ icon: Icon, name, detail, status, channel, actionLabel, onAction }) => (
-  <div className="flex items-center gap-3 py-3 border-b border-white/10 last:border-b-0">
+  <div className="flex items-center gap-3 py-3 border-b border-gray-200 last:border-b-0">
     <div className="w-11 h-11 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
       <Icon className="w-5 h-5 text-white" />
     </div>
     <div className="min-w-0 flex-1">
-      <p className="text-sm font-semibold text-white truncate">{name}</p>
-      <p className="text-xs text-white/50 truncate">{detail}</p>
+      <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+      <p className="text-xs text-gray-500 truncate">{detail}</p>
     </div>
     <div className="text-right flex-shrink-0 mr-2">
       <p
         className={`text-sm font-semibold ${
-          status === "Active" ? "text-emerald-400" : status === "Expired" ? "text-red-400" : "text-white/50"
+          status === "Active" ? "text-emerald-600" : status === "Expired" ? "text-red-600" : "text-gray-400"
         }`}
       >
         {status === "None" ? "—" : status}
       </p>
-      <p className="text-[11px] text-white/45 capitalize">{channel}</p>
+      <p className="text-[11px] text-gray-500 capitalize">{channel}</p>
     </div>
     <button
       type="button"
       onClick={onAction}
-      className="px-3 py-1.5 text-xs font-medium rounded-md bg-[#3a424c] hover:bg-[#454e5a] text-white border border-white/10 whitespace-nowrap"
+      className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-200 whitespace-nowrap"
     >
       {actionLabel}
     </button>

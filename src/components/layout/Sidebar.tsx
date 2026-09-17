@@ -521,7 +521,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Menu & Footer Container */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[#1e293b] my-2 ml-2 border border-black/20 border-r-0 shadow-sm">
+        <div className="sidebar-nav-shell flex-1 overflow-hidden flex flex-col my-2 ml-2 border border-r-0 shadow-sm">
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-2 px-2 hover-scrollbar">
           <ul className="">
@@ -533,12 +533,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       onClick={() => !collapsed && toggleExpand(item.label)}
                       className={`
-                        w-full flex items-center ${collapsed ? "justify-center" : "justify-between"} px-2.5 py-2
-                         font-normal transition-all duration-150 border-y border-white/5
+                        sidebar-nav-item w-full flex items-center ${collapsed ? "justify-center" : "justify-between"} px-2.5 py-2
+                         font-normal transition-all duration-150 border-y border-transparent
                         ${
                           isParentActive(item.children)
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-white/85 hover:bg-gray-100 hover:text-white"
+                            ? "is-active bg-blue-600 text-white shadow-sm"
+                            : "hover:bg-black/10"
                         }
                       `}
                       title={collapsed ? item.label : ""}
@@ -557,12 +557,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {!collapsed &&
                         (expandedItems.includes(item.label) ? (
                           <ChevronDown
-                            className="w-3.5 h-3.5 text-white/85"
+                            className="w-3.5 h-3.5 opacity-70"
                             strokeWidth={2}
                           />
                         ) : (
                           <ChevronRight
-                            className="w-3.5 h-3.5 text-white/85"
+                            className="w-3.5 h-3.5 opacity-70"
                             strokeWidth={2}
                           />
                         ))}
@@ -570,19 +570,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                     {/* Children - icon + label */}
                     {!collapsed && expandedItems.includes(item.label) && (
-                      <ul className="mt-0.5 space-y-0.5 ml-5 border-l border-white/10">
+                      <ul className="sidebar-nav-children mt-0.5 space-y-0.5 ml-5 border-l border-current/15">
                         {item.children.map((child) => (
                           <li key={child.label}>
                             <Link
                               to={child.path || "#"}
                               onClick={() => setMobileMenuOpen(false)}
                               className={`
-                                flex items-center gap-2.5 px-2.5 py-2
+                                sidebar-nav-item flex items-center gap-2.5 px-2.5 py-2
                                  transition-all duration-150
                                 ${
                                   isActive(child.path)
-                                    ? "bg-blue-600 text-white font-medium shadow-sm"
-                                    : "text-white/85 hover:bg-gray-100 hover:text-white"
+                                    ? "is-active bg-blue-600 text-white font-medium shadow-sm"
+                                    : "hover:bg-black/10"
                                 }
                               `}
                             >
@@ -605,12 +605,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     to={item.path || "#"}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`
-                      flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2
+                      sidebar-nav-item flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2
                        font-normal transition-all duration-150
                       ${
                         isActive(item.path)
-                          ? "bg-blue-600 text-white font-medium shadow-sm"
-                          : "text-white/85 hover:bg-gray-100 hover:text-white"
+                          ? "is-active bg-blue-600 text-white font-medium shadow-sm"
+                          : "hover:bg-black/10"
                       }
                     `}
                     title={collapsed ? item.label : ""}
@@ -630,10 +630,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Get Help Footer */}
-        <div className="border-t border-white/10 p-2">
+        <div className="sidebar-nav-footer border-t border-current/15 p-2">
           <Link
             to="/get-help"
-            className={`w-full flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2 rounded-md  text-white/85 hover:bg-gray-100 hover:text-white transition-all duration-150`}
+            className={`w-full flex items-center ${collapsed ? "justify-center" : "gap-2.5"} px-2.5 py-2 rounded-md hover:bg-black/10 transition-all duration-150`}
             title={collapsed ? "Get Help" : ""}
           >
             <HelpCircle className="w-[16px] h-[16px]" strokeWidth={1.8} />

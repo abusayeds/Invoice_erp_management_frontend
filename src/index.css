@@ -158,7 +158,7 @@
    * text colors are near-white, making <option> text invisible. */
   color-scheme: dark;
 }
-:root[data-theme="light"] {
+:root[data-qayd-theme="light"] {
   color-scheme: light;
 }
 .bg-white {
@@ -438,16 +438,17 @@ textarea:not(.keep-box, table textarea) {
 }
 
 /* ── Light theme (opt-in via Appearance = Light / Auto+light OS) ───────
- * The dark look above is the default. Setting data-theme="light" on <html>
+ * The dark look above is the default. Setting data-qayd-theme="light" on <html>
  * re-points the ramp + surface variables to standard light values, so every
  * `bg-white / bg-gray-* / text-gray-* / border-*` utility and the surface
  * classes above flip to light with no per-component edits. The `.theme` module
  * (src/lib/theme.ts) resolves the saved Appearance and sets this attribute. */
-:root[data-theme="light"] {
+:root[data-qayd-theme="light"] {
   /* app surfaces */
   --app-bg: #f4f6f8;
   --surface: #ffffff;
   --surface-2: #f9fafb;
+  --sidebarBG: #ffffff;
 
   /* gray ramp → standard Tailwind light scale */
   --color-gray-50: #f9fafb;
@@ -463,6 +464,8 @@ textarea:not(.keep-box, table textarea) {
   --color-slate-50: #f8fafc;
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
 
   /* base ramp (surfaces → text) */
   --color-base-50: #f4f6f8;
@@ -486,6 +489,61 @@ textarea:not(.keep-box, table textarea) {
   --color-blue-700: #1d4ed8;
   --color-blue-800: #1e40af;
   --color-blue-900: #1e3a8a;
+}
+
+/* Sidebar nav shell — dark navy by default; soft gray in light theme */
+.sidebar-nav-shell {
+  background-color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+.sidebar-nav-shell .sidebar-nav-item {
+  color: inherit;
+}
+.sidebar-nav-shell .sidebar-nav-item.is-active {
+  color: #fff;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell {
+  background-color: var(--surface);
+  border-color: var(--color-gray-200);
+  color: var(--color-gray-800);
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item:hover {
+  background-color: var(--color-gray-100) !important;
+  color: var(--color-gray-900);
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active {
+  background-color: var(--color-blue-600);
+  color: #fff;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-footer {
+  border-color: var(--color-gray-200);
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-footer a:hover {
+  background-color: var(--color-gray-100) !important;
+  color: var(--color-gray-900);
+}
+
+/* List sidebar footer — adapts with theme */
+.list-sidebar-footer {
+  background-color: #334155; /* slate-700 */
+  border-color: #475569; /* slate-600 */
+  color: #fff;
+}
+:root[data-qayd-theme="light"] .list-sidebar-footer {
+  background-color: #ffffff;
+  border-color: var(--color-gray-200);
+  color: var(--color-gray-900);
+}
+:root[data-qayd-theme="light"] .list-sidebar-footer .list-sidebar-footer-muted {
+  color: var(--color-gray-600);
+  opacity: 1;
+}
+:root[data-qayd-theme="light"] .list-sidebar-footer button {
+  color: var(--color-gray-700);
+}
+:root[data-qayd-theme="light"] .list-sidebar-footer button:hover:not(:disabled) {
+  background-color: var(--color-gray-200) !important;
 }
 
 @layer base {

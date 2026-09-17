@@ -38,8 +38,9 @@ export const MainLayout: React.FC = () => {
         setMobileMenuOpen={setMobileMenuOpen}
       />
 
-      {/* Main Content Area */}
-      <div className="relative flex-1 flex flex-col overflow-hidden">
+      {/* Main Content Area — keep overflow on <main> only so header
+          dropdowns (company menu, create, settings) are not clipped. */}
+      <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header - Fixed */}
         <Header onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
         <div className="pointer-events-none absolute left-0 right-0 top-16 z-30">
@@ -47,7 +48,7 @@ export const MainLayout: React.FC = () => {
         </div>
 
         {/* Content - Dynamic (Outlet renders child routes here) */}
-        <main className="flex-1 overflow-auto flex flex-col w-full h-full">
+        <main className="flex-1 min-h-0 overflow-auto flex flex-col w-full">
           <Outlet />
         </main>
       </div>
