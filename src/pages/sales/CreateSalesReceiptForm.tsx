@@ -423,7 +423,18 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
 
       {addContact && <CreateContactModal collection="customers" onClose={() => setAddContact(false)} onSaved={(id, name) => { setCustomerId(id); setCustQuery(name); }} />}
       {settingsOpen && <AppSettingsModal initialTab="Sales Receipt" onClose={() => setSettingsOpen(false)} />}
-      {paymentMethodsOpen && <PaymentMethodsModal onClose={() => setPaymentMethodsOpen(false)} />}
+      {paymentMethodsOpen && (
+        <PaymentMethodsModal
+          selectedNames={paymentType ? [paymentType] : []}
+          allowMultiple={false}
+          onSaveSelection={(names) => {
+            const name = names[0] || "";
+            setPaymentType(name);
+            setPaymentMethodQuery(name);
+          }}
+          onClose={() => setPaymentMethodsOpen(false)}
+        />
+      )}
     </section>
   );
 };

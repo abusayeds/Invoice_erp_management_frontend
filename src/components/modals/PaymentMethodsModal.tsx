@@ -154,7 +154,11 @@ export const PaymentMethodsModal: React.FC<{
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Payment Methods</h2>
-            <p className="text-sm text-gray-500">Manage the backend payment methods used across documents.</p>
+            <p className="text-sm text-gray-500">
+              {onSaveSelection && !manageMode
+                ? "Select payment methods for this document, then Save."
+                : "Manage the backend payment methods used across documents."}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {!manageMode && onSaveSelection && (
@@ -205,19 +209,33 @@ export const PaymentMethodsModal: React.FC<{
                 <div className="px-4 py-6 text-sm text-gray-400">No payment methods found</div>
               ) : (
                 filteredMethods.map((method) => (
-                  <div key={method._id} className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
-                    {!manageMode && (
-                      <button
-                        type="button"
-                        onClick={() => toggleSelection(method.name)}
-                        className={`flex h-4 w-4 items-center justify-center rounded-sm border ${
+                  <div
+                    key={method._id}
+                    role={!manageMode && onSaveSelection ? "button" : undefined}
+                    tabIndex={!manageMode && onSaveSelection ? 0 : undefined}
+                    onClick={() => {
+                      if (!manageMode && onSaveSelection) toggleSelection(method.name);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!manageMode && onSaveSelection && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        toggleSelection(method.name);
+                      }
+                    }}
+                    className={`flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 ${
+                      !manageMode && onSaveSelection ? "cursor-pointer hover:bg-blue-50/60" : ""
+                    } ${!manageMode && selection.includes(method.name) ? "bg-blue-50" : ""}`}
+                  >
+                    {!manageMode && onSaveSelection && (
+                      <span
+                        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm border ${
                           selection.includes(method.name)
                             ? "border-blue-600 bg-blue-600 text-white"
                             : "border-gray-400 bg-white text-transparent"
                         }`}
                       >
                         <Check className="h-3 w-3" />
-                      </button>
+                      </span>
                     )}
                     <div className="flex h-10 w-16 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
                       {method.logo ? (
@@ -235,7 +253,11 @@ export const PaymentMethodsModal: React.FC<{
                     </div>
                     {manageMode && (
                       <button
-                        onClick={() => startEdit(method)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(method);
+                        }}
                         className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
                       >
                         <Pencil className="h-4 w-4" />
@@ -243,7 +265,11 @@ export const PaymentMethodsModal: React.FC<{
                     )}
                     {manageMode && (
                       <button
-                        onClick={() => deleteMutation.mutate(method._id)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteMutation.mutate(method._id);
+                        }}
                         className="flex h-8 w-8 items-center justify-center rounded-full text-red-500 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />

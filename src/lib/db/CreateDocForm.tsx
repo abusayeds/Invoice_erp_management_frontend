@@ -14,6 +14,7 @@ import { repo, nextNumber } from "./repo";
 import { money } from "./format";
 import { CreateContactModal } from "./CreateContactModal";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import {
   useAppSettings,
   isLayoutSettingOn,
@@ -229,6 +230,10 @@ export const CreateDocForm: React.FC<{
   const [customCharges, setCustomCharges] = useState(String(record?.customCharges ?? ""));
   const [roundOff, setRoundOff] = useState(String(record?.roundOff ?? ""));
   const [payType, setPayType] = useState(record?.paymentType ?? "");
+  const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>(
+    record?.payment_method ?? record?.paymentMethod ?? (record?.paymentType ? [record.paymentType] : []),
+  );
+  const [paymentMethodsOpen, setPaymentMethodsOpen] = useState(false);
   const [attachment, setAttachment] = useState(record?.Attachment || record?.attachments || "");
   const [discountBeforeTax, setDiscountBeforeTax] = useState(!!record?.discountBeforeTax);
   const [recurring, setRecurring] = useState(record?.recurring ?? "None");
@@ -322,7 +327,7 @@ export const CreateDocForm: React.FC<{
       customCharges, roundOff, inlineDiscount: +inlineDiscount.toFixed(2),
       discountBeforeTax, recurring, recurringUntil: isRecurringActive(recurring) ? recurringUntil : "",
       deposit, docDiscount, shippingCost,
-      ...(paymentType ? { paymentType: payType } : {}),
+      ...(paymentType ? { paymentType: payType } : { paymentMethod: selectedPaymentMethods, payment_method: selectedPaymentMethods }),
       Attachment: attachment, attachments: attachment,
     };
     let id: number;
@@ -561,8 +566,18 @@ export const CreateDocForm: React.FC<{
               <input value={payType} onChange={(e) => setPayType(e.target.value)} placeholder=" " className={DOC_FIELD} />
             </div>
           ) : !paymentType && show("Payment Methods") ? (
-            <div className="md:col-span-2 min-h-[46px] rounded-md border border-gray-300 bg-white flex items-center px-3 text-sm text-gray-400">
-              Payment Methods
+            <div className="md:col-span-2 relative">
+              <label className="absolute -top-2 left-2 px-1 bg-white text-[11px] text-gray-500 z-10">Payment Methods</label>
+              <button type="button" onClick={() => setPaymentMethodsOpen(true)} className="flex min-h-[46px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2.5 text-left hover:border-gray-400">
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  {selectedPaymentMethods.length > 0 ? selectedPaymentMethods.map((name) => (
+                    <span key={name} className="rounded-full border border-blue-600 bg-blue-50 px-3 py-1 text-xs text-blue-700">{name}</span>
+                  )) : (
+                    <span className="text-sm text-gray-400">Select payment methods</span>
+                  )}
+                </div>
+                <span className="inline-flex items-center gap-1 text-sm text-gray-600"><Pencil className="w-4 h-4" /></span>
+              </button>
             </div>
           ) : null}
         </div>
@@ -753,6 +768,13 @@ export const CreateDocForm: React.FC<{
 
       {addContact && <CreateContactModal collection={party} onClose={() => setAddContact(false)} onSaved={(id, name) => { setPartyId(id); setQuery(name); }} />}
       {settingsOpen && <AppSettingsModal initialTab={SETTINGS_TAB_FOR_COLLECTION[collection] ?? "General"} onClose={() => setSettingsOpen(false)} />}
+      {paymentMethodsOpen && (
+        <PaymentMethodsModal
+          selectedNames={selectedPaymentMethods}
+          onSaveSelection={setSelectedPaymentMethods}
+          onClose={() => setPaymentMethodsOpen(false)}
+        />
+      )}
       <DocumentSendEmailModal
         open={emailOpen}
         onClose={() => { setEmailOpen(false); onClose(); }}

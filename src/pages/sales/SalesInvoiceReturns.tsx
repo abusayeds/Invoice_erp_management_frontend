@@ -94,9 +94,11 @@ interface ApiCustomer {
   _id: string;
   name?: string;
   customerName?: string;
+  company_name?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
+  businessProfile?: { companyName?: string };
 }
 interface ApiWarehouse {
   _id: string;
@@ -116,14 +118,41 @@ const toDateInput = (iso?: string) => (iso ? iso.slice(0, 10) : "");
 const errMessage = (err: unknown, fallback: string) =>
   err instanceof ApiError && err.message ? err.message : fallback;
 
-const refId = (ref: { _id: string } | string | null | undefined): string =>
-  typeof ref === "object" && ref ? ref._id : (ref ?? "");
+const partyId = (ref: unknown): string => {
+  if (!ref) return "";
+  if (typeof ref === "string" || typeof ref === "number") return String(ref).trim();
+  if (typeof ref === "object" && ref !== null) {
+    const o = ref as { _id?: unknown; $oid?: string; toHexString?: () => string };
+    if (typeof o.toHexString === "function") return o.toHexString();
+    if (o.$oid) return String(o.$oid);
+    if ("_id" in o && o._id !== ref) return partyId(o._id);
+  }
+  return "";
+};
+const refId = (ref: { _id: string } | string | null | undefined): string => partyId(ref);
+const firstNonEmpty = (...values: Array<string | null | undefined>) =>
+  values.map((v) => (v ?? "").trim()).find(Boolean) || "";
+
 const customerLabel = (c: ApiCustomer): string =>
-  c.name ??
-  c.customerName ??
-  [c.firstName, c.lastName].filter(Boolean).join(" ") ??
-  c.email ??
-  c._id;
+  firstNonEmpty(
+    c.businessProfile?.companyName,
+    c.company_name,
+    c.customerName,
+    c.name,
+    [c.firstName, c.lastName].filter(Boolean).join(" "),
+    c.email,
+  );
+
+const asList = <T,>(value: unknown): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    if (Array.isArray(o.data)) return o.data as T[];
+    if (Array.isArray(o.rows)) return o.rows as T[];
+    if (Array.isArray(o.allCustomer)) return o.allCustomer as T[];
+  }
+  return [];
+};
 
 const mapApiReturn = (r: ApiReturn): SalesReturn => {
   const inv = r.invoice_id;
@@ -182,8 +211,10 @@ const SearchSelect: React.FC<{
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const selected = options.find((o) => o.value === value);
-  const filtered = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
+  const selected = options.find((o) => String(o.value) === String(value) && o.label.trim());
+  const filtered = options.filter(
+    (o) => o.value && o.label.trim() && o.label.toLowerCase().includes(q.toLowerCase()),
+  );
   return (
     <div className="relative" ref={ref}>
       <button
@@ -207,7 +238,7 @@ const SearchSelect: React.FC<{
           </div>
           <div className="max-h-56 overflow-y-auto custom-scrollbar">
             {filtered.map((o) => (
-              <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${o.value === value ? "bg-blue-50 text-blue-700" : "text-gray-700"}`}>{o.label}</button>
+              <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${String(o.value) === String(value) ? "bg-blue-50 text-blue-700" : "text-gray-700"}`}>{o.label}</button>
             ))}
             {filtered.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">No results</div>}
           </div>
@@ -287,9 +318,25 @@ export const SalesInvoiceReturns: React.FC = () => {
     [apiInvoices, dbInvoices],
   );
   const customers = useMemo<ApiCustomer[]>(() => {
-    const local = dbCustomers.map((c) => ({ _id: String(c.id), name: c.name, email: c.email }));
-    const localIds = new Set(local.map((c) => c._id));
-    return [...apiCustomers.filter((c) => !localIds.has(c._id)), ...local];
+    const local = dbCustomers
+      .map((c) => ({
+        _id: partyId(c._id) || String(c.id),
+        name: c.name,
+        email: c.email,
+        company_name: c.company_name || c.companyName,
+        customerName: c.customerName,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        businessProfile: c.businessProfile,
+      }))
+      .filter((c) => customerLabel(c));
+    const byId = new Map<string, ApiCustomer>();
+    for (const c of [...apiCustomers, ...local]) {
+      const id = partyId(c._id);
+      if (!id || !customerLabel(c) || byId.has(id)) continue;
+      byId.set(id, { ...c, _id: id });
+    }
+    return [...byId.values()];
   }, [apiCustomers, dbCustomers]);
 
   // ─── Lookup maps ───────────────────────────────────────────────────────────
@@ -308,7 +355,11 @@ export const SalesInvoiceReturns: React.FC = () => {
   // Customer picker options, and invoices scoped to the picked customer, labelled
   // "#number - customer name".
   const customerSelectOptions = useMemo(
-    () => customers.map((c) => ({ value: c._id, label: customerLabel(c) })).sort((a, b) => a.label.localeCompare(b.label)),
+    () =>
+      customers
+        .map((c) => ({ value: partyId(c._id), label: customerLabel(c) }))
+        .filter((o) => o.value && o.label.trim())
+        .sort((a, b) => a.label.localeCompare(b.label)),
     [customers],
   );
   const invoiceSelectOptions = useMemo(
@@ -347,25 +398,40 @@ export const SalesInvoiceReturns: React.FC = () => {
 
   const loadOptions = useCallback(async () => {
     try {
-      const [inv, wh, cust] = await Promise.allSettled([
+      const [inv, wh, invoiceCustomers, allCustomers] = await Promise.allSettled([
         api.get<ApiInvoiceOption[]>("/invoice/all", {
           params: { page: 1, limit: 1000 },
         }),
         api.get<ApiWarehouse[]>("/purchase/warehouses/all", {
           params: { page: 1, limit: 1000 },
         }),
-        api.get<ApiCustomer[]>("/customer/all", {
+        api.get<ApiCustomer[]>("/customer/invoice-list", {
+          params: { page: 1, limit: 1000 },
+        }),
+        api.get<ApiCustomer[]>("/customers", {
           params: { page: 1, limit: 1000 },
         }),
       ]);
       // Only accept non-empty API results — otherwise the empty (no-backend)
       // responses would clobber the local-datastore fallback below.
-      if (inv.status === "fulfilled" && Array.isArray(inv.value) && inv.value.length)
-        setApiInvoices(inv.value);
-      if (wh.status === "fulfilled" && Array.isArray(wh.value) && wh.value.length)
-        setWarehouses(wh.value);
-      if (cust.status === "fulfilled" && Array.isArray(cust.value) && cust.value.length)
-        setApiCustomers(cust.value);
+      if (inv.status === "fulfilled") {
+        const rows = asList<ApiInvoiceOption>(inv.value);
+        if (rows.length) setApiInvoices(rows);
+      }
+      if (wh.status === "fulfilled") {
+        const rows = asList<ApiWarehouse>(wh.value);
+        if (rows.length) setWarehouses(rows);
+      }
+      const namedCustomers = [
+        ...(invoiceCustomers.status === "fulfilled" ? asList<ApiCustomer>(invoiceCustomers.value) : []),
+        ...(allCustomers.status === "fulfilled" ? asList<ApiCustomer>(allCustomers.value) : []),
+      ]
+        .map((c) => ({ ...c, _id: partyId(c._id) }))
+        .filter((c) => c._id && customerLabel(c));
+      if (namedCustomers.length) {
+        const unique = new Map(namedCustomers.map((c) => [c._id, c]));
+        setApiCustomers([...unique.values()]);
+      }
     } catch {
       /* dropdowns degrade gracefully */
     }
@@ -383,10 +449,11 @@ export const SalesInvoiceReturns: React.FC = () => {
     api
       .get<any[]>("/invoice/all", { params: { page: 1, limit: 1000, customer_id: formCustomerId } })
       .then((data) => {
-        if (!Array.isArray(data) || data.length === 0) return;
+        const rows = asList<any>(data);
+        if (rows.length === 0) return;
         setApiInvoices((prev) => {
-          const fresh = new Set(data.map((d) => d._id));
-          return [...data, ...prev.filter((p) => !fresh.has(p._id))];
+          const fresh = new Set(rows.map((d) => partyId(d._id)));
+          return [...rows, ...prev.filter((p) => !fresh.has(partyId(p._id)))];
         });
       })
       .catch(() => { /* dropdown keeps whatever it already has */ });

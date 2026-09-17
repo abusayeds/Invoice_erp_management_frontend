@@ -1580,10 +1580,21 @@ export const SalesInvoice: React.FC = () => {
                 : <div className="text-sm text-gray-400">—</div>}
             </div>
             <div>
-              <button onClick={() => setPaymentMethodsOpen(true)} className="mb-2 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700">
+              <button
+                type="button"
+                onClick={() => setPaymentMethodsOpen(true)}
+                className="mb-2 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+              >
                 Payment Methods <Pencil className="w-3 h-3" />
               </button>
-              <DynamicPaymentBadges names={selectedInvoiceDoc?.payment_method ?? []} options={paymentMethodOptions} />
+              <button
+                type="button"
+                onClick={() => setPaymentMethodsOpen(true)}
+                className="block w-full text-left"
+                title="Select payment methods"
+              >
+                <DynamicPaymentBadges names={selectedInvoiceDoc?.payment_method ?? []} options={paymentMethodOptions} />
+              </button>
             </div>
           </div>
 
@@ -1799,7 +1810,28 @@ export const SalesInvoice: React.FC = () => {
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="invoice" />
       )}
-      {paymentMethodsOpen && <PaymentMethodsModal onClose={() => setPaymentMethodsOpen(false)} />}
+      {paymentMethodsOpen && (
+        <PaymentMethodsModal
+          selectedNames={selectedInvoiceDoc?.payment_method ?? []}
+          onSaveSelection={async (names) => {
+            const backendId = selectedInvoiceDoc?._id || selected?.backendId;
+            if (!backendId) {
+              showToast("Select an invoice first", "warning");
+              return;
+            }
+            try {
+              await updateInvoice(String(backendId), { payment_method: names });
+              await queryClient.invalidateQueries({
+                queryKey: ["sales-invoice-backend-detail", String(backendId)],
+              });
+              showToast("Payment methods updated", "success");
+            } catch {
+              showToast("Could not update payment methods", "error");
+            }
+          }}
+          onClose={() => setPaymentMethodsOpen(false)}
+        />
+      )}
       {sigOpen && (
         <SignatureModal
           heading="Customer Signature"

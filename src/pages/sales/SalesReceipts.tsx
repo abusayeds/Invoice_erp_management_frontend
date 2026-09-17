@@ -24,6 +24,7 @@ import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { CreateDocForm } from "@/lib/db";
+import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
@@ -245,6 +246,7 @@ export const SalesReceipts: React.FC = () => {
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [editOpen, setEditOpen] = useState(false);
+  const [paymentMethodsOpen, setPaymentMethodsOpen] = useState(false);
 
   useEffect(() => {
     if (navState?.selectedId != null) setSelectedId(navState.selectedId);
@@ -562,7 +564,12 @@ export const SalesReceipts: React.FC = () => {
               <div className="flex items-center gap-12 px-5 py-3 border-b border-gray-300">
                 <div><div className="text-xs text-gray-500">{selected.number}</div><div className="text-sm font-semibold text-gray-900">{fmtMoney(numberValue(selectedDoc?.total ?? selectedDb.total))}</div></div>
                 <div><div className="text-xs text-gray-500">Sales receipt date</div><div className="text-sm font-semibold text-gray-900">{selected.date}</div></div>
-                <div><div className="text-xs text-gray-500">Payment Type</div><div className="text-sm font-semibold text-gray-900">{paymentType}</div></div>
+                <div>
+                  <button type="button" onClick={() => setPaymentMethodsOpen(true)} className="mb-0.5 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
+                    Payment Type <Pencil className="w-3 h-3" />
+                  </button>
+                  <div className="text-sm font-semibold text-gray-900">{paymentType}</div>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-5 py-4 border-b border-gray-300">
                 <div><div className="text-xs text-gray-500 mb-1">Billing Address</div>{(billingLines.length ? billingLines : localBillingLines).length ? (billingLines.length ? billingLines : localBillingLines).map((line: string, index: number) => <div key={index} className={`text-sm ${index === 0 ? "font-semibold text-gray-900" : "text-gray-700"}`}>{line}</div>) : <div className="text-sm text-gray-400">—</div>}</div>
@@ -598,6 +605,32 @@ export const SalesReceipts: React.FC = () => {
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
       {sigRequestOpen && <SignatureRequestModal docLabel="Sales Receipt" number={selectedDb.number || ""} customer={selectedCustomer} onClose={() => setSigRequestOpen(false)} onSend={() => { logActivity("sent", `Signature request for Sales Receipt ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }} />}
+      {paymentMethodsOpen && (
+        <PaymentMethodsModal
+          selectedNames={paymentType && paymentType !== "—" ? [paymentType] : []}
+          allowMultiple={false}
+          onSaveSelection={async (names) => {
+            const id = String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "");
+            if (!id) {
+              showToast("Select a sales receipt first", "warning");
+              return;
+            }
+            const name = names[0] || "";
+            try {
+              await api.raw.post(`/sales-receipt/edit/${id}`, { payment_method: name ? [name] : [] });
+              await queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-detail", id] });
+              await queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] });
+              if (selectedDb?.id) {
+                await repo.update("salesReceipts", selectedDb.id, { paymentType: name, payment_method: name ? [name] : [] });
+              }
+              showToast("Payment method updated", "success");
+            } catch {
+              showToast("Could not update payment method", "error");
+            }
+          }}
+          onClose={() => setPaymentMethodsOpen(false)}
+        />
+      )}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="salesReceipt" />}
       {activityOpen && <ActivityLogModal docLabel="Sales Receipt" record={selectedDb} onClose={() => setActivityOpen(false)} />}
       {confirmAction === "trashOne" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this sales receipt? This cannot be undone." : "Are you sure want to trash this sales receipt?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
