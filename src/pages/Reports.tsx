@@ -1,7 +1,6 @@
 /**
  * File: src/pages/Reports.tsx
- * Reports hub — light UI matching the rest of the app.
- * Dark headers use white text; tables have borders; pill filters Label | Value.
+ * Reports hub — theme-aware (Appearance Light / Dark via remapped gray/white utilities).
  */
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
@@ -108,7 +107,7 @@ const isBoReport = (name: string) =>
   name === "Profit by Product Report" ||
   name === "Profit & Loss";
 
-/* ── Pill dropdown (dark report card — matches screenshot) ─────── */
+/* ── Pill dropdown (theme-aware) ─────── */
 const PillDropdown: React.FC<{
   label: string;
   value: string;
@@ -129,20 +128,20 @@ const PillDropdown: React.FC<{
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap bg-transparent ${
           accent
-            ? "border-blue-500 text-blue-400 bg-transparent"
-            : "border-[#4a5058] text-white bg-transparent hover:border-gray-400"
+            ? "border-blue-500 text-blue-600"
+            : "border-gray-300 text-gray-900 hover:border-gray-400"
         }`}
       >
-        {accent && <XCircle className="w-3.5 h-3.5 text-blue-400" />}
-        <span className={accent ? "text-blue-400" : "text-gray-400"}>{label}</span>
-        <span className="text-gray-500">|</span>
-        <span className={accent ? "text-blue-400 font-medium" : "text-white font-medium"}>{value}</span>
+        {accent && <XCircle className="w-3.5 h-3.5 text-blue-600" />}
+        <span className={accent ? "text-blue-600" : "text-gray-500"}>{label}</span>
+        <span className="text-gray-400">|</span>
+        <span className={accent ? "text-blue-600 font-medium" : "text-gray-900 font-medium"}>{value}</span>
         <ChevronDown className="w-3.5 h-3.5 opacity-70" />
       </button>
       {open && (
-        <div className="absolute z-40 mt-2 min-w-[220px] max-h-72 overflow-y-auto rounded-md border border-[#3a3f46] bg-[#1a1d22] shadow-xl py-1">
+        <div className="absolute z-40 mt-2 min-w-[220px] max-h-72 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-xl py-1">
           {children(() => setOpen(false))}
         </div>
       )}
@@ -158,8 +157,8 @@ const MenuItem: React.FC<{
   <button
     type="button"
     onClick={onClick}
-    className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-white/5 ${
-      active ? "text-blue-400" : "text-white"
+    className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-100 ${
+      active ? "text-blue-600" : "text-gray-800"
     }`}
   >
     <span className="truncate">{children}</span>
@@ -199,22 +198,22 @@ const SearchablePartyPill: React.FC<{
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-[#4a5058] px-3 py-1 text-xs whitespace-nowrap text-white bg-transparent hover:border-gray-400"
+        className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 px-3 py-1 text-xs whitespace-nowrap text-gray-900 bg-transparent hover:border-gray-400"
       >
-        <span className="text-gray-400">{label}</span>
-        <span className="text-gray-500">|</span>
-        <span className="text-white font-medium max-w-[140px] truncate">{valueLabel}</span>
+        <span className="text-gray-500">{label}</span>
+        <span className="text-gray-400">|</span>
+        <span className="text-gray-900 font-medium max-w-[140px] truncate">{valueLabel}</span>
         <ChevronDown className="w-3.5 h-3.5 opacity-70" />
       </button>
       {open && (
-        <div className="absolute z-40 mt-2 w-[280px] rounded-md border border-[#3a3f46] bg-[#1a1d22] shadow-xl overflow-hidden">
-          <div className="p-2 border-b border-[#2e333a]">
+        <div className="absolute z-40 mt-2 w-[280px] rounded-md border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-gray-200">
             <input
               ref={inputRef}
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               placeholder={`Search ${label.toLowerCase()}…`}
-              className="w-full rounded-md border border-[#3a3f46] bg-[#12151a] px-2.5 py-1.5 text-sm text-white outline-none focus:border-blue-500"
+              className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-500"
             />
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
@@ -314,13 +313,13 @@ const DownloadFormatMenu: React.FC<{
         onClick={() => setOpen((o) => !o)}
         className={
           buttonClassName ||
-          "w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-40"
+          "w-8 h-8 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 disabled:opacity-40"
         }
       >
         <Download className="w-4 h-4" />
       </button>
       {open && !disabled && (
-        <div className="absolute right-0 z-50 mt-1 min-w-[120px] rounded-md border border-[#3a3f46] bg-[#1a1d22] shadow-xl py-1">
+        <div className="absolute right-0 z-50 mt-1 min-w-[120px] rounded-md border border-gray-200 bg-white shadow-xl py-1">
           {EXPORT_FORMATS.map((f) => (
             <button
               key={f}
@@ -329,7 +328,7 @@ const DownloadFormatMenu: React.FC<{
                 onPick(f);
                 setOpen(false);
               }}
-              className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10"
+              className="w-full text-left px-3 py-2 text-sm text-gray-800 hover:bg-gray-100"
             >
               {f}
             </button>
@@ -385,11 +384,11 @@ const ReportPdfPreviewModal: React.FC<{
         onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-5xl my-6 rounded-lg overflow-hidden shadow-2xl"
       >
-        <div className="flex items-center justify-between px-5 py-3 bg-[#2a2f36] text-white">
+        <div className="flex items-center justify-between px-5 py-3 bg-gray-100 border-b border-gray-200 text-gray-900">
           <h3 className="text-base font-medium">{report.name}</h3>
           <div className="flex items-center gap-1">
             <DownloadFormatMenu
-              buttonClassName="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"
+              buttonClassName="w-9 h-9 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200"
               onPick={(kind) => {
                 if (kind === "CSV") exportReportCsv(grid);
                 else if (kind === "XLSX") exportReportXlsx(grid, "xlsx");
@@ -402,7 +401,7 @@ const ReportPdfPreviewModal: React.FC<{
               type="button"
               title="Print"
               onClick={() => void printReportPdf(grid)}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200"
             >
               <Printer className="w-4 h-4" />
             </button>
@@ -410,7 +409,7 @@ const ReportPdfPreviewModal: React.FC<{
               type="button"
               title="Email"
               onClick={() => void emailReportPdf(grid)}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200"
             >
               <Mail className="w-4 h-4" />
             </button>
@@ -418,17 +417,17 @@ const ReportPdfPreviewModal: React.FC<{
               type="button"
               title="Close"
               onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
-        <div className="bg-[#525659] min-h-[70vh]">
+        <div className="bg-gray-200 min-h-[70vh]">
           {url ? (
             <iframe title={`${report.name} PDF`} src={url} className="w-full h-[75vh] bg-white border-0" />
           ) : (
-            <div className="flex items-center justify-center h-[75vh] text-white text-sm">
+            <div className="flex items-center justify-center h-[75vh] text-gray-600 text-sm">
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Generating PDF…
             </div>
           )}
@@ -439,36 +438,36 @@ const ReportPdfPreviewModal: React.FC<{
 };
 
 const MoneyCell: React.FC<{ value: string; green?: boolean }> = ({ value, green }) => (
-  <div className={`text-right whitespace-pre-line leading-snug ${green ? "text-[#4caf50]" : "text-white"}`}>
+  <div className={`text-right whitespace-pre-line leading-snug ${green ? "text-green-600" : "text-gray-900"}`}>
     {value}
   </div>
 );
 
-/* ── Report layouts inside bordered dark card (screenshot) ─────── */
+/* ── Report layouts (theme-aware surfaces) ─────── */
 const SummaryLayout: React.FC<{ report: BusinessOverviewView }> = ({ report }) => {
   const blocks = report.summaryBlocks || [];
   return (
     <div className="w-full">
       {blocks.map((block, bi) => (
-        <div key={block.title} className={bi > 0 ? "border-t border-[#2e333a]" : ""}>
-          <div className="px-4 py-2.5 text-sm font-bold text-white bg-[#1e2329] border-b border-[#2e333a]">
+        <div key={block.title} className={bi > 0 ? "border-t border-gray-200" : ""}>
+          <div className="px-4 py-2.5 text-sm font-bold text-gray-900 bg-gray-100 border-b border-gray-200">
             {block.title}
           </div>
           <table className="w-full text-sm">
               <tbody>
               {block.lines.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-gray-400 border-b border-[#2e333a]" colSpan={2}>
+                  <td className="px-4 py-4 text-gray-500 border-b border-gray-200" colSpan={2}>
                     No data
                   </td>
                   </tr>
               ) : (
                 block.lines.map((line) => (
-                  <tr key={`${block.title}-${line.label}`} className="border-b border-[#2e333a]">
-                    <td className="px-4 py-2.5 text-white font-medium align-top w-[40%]">{line.label}</td>
+                  <tr key={`${block.title}-${line.label}`} className="border-b border-gray-200">
+                    <td className="px-4 py-2.5 text-gray-900 font-medium align-top w-[40%]">{line.label}</td>
                     <td className="px-4 py-2.5 text-right align-top">
                       {line.values.map((v, i) => (
-                        <div key={i} className="text-white">
+                        <div key={i} className="text-gray-900">
                           {v}
                         </div>
                       ))}
@@ -493,12 +492,11 @@ const QuartersLayout: React.FC<{ report: BusinessOverviewView; visibleCols: Set<
   return (
     <div className="w-full">
       {blocks.length === 0 ? (
-        <div className="px-4 py-8 text-sm text-gray-400">No quarter data for the selected filters.</div>
+        <div className="px-4 py-8 text-sm text-gray-500">No quarter data for the selected filters.</div>
       ) : (
         blocks.map((q) => (
-          <div key={q.title} className="border-b border-[#2e333a]">
-            {/* Quarter header row — title left, column labels right (screenshot) */}
-            <div className="grid grid-cols-5 gap-2 px-4 py-2.5 bg-[#1e2329] border-b border-[#2e333a] text-white text-xs font-bold">
+          <div key={q.title} className="border-b border-gray-200">
+            <div className="grid grid-cols-5 gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200 text-gray-900 text-xs font-bold">
               <div className="text-sm">{q.title}</div>
               {show("Paid") ? <div className="text-right">Paid</div> : <div />}
               {show("Due") ? <div className="text-right">Due</div> : <div />}
@@ -508,17 +506,17 @@ const QuartersLayout: React.FC<{ report: BusinessOverviewView; visibleCols: Set<
             {q.months.map((m) => (
               <div
                 key={m.label}
-                className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-[#2e333a] text-sm items-start"
+                className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-gray-200 text-sm items-start"
               >
-                {show("Month") ? <div className="text-white font-semibold">{m.label}</div> : <div />}
+                {show("Month") ? <div className="text-gray-900 font-semibold">{m.label}</div> : <div />}
                 {show("Paid") ? <MoneyCell value={m.paid} green /> : <div />}
                 {show("Due") ? <MoneyCell value={m.due} /> : <div />}
                 {show("Overdue") ? <MoneyCell value={m.overdue} /> : <div />}
                 {show("Total") ? <MoneyCell value={m.total} green /> : <div />}
               </div>
             ))}
-            <div className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-[#2e333a] text-sm font-semibold items-start">
-              {show("Month") ? <div className="text-white">Total</div> : <div />}
+            <div className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-gray-200 text-sm font-semibold items-start">
+              {show("Month") ? <div className="text-gray-900">Total</div> : <div />}
               {show("Paid") ? <MoneyCell value={q.totals.paid} green /> : <div />}
               {show("Due") ? <MoneyCell value={q.totals.due} /> : <div />}
               {show("Overdue") ? <MoneyCell value={q.totals.overdue} /> : <div />}
@@ -540,11 +538,11 @@ const TableLayout: React.FC<{ report: ReportView; visibleCols: Set<string> }> = 
   return (
     <table className="w-full text-sm">
       <thead className="sticky top-0 z-10">
-        <tr className="bg-[#1e2329] border-b border-[#2e333a]">
+        <tr className="bg-gray-100 border-b border-gray-200">
           {cols.map((c) => (
             <th
               key={c.label}
-              className={`px-4 py-2.5 text-xs font-bold text-white whitespace-nowrap ${c.right ? "text-right" : "text-left"}`}
+              className={`px-4 py-2.5 text-xs font-bold text-gray-900 whitespace-nowrap ${c.right ? "text-right" : "text-left"}`}
             >
               {c.label}
             </th>
@@ -554,17 +552,17 @@ const TableLayout: React.FC<{ report: ReportView; visibleCols: Set<string> }> = 
             <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={cols.length} className="px-4 py-10 text-center text-gray-400 border-b border-[#2e333a]">
+            <td colSpan={cols.length} className="px-4 py-10 text-center text-gray-500 border-b border-gray-200">
               No rows for the selected filters.
             </td>
           </tr>
         ) : (
           rows.map((r, i) => (
-            <tr key={i} className="border-b border-[#2e333a] hover:bg-white/[0.03]">
+            <tr key={i} className="border-b border-gray-200 hover:bg-gray-50">
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className={`px-4 py-2.5 text-white whitespace-pre-line ${cols[j]?.right ? "text-right" : "text-left"} ${
+                  className={`px-4 py-2.5 text-gray-900 whitespace-pre-line ${cols[j]?.right ? "text-right" : "text-left"} ${
                     j === 0 ? "font-semibold" : ""
                   }`}
                 >
@@ -575,9 +573,9 @@ const TableLayout: React.FC<{ report: ReportView; visibleCols: Set<string> }> = 
           ))
         )}
         {rows.length > 0 && (
-          <tr className="border-b border-[#2e333a] font-semibold">
+          <tr className="border-b border-gray-200 font-semibold bg-gray-50">
             {totals.map((cell, j) => (
-              <td key={j} className={`px-4 py-2.5 text-white whitespace-pre-line ${cols[j]?.right ? "text-right" : "text-left"}`}>
+              <td key={j} className={`px-4 py-2.5 text-gray-900 whitespace-pre-line ${cols[j]?.right ? "text-right" : "text-left"}`}>
                 {cell}
               </td>
             ))}
@@ -971,12 +969,12 @@ export const Reports: React.FC = () => {
     visibleCols.size === (report?.cols.length || 0) ? "All" : `${visibleCols.size} Selected`;
 
   return (
-    <div className="flex h-full bg-[#0b0d10] overflow-hidden">
+    <div className="flex h-full bg-[var(--app-bg)] overflow-hidden">
       <ResizableListPanel>
-        <div className="h-12 flex items-center px-4 border-b border-[#2e333a] bg-[#12151a]">
-          <h2 className="text-base font-semibold text-white">Reports</h2>
+        <div className="h-12 flex items-center px-4 border-b border-gray-200 bg-white">
+          <h2 className="text-base font-semibold text-gray-900">Reports</h2>
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#12151a]">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
           {categories.map((cat) => {
             const isOpen = !!open[cat.title];
             return (
@@ -984,10 +982,10 @@ export const Reports: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setOpen((o) => ({ ...o, [cat.title]: !o[cat.title] }))}
-                  className="w-full flex items-center justify-between px-4 py-3 border-b border-[#2e333a] hover:bg-white/5"
+                  className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-200 hover:bg-gray-50"
                 >
-                  <span className="text-sm font-bold text-white">{cat.title}</span>
-                  {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  <span className="text-sm font-bold text-gray-900">{cat.title}</span>
+                  {isOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
                 </button>
                 {isOpen &&
                   cat.items.map((it) => (
@@ -995,8 +993,8 @@ export const Reports: React.FC = () => {
                       key={it}
                       type="button"
                       onClick={() => setActive(it)}
-                      className={`w-full text-left px-5 py-3 border-b border-[#2e333a] text-sm ${
-                        it === active ? "bg-white/10 text-white font-medium" : "text-gray-400 hover:bg-white/5"
+                      className={`w-full text-left px-5 py-3 border-b border-gray-200 text-sm ${
+                        it === active ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"
                       }`}
                     >
                       {it}
@@ -1008,14 +1006,13 @@ export const Reports: React.FC = () => {
         </div>
       </ResizableListPanel>
 
-      <section className="flex-1 flex flex-col overflow-hidden bg-[#0b0d10] min-w-0">
-        {/* Screenshot: whole report panel = m-2 + border */}
-        <div className="m-2 flex-1 flex flex-col min-h-0 border border-[#3a3f46] bg-[#12151a] overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2e333a]">
+      <section className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg)] min-w-0">
+        <div className="m-2 flex-1 flex flex-col min-h-0 border border-gray-300 bg-white overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-3 min-w-0">
-            <AlignLeft className="w-5 h-5 text-white flex-shrink-0" />
-            <h1 className="text-lg font-semibold text-white truncate">{active}</h1>
-            {isFetching && <Loader2 className="w-4 h-4 animate-spin text-white/80" />}
+            <AlignLeft className="w-5 h-5 text-gray-700 flex-shrink-0" />
+            <h1 className="text-lg font-semibold text-gray-900 truncate">{active}</h1>
+            {isFetching && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
           </div>
           <div className="flex items-center gap-0.5">
             <button
@@ -1023,7 +1020,7 @@ export const Reports: React.FC = () => {
               title="Preview"
               disabled={!display || display.source === "unavailable"}
               onClick={() => setPdf(true)}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-40"
+              className="w-8 h-8 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200 disabled:opacity-40"
             >
               <Eye className="w-4 h-4" />
             </button>
@@ -1031,26 +1028,26 @@ export const Reports: React.FC = () => {
               disabled={!display || display.source === "unavailable"}
               onPick={(kind) => runExport(kind)}
             />
-            <button type="button" title="Print" onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10">
+            <button type="button" title="Print" onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200">
               <Printer className="w-4 h-4" />
             </button>
-            <button type="button" title="WhatsApp" className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10">
+            <button type="button" title="WhatsApp" className="w-8 h-8 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200">
               <MessageCircle className="w-4 h-4" />
             </button>
-            <button type="button" title="Mail" className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10">
+            <button type="button" title="Mail" className="w-8 h-8 flex items-center justify-center rounded-full text-gray-700 hover:bg-gray-200">
               <Mail className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[#2e333a]">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-white">
           {(boMode || salesMode || purchaseMode || miscMode) && (
             <>
               {active === "Invoice Aging Report" ? (
-                <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+                <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                   <span className="text-gray-400">Date</span>
                   <span className="text-gray-500">|</span>
-                  <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-white" />
+                  <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                 </label>
               ) : (
                 <PillDropdown label="Date" value={period}>
@@ -1062,13 +1059,13 @@ export const Reports: React.FC = () => {
 
               {period === "Custom" && active !== "Invoice Aging Report" && (
                 <>
-                  <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+                  <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                     From
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-white" />
+                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                   </label>
-                  <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+                  <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                     To
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-white" />
+                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                   </label>
                 </>
               )}
@@ -1438,14 +1435,14 @@ export const Reports: React.FC = () => {
                 </PillDropdown>
               )}
 
-              <div className="w-px h-5 bg-[#3a3f46] mx-1" />
+              <div className="w-px h-5 bg-gray-300 mx-1" />
               <PillDropdown label="Columns" value={colCountLabel} accent>
                 {(close) => (report?.cols ?? []).map((c) => (
                   <MenuItem key={c.label} active={visibleCols.has(c.label)} onClick={() => { toggleCol(c.label); close(); }}>{c.label}</MenuItem>
                 ))}
               </PillDropdown>
 
-              <div className="w-px h-5 bg-[#3a3f46] mx-1" />
+              <div className="w-px h-5 bg-gray-300 mx-1" />
               <PillDropdown label="Report Type" value={reportType}>
                 {(close) => REPORT_TYPES.map((t) => (
                   <MenuItem key={t} active={reportType === t} onClick={() => { setReportType(t); close(); }}>{t}</MenuItem>
@@ -1455,20 +1452,20 @@ export const Reports: React.FC = () => {
           )}
 
           {!boMode && !salesMode && !purchaseMode && !miscMode && filterKind === "as_of" && (
-            <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+            <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
               As of
-              <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-white" />
+              <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
             </label>
           )}
           {!boMode && !salesMode && !purchaseMode && !miscMode && filterKind === "range" && (
             <>
-              <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                 From
-                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-white" />
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
               </label>
-              <label className="inline-flex items-center gap-2 text-xs text-gray-300 border border-[#4a5058] rounded-full px-2.5 py-1">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                 To
-                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-white" />
+                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
               </label>
             </>
           )}
@@ -1483,16 +1480,16 @@ export const Reports: React.FC = () => {
           <button
             type="button"
             onClick={() => void refetch()}
-            className="inline-flex items-center gap-1 text-xs text-white border border-[#4a5058] rounded-full px-3 py-1 hover:bg-white/5"
+            className="inline-flex items-center gap-1 text-xs text-gray-800 border border-gray-300 rounded-full px-3 py-1 hover:bg-gray-100"
           >
             <Plus className="w-3 h-3" /> Refresh
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto custom-scrollbar bg-[#12151a]">
-          {isError && <div className="p-4 text-sm text-red-400">{(error as Error)?.message || "Failed to load report"}</div>}
+        <div className="flex-1 overflow-auto custom-scrollbar bg-white">
+          {isError && <div className="p-4 text-sm text-red-600">{(error as Error)?.message || "Failed to load report"}</div>}
           {!isError && display?.source === "unavailable" && (
-            <div className="p-8 text-center text-sm text-amber-400">{display.message}</div>
+            <div className="p-8 text-center text-sm text-amber-600">{display.message}</div>
           )}
 
           {display && display.source === "backend" && (
@@ -1505,7 +1502,7 @@ export const Reports: React.FC = () => {
           )}
         </div>
 
-        <div className="px-4 py-2 border-t border-[#2e333a] grid grid-cols-3 items-center text-xs text-gray-400">
+        <div className="px-4 py-2 border-t border-gray-200 grid grid-cols-3 items-center text-xs text-gray-500 bg-gray-50">
           <div />
           <QaydFooterBrand />
           <div className="text-right">

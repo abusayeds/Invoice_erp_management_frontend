@@ -118,6 +118,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [companyLogo, setCompanyLogo] = useState("");
   const [logoBroken, setLogoBroken] = useState(false);
   const [isOwner, setIsOwner] = useState(true);
+  const [planBadge, setPlanBadge] = useState<{ name: string; trial: boolean; expired: boolean } | null>(null);
 
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -154,13 +155,35 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     }
   }, [displayName, displayEmail]);
 
+  const loadPlan = React.useCallback(async () => {
+    try {
+      const sub = await api.get<any>("/subscription/my-subscription");
+      if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
+        const expired = !!sub.expired || sub.status === "expired" || sub.status === "cancelled";
+        setPlanBadge({
+          name: String(sub.plan_name || "Premium").trim() || "Premium",
+          trial: !!sub.is_trial,
+          expired,
+        });
+      } else {
+        setPlanBadge(null);
+      }
+    } catch {
+      setPlanBadge(null);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCompany();
-  }, [loadCompany]);
+    void loadPlan();
+  }, [loadCompany, loadPlan]);
 
   // Refresh logo/name when returning to the tab or after Companies save.
   useEffect(() => {
-    const onFocus = () => void loadCompany();
+    const onFocus = () => {
+      void loadCompany();
+      void loadPlan();
+    };
     const onCompanyChanged = () => void loadCompany();
     window.addEventListener("focus", onFocus);
     window.addEventListener("qayd:company-changed", onCompanyChanged);
@@ -168,7 +191,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("qayd:company-changed", onCompanyChanged);
     };
-  }, [loadCompany]);
+  }, [loadCompany, loadPlan]);
 
   // Working stopwatch: ticks every second while running; pause holds the value,
   // play resumes from where it stopped.
@@ -459,11 +482,26 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                     <CompanyAvatar size="w-12 h-12" textSize="text-lg" />
                     <div className="min-w-0">
                       <p className="text-[15px] text-gray-900 truncate">{companyName}</p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <FileText className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {isOwner && (
                           <span className="px-2 py-0.5 rounded bg-gray-100 text-[11px] text-gray-700">
                             Owner
+                          </span>
+                        )}
+                        {planBadge && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                              planBadge.expired
+                                ? "bg-red-100 text-red-700"
+                                : planBadge.trial
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-blue-100 text-blue-700"
+                            }`}
+                            title={planBadge.expired ? "Plan expired" : planBadge.trial ? "Trial plan" : "Active plan"}
+                          >
+                            {planBadge.name}
+                            {planBadge.trial && !planBadge.expired ? " · Trial" : ""}
+                            {planBadge.expired ? " · Expired" : ""}
                           </span>
                         )}
                       </div>
