@@ -21,7 +21,7 @@ import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
-import { useCollection, repo, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
+import { useCollection, repo, money as fmtMoney, CreateDocForm, CreateDocModal, DocPreview } from "@/lib/db";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { fetchPurchaseInvoices } from "@/services/purchaseInvoicesApi";
@@ -643,7 +643,16 @@ export const PurchaseInvoices: React.FC = () => {
           </div>
         </section>
       ) : createMode ? (
-        <CreateInvoice onClose={() => setCreateMode(false)} />
+        <CreateDocForm
+          collection="purchaseInvoices"
+          title="Create Purchase Invoice"
+          party="vendors"
+          buy
+          amountDue
+          showPoNumber
+          onClose={() => setCreateMode(false)}
+          onSaved={(id) => setSelectedId(id)}
+        />
       ) : (
         <section className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="relative flex-1 overflow-hidden flex flex-col">

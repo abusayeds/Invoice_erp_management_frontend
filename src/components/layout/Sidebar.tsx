@@ -106,7 +106,6 @@ const HIDDEN_LABELS = new Set([
   "Media Library",
   "Messenger",
   "Zoom Meetings",
-  "Purchase Invoice",
   "Team",
   "Banking",
   "Quotation",

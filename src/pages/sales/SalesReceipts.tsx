@@ -23,7 +23,7 @@ import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { CreateSalesReceiptForm } from "./CreateSalesReceiptForm";
+import { CreateDocForm } from "@/lib/db";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
@@ -525,7 +525,11 @@ export const SalesReceipts: React.FC = () => {
         />
       </ResizableListPanel>
 
-      {createOpen || (!selected && hasActiveListFilters) ? <CreateSalesReceiptForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} /> : editOpen ? <CreateSalesReceiptForm key={selectedDb.id || selected.backendId} receipt={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} /> : selectMode ? (
+      {createOpen || (!selected && hasActiveListFilters) ? (
+        <CreateDocForm collection="salesReceipts" title="Create Sales Receipt" party="customers" paymentType amountDue onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} />
+      ) : editOpen ? (
+        <CreateDocForm key={selectedDb.id || selected.backendId} collection="salesReceipts" title="Edit Sales Receipt" party="customers" paymentType amountDue record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] }); }} />
+      ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm"><div className="text-center"><h2 className="text-2xl font-normal text-gray-900 mb-8">{checked.size} Sales {checked.size === 1 ? "Receipt" : "Receipts"} Selected</h2><div className="inline-grid grid-cols-[auto_auto] gap-x-10 gap-y-3 text-left"><span className="text-gray-500">Total</span><span className="font-semibold text-gray-900">{fmtMoney(selectedTotal)}</span></div></div></section>
       ) : (
         <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">

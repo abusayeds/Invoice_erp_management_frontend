@@ -365,6 +365,12 @@ const reverseInvoice = async (r: Record<string, any>) => {
     terms_and_conditions: str(r.terms),
     notes: str(r.notes),
     status: invStatusOut(r.status),
+    recurring: (() => {
+      const v = str(r.recurring);
+      if (!v || v === "None" || v === "Off" || v === "Never") return "Never";
+      if (v === "Daily" || v === "Weekly" || v === "Monthly" || v === "Quarterly" || v === "Half-Yearly" || v === "Yearly") return v;
+      return "Never";
+    })(),
   };
 };
 

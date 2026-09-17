@@ -89,6 +89,7 @@ export interface TCustomerRow {
   _id: string;
   name: string;
   contact: string;
+  email?: string;
   /** negative = customer owes us (opening balance) */
   amount: number;
   status: string;

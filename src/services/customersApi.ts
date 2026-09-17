@@ -85,6 +85,7 @@ export function backendToRow(doc: TBackendParty): TCustomerRow {
     _id: doc._id,
     name: displayName,
     contact,
+    email: doc.email || "",
     amount: openingBalance,
     status: profile.isArchive ? "Archived" : "Active",
   };
