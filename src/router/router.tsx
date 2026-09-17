@@ -59,7 +59,6 @@ import { UsersManagement } from "@/pages/userManagement/UsersManagement";
 import { SalesProposals } from "@/pages/Proposal";
 import { SalesInvoice } from "@/pages/sales/SalesInvoice";
 import { SalesInvoiceReturns } from "@/pages/sales/SalesInvoiceReturns";
-import { PurchaseInvoices } from "@/pages/purchase/PurchaseInvoice";
 import { PurchaseReturns } from "@/pages/purchase/PurchaseReturns";
 import { Warehouses } from "@/pages/purchase/Warehouses";
 import { SystemSetup } from "@/pages/items/SystemSetup";
@@ -311,11 +310,7 @@ export const route = createBrowserRouter([
       {
         path: "purchase",
         children: [
-          { index: true, element: <Navigate to="purchase-invoice" replace /> },
-          {
-            path: "purchase-invoice",
-            element: <PurchaseInvoices />,
-          },
+          { index: true, element: <Navigate to="bills" replace /> },
           {
             path: "purchase-returns",
             element: <PurchaseReturns />,

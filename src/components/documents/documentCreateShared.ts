@@ -20,7 +20,6 @@ export const COLLECTION_EMAIL_DOC: Partial<Record<CollectionName, EmailDocType>>
   purchaseOrders: "purchase_order",
   bills: "bill",
   debitNotes: "debit_note",
-  purchaseInvoices: "bill",
 };
 
 export const emailNavForCollection = (collection: CollectionName): EmailNavKey =>

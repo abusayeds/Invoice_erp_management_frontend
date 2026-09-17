@@ -11,7 +11,7 @@ import { fetchDeliveryChallans } from "@/services/deliveryChallansApi";
 import { fetchCreditNotes } from "@/services/creditNotesApi";
 import { fetchPaymentReceived } from "@/services/paymentReceivedApi";
 import { fetchBills } from "@/services/billsApi";
-import { fetchPurchaseInvoices } from "@/services/purchaseInvoicesApi";
+import { fetchPurchaseOrders } from "@/services/purchaseOrdersApi";
 import { fetchExpenses } from "@/services/expensesApi";
 import { fetchVendorPayments } from "@/services/vendorPaymentsApi";
 import { fetchDebitNotes } from "@/services/debitNotesApi";
@@ -259,7 +259,7 @@ const searchBills: SearchFn = async (q, limit) => {
 };
 
 const searchPurchaseOrders: SearchFn = async (q, limit) => {
-  const { rows } = await fetchPurchaseInvoices({ page: 1, limit, searchTerm: q });
+  const { rows } = await fetchPurchaseOrders({ page: 1, limit, searchTerm: q });
   return rows.map((r) => ({
     id: `po-${r._id}`,
     module: "Purchase Orders" as const,

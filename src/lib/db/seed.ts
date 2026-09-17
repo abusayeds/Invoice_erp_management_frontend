@@ -116,11 +116,6 @@ const bills = [
   { id: 6, number: "#6", vendorId: 5, date: "Jun 17, 2026", due: "Jun 24, 2026", ts: ts("Jun 17, 2026"), status: "Partially Paid", items: [mkItem(1, "Widget A", 50, 30)], subTotal: 1500, total: 2370, amountPaid: 0, amountDue: 2370, notes: "" },
 ];
 
-const purchaseInvoices = [
-  { id: 16, number: "#16", vendorId: 5, date: "Jun 20, 2026", due: "Jun 27, 2026", ts: ts("Jun 20, 2026"), status: "Paid", items: [], subTotal: 6201.52, total: 6201.52, amountPaid: 6201.52, amountDue: 0, notes: "Mollit fugiat elit" },
-  { id: 5, number: "#5", vendorId: 6, date: "Apr 27, 2026", due: "Apr 27, 2026", ts: ts("Apr 27, 2026"), status: "Draft", items: [], subTotal: 160, total: 160, amountPaid: 0, amountDue: 160, notes: "" },
-];
-
 const purchaseReturns = [
   { id: 4, number: "#4", vendorId: 5, invoiceId: 16, date: "Jun 21, 2026", ts: ts("Jun 21, 2026"), status: "Returned", reason: "Goods damaged in transit", items: [], subTotal: 520, total: 520, notes: "Mollit fugiat elit" },
 ];
@@ -201,7 +196,7 @@ const DATA: Record<string, any[]> = {
   company, taxes, units, categories, customers, vendors, products, services,
   invoices, estimates, paymentsReceived,
   proformas, salesReceipts, creditNotes, deliveryChallans,
-  bills, purchaseOrders, purchaseInvoices, purchaseReturns, debitNotes, expenses, paymentsMade,
+  bills, purchaseOrders, purchaseReturns, debitNotes, expenses, paymentsMade,
   projects, tasks, timelogs, employees,
 };
 

@@ -19,8 +19,8 @@ const WEB_TO_PDF_TYPE: Partial<Record<PdfDocType, string>> = {
   estimate: "Estimate",
   deliveryChallan: "Delivery_Challan",
   bill: "Bill",
-  creditNote: "Credit_Note",
   purchaseOrder: "Purchase_Order",
+  creditNote: "Credit_Note",
   debitNote: "Debit_Note",
   paymentReceived: "Payment_Received",
   paymentMade: "Payment_Made",
@@ -56,7 +56,12 @@ export async function fetchServerPdfUrl(
     const blob = res.data as Blob;
     // Auth/error responses sometimes arrive as JSON with blob content-type mishaps.
     if (blob && blob.type && blob.type.includes("json")) return null;
-    return URL.createObjectURL(blob);
+    // Force a PDF MIME so browser "Save as" / download attribute works reliably.
+    const pdfBlob =
+      blob.type === "application/pdf"
+        ? blob
+        : new Blob([blob], { type: "application/pdf" });
+    return URL.createObjectURL(pdfBlob);
   } catch {
     return null;
   }
@@ -95,8 +100,8 @@ const WEB_TO_COLLECTION: Partial<Record<PdfDocType, string>> = {
   estimate: "estimates",
   deliveryChallan: "deliveryChallans",
   bill: "bills",
-  creditNote: "creditNotes",
   purchaseOrder: "purchaseOrders",
+  creditNote: "creditNotes",
   debitNote: "debitNotes",
   paymentReceived: "paymentsReceived",
   paymentMade: "paymentsMade",
@@ -112,8 +117,13 @@ export async function serverPdfUrlForRecord(
   const col = WEB_TO_COLLECTION[docType];
   if (!col) return null;
   try {
-    const row = await (db as any)[col].get(Number(recordId));
-    return fetchServerPdfUrl(docType, row?._id ? String(row._id) : undefined);
+    let row = await (db as any)[col].get(Number(recordId));
+    if (!row?._id) {
+      const all = await (db as any)[col].toArray();
+      row = all.find((r: any) => r.id === recordId || String(r._id) === String(recordId));
+    }
+    if (!row?._id) return null;
+    return fetchServerPdfUrl(docType, String(row._id));
   } catch {
     return null;
   }
@@ -147,6 +157,27 @@ export async function serverBatchPdfUrlForRecords(
   return fetchServerBatchPdfUrl(docType, ids);
 }
 
+/** Sanitize a download filename and ensure it ends with `.pdf`. */
+export function pdfDownloadFilename(name?: string, fallback = "document"): string {
+  const base = String(name || fallback)
+    .replace(/\.pdf$/i, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim() || fallback;
+  return `${base}.pdf`;
+}
+
+/** Trigger a browser file download from an object/blob URL (keeps the source URL intact). */
+export function triggerBlobDownload(url: string, filename?: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = pdfDownloadFilename(filename);
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** Download a merged backend PDF for several records. Returns false if unavailable. */
 export async function downloadServerBatchPdf(
   docType: PdfDocType,
@@ -155,12 +186,7 @@ export async function downloadServerBatchPdf(
 ): Promise<boolean> {
   const url = await serverBatchPdfUrlForRecords(docType, recordIds);
   if (!url) return false;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename || `${docType}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  triggerBlobDownload(url, filename || docType);
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   return true;
 }
@@ -192,16 +218,20 @@ export async function downloadServerPdf(
   docType: PdfDocType,
   recordId: number,
   filename?: string,
+  backendId?: string,
 ): Promise<boolean> {
-  const url = await serverPdfUrlForRecord(docType, recordId);
+  const id = backendId?.trim();
+  let url: string | null = null;
+  if (id) {
+    url = await fetchServerPdfUrl(docType, id);
+  } else if (Number.isFinite(recordId) && recordId > 0) {
+    url = await serverPdfUrlForRecord(docType, recordId);
+  }
+  // Last resort: still try a typed PDF (helps when local row lookup failed).
+  if (!url && id) url = await fetchServerPdfUrl(docType, id);
   if (!url) return false;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename || `${docType}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  triggerBlobDownload(url, filename || docType);
+  setTimeout(() => URL.revokeObjectURL(url!), 10000);
   return true;
 }
 
@@ -209,8 +239,11 @@ export async function downloadServerPdf(
 export async function printServerPdf(
   docType: PdfDocType,
   recordId: number,
+  backendId?: string,
 ): Promise<boolean> {
-  const url = await serverPdfUrlForRecord(docType, recordId);
+  const url = backendId?.trim()
+    ? await fetchServerPdfUrl(docType, backendId.trim())
+    : await serverPdfUrlForRecord(docType, recordId);
   if (!url) return false;
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";

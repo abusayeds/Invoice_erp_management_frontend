@@ -372,7 +372,7 @@ export const Transfers: React.FC = () => {
           </h2>
           <button
             onClick={openCreateModal}
-            className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
+            className="w-9 h-9 ml-8 flex-shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
             title="Create Transfer"
           >
             <Plus className="w-5 h-5" />

@@ -22,19 +22,46 @@ import { ApiError } from "@/lib/api/ApiError";
 import { buildTimezoneOptions } from "@/services/notificationSettingsApi";
 
 const TABS = [
-  "General", "Modules", "Currency & Format", "Printer", "Whatsapp",
-  "Invoice", "Proforma Invoice", "Sales Receipt", "Estimate", "Delivery Challan",
-  "Purchase Order", "Bill", "Credit Note", "Debit Note",
-  "Expense", "Product", "Service", "Time Log",
+  "General",
+  "Modules",
+  "Currency & Format",
+  "Printer",
+  "Whatsapp",
+  "Customer",
+  "Invoice",
+  "Proforma Invoice",
+  "Sales Receipt",
+  "Estimate",
+  "Delivery Challan",
+  "Credit Note",
+  "Vendor",
+  "Order",
+  "Purchase Order",
+  "Bill",
+  "Debit Note",
+  "Expense",
+  "Product",
+  "Service",
+  "Time Log",
 ];
 const docKeyForTab = (tab: string) => DOC_TYPES.find((d) => d.label === tab)?.key;
 const SECTION_FOR_TAB: Record<string, string> = {
-  General: "general", Modules: "modules", "Currency & Format": "currencyFormat",
-  Printer: "printer", Whatsapp: "whatsapp", Expense: "expense",
-  Product: "product", Service: "service", "Time Log": "timeLog",
+  General: "general",
+  Modules: "modules",
+  "Currency & Format": "currencyFormat",
+  Printer: "printer",
+  Whatsapp: "whatsapp",
+  Customer: "customer",
+  Vendor: "vendor",
+  Expense: "expense",
+  Product: "product",
+  Service: "service",
+  "Time Log": "timeLog",
 };
 const sectionForTab = (tab: string) => SECTION_FOR_TAB[tab] ?? `doc:${docKeyForTab(tab)}`;
 const ALL_SECTIONS = TABS.map(sectionForTab);
+/** Divider after this tab in the left rail */
+const SIDEBAR_BORDER_AFTER = new Set(["Whatsapp"]);
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -333,6 +360,9 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
             </Accordion>
           </div>
         );
+      case "Customer":
+      case "Vendor":
+        return <PartySettingsPane draft={draft} onChange={setDraft} />;
       case "Expense":
         return (
           <div className="border border-gray-200 rounded-md">
@@ -377,13 +407,39 @@ export const AppSettingsModal: React.FC<{ initialTab?: string; onClose: () => vo
         <div className="flex flex-1 min-h-0">
           <div className="w-52 flex-shrink-0 border-r border-gray-200 overflow-y-auto custom-scrollbar py-1">
             {visibleTabs.map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`w-full text-left px-4 py-2.5 text-sm ${t === tab ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{t}</button>
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`w-full text-left px-4 py-2.5 text-sm ${
+                  SIDEBAR_BORDER_AFTER.has(t) ? "border-b border-gray-300 mb-1" : ""
+                } ${t === tab ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-600 hover:bg-gray-50"}`}
+              >
+                {t}
+              </button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar p-4">{body}</div>
         </div>
       </div>
       {ratesOpen && <ExchangeRatesModal onClose={() => setRatesOpen(false)} />}
+    </div>
+  );
+};
+
+/* ── Product tab pane ──────────────────────────────────────────── */
+const PartySettingsPane: React.FC<{ draft: any; onChange: (d: any) => void }> = ({ draft, onChange }) => {
+  const [open, setOpen] = useState<string | null>("Field Visibility");
+  const fields = (draft?.fieldVisibility || {}) as Record<string, boolean>;
+  return (
+    <div>
+      <Accordion title="Field Visibility" open={open === "Field Visibility"} onToggle={() => setOpen((o) => (o === "Field Visibility" ? null : "Field Visibility"))}>
+        {Object.entries(fields).map(([k, v]) => (
+          <Row key={k} label={k}>
+            <Toggle on={!!v} onChange={(nv) => onChange({ ...draft, fieldVisibility: { ...fields, [k]: nv } })} />
+          </Row>
+        ))}
+      </Accordion>
     </div>
   );
 };

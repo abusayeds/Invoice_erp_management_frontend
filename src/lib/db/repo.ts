@@ -46,9 +46,27 @@ export async function add(name: CollectionName, data: Record<string, any>): Prom
   if (w) {
     const res = await api.raw.post(w.create, await w.reverse(data));
     const created = toObject<any>(res.data);
-    await resync(name);
     const backendId = String(created?._id ?? created?.id ?? "");
-    return backendId ? numericId(backendId) : nextId(name);
+    const id = backendId ? numericId(backendId) : await nextId(name);
+    await resync(name);
+    // List resync can miss a just-created row (pagination/sort). Keep a local
+    // copy keyed by the create response so PDF preview/download can resolve `_id`.
+    if (backendId) {
+      const existing = await tbl(name).get(id);
+      if (!existing) {
+        const now = new Date().toISOString();
+        const mapped = created && specFor(name)?.map ? specFor(name)!.map(created) : {};
+        await tbl(name).put({
+          createdAt: now,
+          updatedAt: now,
+          ...data,
+          ...mapped,
+          _id: backendId,
+          id,
+        });
+      }
+    }
+    return id;
   }
   const id = data.id ?? (await nextId(name));
   const now = new Date().toISOString();

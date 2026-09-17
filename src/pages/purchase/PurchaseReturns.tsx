@@ -1,7 +1,7 @@
 /**
  * File: src/pages/purchase/PurchaseReturns.tsx
  * Purchase Return — master/detail layout following our established flow
- * (vendor-side return document; goods sent back against a Purchase Invoice).
+ * (vendor-side return document; goods sent back against a Bill / Purchase Order).
  * Left: list (search, sort, status/vendor/date filters, selection mode).
  * Right: detail (action icons + ⋮ menu, status badge, meta with Return date
  *        + Invoice # reference, line items header, Reason for Return,

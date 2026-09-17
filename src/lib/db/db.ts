@@ -44,7 +44,6 @@ class DemoDB extends Dexie {
   // purchase documents
   bills!: Table<Row, number>;
   purchaseOrders!: Table<Row, number>;
-  purchaseInvoices!: Table<Row, number>;
   purchaseReturns!: Table<Row, number>;
   paymentsMade!: Table<Row, number>;
   debitNotes!: Table<Row, number>;
@@ -99,6 +98,10 @@ class DemoDB extends Dexie {
 
       forms: "id, name",
     });
+    // Drop unused purchaseInvoices table (feature removed — same as Bills).
+    this.version(2).stores({
+      purchaseInvoices: null,
+    });
   }
 }
 
@@ -109,7 +112,7 @@ export const COLLECTIONS = [
   "company",
   "customers", "vendors", "products", "services", "taxes", "categories", "units",
   "invoices", "estimates", "proformas", "salesReceipts", "creditNotes", "deliveryChallans", "paymentsReceived",
-  "bills", "purchaseOrders", "purchaseInvoices", "purchaseReturns", "paymentsMade", "debitNotes", "expenses",
+  "bills", "purchaseOrders", "purchaseReturns", "paymentsMade", "debitNotes", "expenses",
   "projects", "tasks", "timelogs",
   "employees", "forms",
 ] as const;

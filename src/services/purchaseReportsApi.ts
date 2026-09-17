@@ -83,7 +83,7 @@ const titleCaseStatus = (s: string) => {
   return s;
 };
 
-/** Map UI status → backend purchase-invoice status (lowercase). */
+/** Map UI status → backend purchase-order status (lowercase). */
 const poStatusParam = (status?: string) => {
   if (!status || status === "All") return undefined;
   const map: Record<string, string> = {

@@ -764,7 +764,7 @@ export const SYNC_SPECS: SyncSpec[] = [
     url: "/account/vendor-payments/all",
     map: mapPaymentMade,
     // Bill-direct payment: /record persists the payment without the strict
-    // purchase-invoice allocation contract (the bill balance is updated
+    // bill allocation contract (the bill balance is updated
     // separately via the bills spec). No edit endpoint → create-only.
     write: {
       create: "/account/vendor-payments/record",

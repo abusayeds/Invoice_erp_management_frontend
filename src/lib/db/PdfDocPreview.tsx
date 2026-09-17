@@ -80,7 +80,9 @@ export const PdfDocPreview: React.FC<{
   /** Mongo `_id` — preferred so preview always hits the correct server document */
   backendId?: string;
   className?: string;
-}> = ({ docType, mode, settings: _settings, partyId, recordId, backendId, className = "" }) => {
+  /** Fires with the blob object URL once the PDF is ready (null while loading / on failure). */
+  onPdfUrl?: (url: string | null) => void;
+}> = ({ docType, mode, settings: _settings, partyId, recordId, backendId, className = "", onPdfUrl }) => {
   // settings are applied server-side from saved PDF settings; prop kept for API compat
   void _settings;
 
@@ -91,6 +93,8 @@ export const PdfDocPreview: React.FC<{
   const [serverPdfUrl, setServerPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(true);
   const [pdfFailed, setPdfFailed] = useState(false);
+  const onPdfUrlRef = React.useRef(onPdfUrl);
+  onPdfUrlRef.current = onPdfUrl;
 
   useEffect(() => {
     let url: string | null = null;
@@ -99,6 +103,7 @@ export const PdfDocPreview: React.FC<{
       setPdfLoading(false);
       setServerPdfUrl(null);
       setPdfFailed(true);
+      onPdfUrlRef.current?.(null);
       return () => {
         alive = false;
       };
@@ -106,6 +111,7 @@ export const PdfDocPreview: React.FC<{
     setPdfLoading(true);
     setServerPdfUrl(null);
     setPdfFailed(false);
+    onPdfUrlRef.current?.(null);
     // With or without id: server returns real PDF (blank/sample when id omitted).
     fetchServerPdfUrl(docType, resolvedBackendId || undefined, {
       thermal: mode === "thermal",
@@ -118,9 +124,11 @@ export const PdfDocPreview: React.FC<{
       setServerPdfUrl(u);
       setPdfFailed(!u);
       setPdfLoading(false);
+      onPdfUrlRef.current?.(u);
     });
     return () => {
       alive = false;
+      onPdfUrlRef.current?.(null);
       if (url) URL.revokeObjectURL(url);
     };
   }, [docType, resolvedBackendId, mode, useServer]);

@@ -212,7 +212,7 @@ export const SEED_JOURNAL: JournalEntry[] = [
     number: "JE-2026-133",
     date: "2026-07-07",
     reference: "purchase_invoice",
-    description: "Purchase Invoice #PI-2026-07-002",
+    description: "Bill #BILL-2026-07-002",
     status: "Posted",
     lines: [
       L("1200", "Inventory", "Goods purchased", 9530, 0),

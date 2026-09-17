@@ -2,7 +2,7 @@
  * File: src/lib/db/CreateDocModal.tsx
  * Reusable "create document" modal used by the live demo doc pages
  * (Proforma, Sales Receipt, Credit Note, Delivery Challan, Purchase Order,
- * Purchase Invoice/Return, Debit Note…). Picks a live customer/vendor + live
+ * Purchase Return, Debit Note…). Picks a live customer/vendor + live
  * products/services, computes totals, and persists via the repository — so a
  * doc added here shows up in that collection's list (and anywhere it feeds).
  */

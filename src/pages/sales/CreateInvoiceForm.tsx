@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Check, Info } from "lucide-react";
 import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
+import { db } from "@/lib/db/db";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
@@ -83,7 +84,7 @@ export const CreateInvoiceForm: React.FC<{
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [lastSaved, setLastSaved] = useState<{ id: number; number: string } | null>(null);
+  const [lastSaved, setLastSaved] = useState<{ id: number; number: string; backendId?: string } | null>(null);
   const cref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (cref.current && !cref.current.contains(e.target as Node)) setCustOpen(false); };
@@ -244,7 +245,7 @@ export const CreateInvoiceForm: React.FC<{
   const moneyWithCurrency = (amount: number) => formatCurrencyValue(amount, currency);
   const custDisabled = customerId === "" && !custQuery.trim();
 
-  const persist = async (): Promise<{ id: number; number: string } | null> => {
+  const persist = async (): Promise<{ id: number; number: string; backendId?: string } | null> => {
     let cid: number | "" = customerId;
     if (cid === "" && custQuery.trim()) {
       cid = (await repo.add("customers", { name: custQuery.trim(), status: "Active", balance: 0 })) as number;
@@ -277,6 +278,7 @@ export const CreateInvoiceForm: React.FC<{
     }
     let id: number;
     let numStr: string;
+    let backendId = invoice?._id ? String(invoice._id) : "";
     if (isEdit) {
       numStr = invoice.number || "";
       await repo.update(collection, invoice.id, common);
@@ -286,7 +288,13 @@ export const CreateInvoiceForm: React.FC<{
       numStr = "#" + n;
       id = (await repo.add(collection, { number: numStr, ts: Date.now(), ...common })) as number;
     }
-    return { id, number: numStr };
+    try {
+      const row = await (db as any)[collection].get(id);
+      if (row?._id) backendId = String(row._id);
+    } catch {
+      /* ignore */
+    }
+    return { id, number: numStr, backendId: backendId || undefined };
   };
 
   const finishSave = (id: number, closeAfter = true) => {
@@ -295,46 +303,71 @@ export const CreateInvoiceForm: React.FC<{
   };
 
   const saveDraft = async () => {
-    const saved = await persist();
-    if (saved) finishSave(saved.id);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (saved) finishSave(saved.id);
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveAndSend = async () => {
-    const saved = await persist();
-    if (!saved) return;
-    onSaved(saved.id);
-    setLastSaved(saved);
-    setEmailOpen(true);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (!saved) return;
+      onSaved(saved.id);
+      setLastSaved(saved);
+      setEmailOpen(true);
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSendMenu = async (action: SendMenuAction) => {
-    const saved = await persist();
-    if (!saved) return;
-    onSaved(saved.id);
-    setLastSaved(saved);
-    if (action === "preview") {
-      setPreviewOpen(true);
-      return;
-    }
-    if (action === "print") {
-      void printServerPdf(pdfDocType, saved.id).catch(() => undefined);
-      finishSave(saved.id);
-      return;
-    }
-    if (action === "new") {
-      finishSave(saved.id, false);
-      setCustomerId("");
-      setCustQuery("");
-      setRows([
-        { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-        { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-      ]);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (!saved) return;
+      onSaved(saved.id);
+      setLastSaved(saved);
+      if (action === "preview") {
+        setPreviewOpen(true);
+        return;
+      }
+      if (action === "print") {
+        void printServerPdf(pdfDocType, saved.id, saved.backendId).catch(() => undefined);
+        finishSave(saved.id);
+        return;
+      }
+      if (action === "new") {
+        finishSave(saved.id, false);
+        setCustomerId("");
+        setCustQuery("");
+        setCustomerEmail("");
+        setRows([
+          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+        ]);
+      }
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
     }
   };
 
   const custRecord = customerId ? customers.find((c) => c.id === customerId) : null;
   const custName = custRecord?.name || custQuery;
-  const custEmail = custRecord?.email || "customer@example.com";
+  const custEmail = (customerEmail || custRecord?.email || "").trim();
   const docNumber = invoice?.number?.replace?.("#", "") || "80";
   const formTitle = isEdit ? `Edit ${docLabel}` : `Create ${docLabel}`;
 
@@ -346,7 +379,7 @@ export const CreateInvoiceForm: React.FC<{
         onCancel={onClose}
         onSaveDraft={() => void saveDraft()}
         onSaveAndSend={() => void saveAndSend()}
-        saveDisabled={custDisabled}
+        saveDisabled={custDisabled || saving}
         enableSendDropdown={isInvoice}
         onSendMenu={(a) => void handleSendMenu(a)}
       />
@@ -356,12 +389,12 @@ export const CreateInvoiceForm: React.FC<{
           <div className="md:col-span-2 relative fl-wrap" ref={cref}>
             <label className="fl-label">Customer *</label>
             <div className="relative">
-              <input value={custName} onChange={(e) => { setCustQuery(e.target.value); setCustomerId(""); setCustOpen(true); }} onFocus={() => setCustOpen(true)} placeholder="Find or add a customer" className={DOC_FIELD} />
+              <input value={custName} onChange={(e) => { setCustQuery(e.target.value); setCustomerId(""); setCustomerEmail(""); setCustOpen(true); }} onFocus={() => setCustOpen(true)} placeholder="Find or add a customer" className={DOC_FIELD} />
               <button type="button" onClick={() => setAddContact(true)} title="Create Contact" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500"><Pencil className="w-4 h-4" /></button>
             </div>
             {custOpen && (
               <div className="absolute z-30 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-xl py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                {matches.map((c) => <button key={c._id} type="button" onClick={() => { setCustomerBackendId(c._id); setCustomerId(customers.find((item) => item._id === c._id)?.id ?? ""); setCustQuery(c.name); setCustOpen(false); setAddrOpen(true); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 text-left">{c.name}</button>)}
+                {matches.map((c) => <button key={c._id} type="button" onClick={() => { setCustomerBackendId(c._id); setCustomerId(customers.find((item) => item._id === c._id)?.id ?? ""); setCustQuery(c.name); setCustomerEmail(("email" in c && c.email) ? String(c.email) : ""); setCustOpen(false); setAddrOpen(true); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 text-left">{c.name}</button>)}
                 {matches.length === 0 && <div className="px-3 py-2.5 text-sm text-gray-400">No customer found — click the pencil to add</div>}
               </div>
             )}
@@ -462,7 +495,7 @@ export const CreateInvoiceForm: React.FC<{
               {RECURRING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          {isRecurringActive(recurring) && (
+          {isRecurringActive(recurring) ? (
             <div className="relative fl-wrap">
               <label className="fl-label">Up to</label>
               <div className="relative">
@@ -470,6 +503,8 @@ export const CreateInvoiceForm: React.FC<{
                 <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
             </div>
+          ) : (
+            <div className="hidden md:block" aria-hidden />
           )}
         </div>
 
@@ -578,7 +613,13 @@ export const CreateInvoiceForm: React.FC<{
         emailNav={EMAIL_NAV[mode]}
       />
       {previewOpen && lastSaved && (
-        <PdfPreviewModal docType={pdfDocType} recordId={lastSaved.id} title={`${docLabel} `} onClose={() => { setPreviewOpen(false); onClose(); }} />
+        <PdfPreviewModal
+          docType={pdfDocType}
+          recordId={lastSaved.id}
+          backendId={lastSaved.backendId}
+          title={`${docLabel} `}
+          onClose={() => { setPreviewOpen(false); onClose(); }}
+        />
       )}
     </section>
   );

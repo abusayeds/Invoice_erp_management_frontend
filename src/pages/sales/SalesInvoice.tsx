@@ -10,7 +10,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { buildListSortParam } from "@/lib/listSort";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
@@ -20,7 +20,7 @@ import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
 import { PdfDocPreview } from "@/lib/db/PdfDocPreview";
-import { downloadServerPdf, printServerPdf, downloadServerBatchPdf, printServerBatchPdf, serverBatchPdfUrlForRecords } from "@/lib/db/serverPdf";
+import { downloadServerPdf, printServerPdf, downloadServerBatchPdf, printServerBatchPdf, serverBatchPdfUrlForRecords, triggerBlobDownload } from "@/lib/db/serverPdf";
 import { usePdfSettings, type PdfDocType } from "@/lib/db/pdfSettings";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
@@ -575,6 +575,8 @@ const DocTypePreview: React.FC<{
   const isBatch = batchIds.length > 1;
   const [batchUrl, setBatchUrl] = useState<string | null>(null);
   const [batchLoading, setBatchLoading] = useState<boolean>(isBatch);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const onPdfUrl = useCallback((url: string | null) => setPreviewUrl(url), []);
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", h);
@@ -595,17 +597,58 @@ const DocTypePreview: React.FC<{
     return () => { alive = false; if (url) URL.revokeObjectURL(url); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType, isBatch, batchIds.join(",")]);
-  const onDownload = () => isBatch ? downloadServerBatchPdf(docType, batchIds, `${title}.pdf`) : downloadServerPdf(docType, recordId, `${title}.pdf`);
-  const onPrint = () => isBatch ? printServerBatchPdf(docType, batchIds) : printServerPdf(docType, recordId);
+  const fileName = `${title || docType}.pdf`;
+  const onDownload = () => {
+    if (isBatch && batchUrl) {
+      triggerBlobDownload(batchUrl, fileName);
+      return;
+    }
+    if (!isBatch && previewUrl) {
+      triggerBlobDownload(previewUrl, fileName);
+      return;
+    }
+    void (isBatch
+      ? downloadServerBatchPdf(docType, batchIds, fileName)
+      : downloadServerPdf(docType, recordId, fileName, backendId));
+  };
+  const onPrint = () => {
+    if (isBatch && batchUrl) {
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      iframe.src = batchUrl;
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => iframe.remove(), 60000);
+      };
+      document.body.appendChild(iframe);
+      return;
+    }
+    if (!isBatch && previewUrl) {
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      iframe.src = previewUrl;
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => iframe.remove(), 60000);
+      };
+      document.body.appendChild(iframe);
+      return;
+    }
+    void (isBatch
+      ? printServerBatchPdf(docType, batchIds)
+      : printServerPdf(docType, recordId, backendId));
+  };
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onMouseDown={onClose}>
       <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-3xl my-6 rounded-lg overflow-hidden shadow-2xl">
         <div className="flex items-center justify-between px-5 py-3 bg-[#2a2f36] text-white">
           <h3 className="text-base font-medium">{title}</h3>
           <div className="flex items-center gap-1">
-            <button title="Download" onClick={onDownload} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Download className="w-4 h-4" /></button>
-            <button title="Print" onClick={onPrint} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Printer className="w-4 h-4" /></button>
-            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><X className="w-4 h-4" /></button>
+            <button type="button" title="Download" onClick={onDownload} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Download className="w-4 h-4" /></button>
+            <button type="button" title="Print" onClick={onPrint} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Printer className="w-4 h-4" /></button>
+            <button type="button" onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><X className="w-4 h-4" /></button>
           </div>
         </div>
         {isBatch ? (
@@ -618,10 +661,10 @@ const DocTypePreview: React.FC<{
               <iframe src={`${batchUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} title="Documents PDF" style={{ width: "100%", height: "100%", border: "none" }} />
             </div>
           ) : (
-            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
+            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} onPdfUrl={onPdfUrl} />
           )
         ) : (
-          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} />
+          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} onPdfUrl={onPdfUrl} />
         )}
       </div>
     </div>
@@ -1693,18 +1736,35 @@ export const SalesInvoice: React.FC = () => {
         // In select mode with several rows ticked, merge them all into one PDF;
         // otherwise preview the single active record.
         const batchIds = selectMode ? [...checked].filter((id): id is number => typeof id === "number") : [];
-        const d: any = (batchIds.length ? dbInvoices.find((i) => i.id === batchIds[0]) : dbInvoices.find((i) => i.id === selectedId)) || {};
-        const cp: any = dbCustomers.find((c) => c.id === d.customerId) || {}; const cn = cp.name || "—";
-        const ht = selectMode && selectedInvoices.length ? "Invoice " + selectedInvoices.map((i) => i.number.replace("#", "")).join(", ") : `Invoice${d.number || ""}`;
-        void cn; void cp;
+        const d: any =
+          (batchIds.length
+            ? dbInvoices.find((i) => i.id === batchIds[0])
+            : dbInvoices.find(
+                (i) =>
+                  i.id === selectedId ||
+                  i._id === selectedId ||
+                  i._id === selected?.backendId ||
+                  i.id === selected?.id,
+              )) ||
+          selectedDb ||
+          {};
+        const cp: any = dbCustomers.find((c) => c.id === d.customerId) || {};
+        const cn = cp.name || "—";
+        const ht =
+          selectMode && selectedInvoices.length
+            ? "Invoice " + selectedInvoices.map((i) => i.number.replace("#", "")).join(", ")
+            : `Invoice${d.number || selected?.number || ""}`;
+        void cn;
+        void cp;
         const pdfBackendId = String(
           selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || d?._id || "",
         );
+        const pdfRecordId = Number(d.id || selectedDb?.id || selected?.id) || 0;
         return (
           <DocTypePreview
             docType="invoice"
             title={ht}
-            recordId={d.id}
+            recordId={pdfRecordId}
             recordIds={batchIds.length > 1 ? batchIds : undefined}
             backendId={pdfBackendId || undefined}
             onClose={() => setModal(null)}
@@ -1767,7 +1827,7 @@ export const SalesInvoice: React.FC = () => {
         <DocTypePreview
           docType={docPreview}
           title={`${docPreview === "packingSlip" ? "Packing Slip" : "Delivery Note"} ${selected.number}`}
-          recordId={selected.id}
+          recordId={Number(selectedDb?.id || selected?.id) || 0}
           backendId={String(selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
           onClose={() => setDocPreview(null)}
         />

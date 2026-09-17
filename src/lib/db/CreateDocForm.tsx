@@ -25,7 +25,6 @@ const SETTINGS_TAB_FOR_COLLECTION: Partial<Record<CollectionName, string>> = {
   debitNotes: "Debit Note",
   purchaseOrders: "Purchase Order",
   bills: "Bill",
-  purchaseInvoices: "Bill",
 };
 
 const TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
@@ -79,10 +78,12 @@ export const CreateDocForm: React.FC<{
   const partyKeyName = isVendor ? "vendorId" : "customerId";
   const [query, setQuery] = useState("");
   const [partyId, setPartyId] = useState<number | "">(record?.[partyKeyName] ?? "");
+  const [partyEmail, setPartyEmail] = useState("");
   const [open, setOpen] = useState(false);
   const [addContact, setAddContact] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<{ id: number; number: string } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -91,6 +92,11 @@ export const CreateDocForm: React.FC<{
     return () => document.removeEventListener("mousedown", h);
   }, []);
   const matches = parties.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+
+  useEffect(() => {
+    const p = partyId !== "" ? parties.find((c) => c.id === partyId) : null;
+    if (p?.email) setPartyEmail(String(p.email));
+  }, [partyId, parties]);
 
   const [date, setDate] = useState(record?.date || new Date().toLocaleDateString("en-US"));
   const [due, setDue] = useState(record?.due || new Date().toLocaleDateString("en-US"));
@@ -257,40 +263,65 @@ export const CreateDocForm: React.FC<{
   };
 
   const saveDraft = async () => {
-    const saved = await persist();
-    if (saved) finishSave(saved.id);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (saved) finishSave(saved.id);
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveAndSend = async () => {
-    const saved = await persist();
-    if (!saved) return;
-    onSaved(saved.id);
-    openEmailFor(saved);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (!saved) return;
+      onSaved(saved.id);
+      openEmailFor(saved);
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSendMenu = async (action: SendMenuAction) => {
-    const saved = await persist();
-    if (!saved) return;
-    onSaved(saved.id);
-    if (action === "preview" || action === "print") {
-      finishSave(saved.id);
-      return;
-    }
-    if (action === "new") {
-      finishSave(saved.id, false);
-      setPartyId("");
-      setQuery("");
-      setRows([
-        { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-        { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-      ]);
-      return;
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await persist();
+      if (!saved) return;
+      onSaved(saved.id);
+      if (action === "preview" || action === "print") {
+        finishSave(saved.id);
+        return;
+      }
+      if (action === "new") {
+        finishSave(saved.id, false);
+        setPartyId("");
+        setQuery("");
+        setPartyEmail("");
+        setRows([
+          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+        ]);
+        return;
+      }
+    } catch {
+      /* keep form open on backend failure */
+    } finally {
+      setSaving(false);
     }
   };
 
   const partyRecord = partyId ? parties.find((c) => c.id === partyId) : null;
   const partyName = partyRecord?.name || query;
-  const partyEmail = partyRecord?.email || "customer@example.com";
+  const resolvedPartyEmail = (partyEmail || partyRecord?.email || "").trim();
   const docNumber = record?.number?.replace?.("#", "") || "—";
   const emailTitle = `${title.replace(/^Create |^New /i, "")} ${lastSaved?.number || docNumber} from info`;
   const emailSubject = emailTitle;
@@ -303,7 +334,7 @@ export const CreateDocForm: React.FC<{
         onCancel={onClose}
         onSaveDraft={() => void saveDraft()}
         onSaveAndSend={() => void saveAndSend()}
-        saveDisabled={partyDisabled}
+        saveDisabled={partyDisabled || saving}
         enableSendDropdown={enableSendDropdown}
         onSendMenu={(a) => void handleSendMenu(a)}
       />
@@ -313,12 +344,12 @@ export const CreateDocForm: React.FC<{
           <div className="md:col-span-2 relative fl-wrap" ref={ref}>
             <label className="fl-label">{partyLabel} *</label>
             <div className="relative">
-              <input value={partyName} onChange={(e) => { setQuery(e.target.value); setPartyId(""); setOpen(true); }} onFocus={() => setOpen(true)} placeholder={`Find or add a ${partyLabel.toLowerCase()}`} className={DOC_FIELD} />
+              <input value={partyName} onChange={(e) => { setQuery(e.target.value); setPartyId(""); setPartyEmail(""); setOpen(true); }} onFocus={() => setOpen(true)} placeholder={`Find or add a ${partyLabel.toLowerCase()}`} className={DOC_FIELD} />
               <button type="button" onClick={() => setAddContact(true)} title={`Create ${partyLabel}`} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500"><Pencil className="w-4 h-4" /></button>
             </div>
             {open && (
               <div className="absolute z-30 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-xl py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                {matches.map((c) => <button key={c.id} type="button" onClick={() => { setPartyId(c.id); setQuery(c.name); setOpen(false); setAddrOpen(true); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 text-left">{c.name}</button>)}
+                {matches.map((c) => <button key={c.id} type="button" onClick={() => { setPartyId(c.id); setQuery(c.name); setPartyEmail(c.email ? String(c.email) : ""); setOpen(false); setAddrOpen(true); }} className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 text-left">{c.name}</button>)}
                 {matches.length === 0 && <div className="px-3 py-2.5 text-sm text-gray-400">None found — click the pencil to add</div>}
               </div>
             )}
@@ -548,7 +579,7 @@ export const CreateDocForm: React.FC<{
         open={emailOpen}
         onClose={() => { setEmailOpen(false); onClose(); }}
         title={emailTitle}
-        toEmail={partyEmail}
+        toEmail={resolvedPartyEmail}
         subject={emailSubject}
         fromEmail="info@inovoic.com"
         bodyText={`Dear ${partyName}\n\n${docNoLabel} #: ${lastSaved?.number || docNumber}\nTotal: ${money(total)}`}
