@@ -537,7 +537,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                          font-normal transition-all duration-150 border-y border-transparent
                         ${
                           isParentActive(item.children)
-                            ? "is-active bg-blue-600 text-white shadow-sm"
+                            ? "is-active bg-blue-600 shadow-sm"
                             : "hover:bg-black/10"
                         }
                       `}
@@ -581,7 +581,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                  transition-all duration-150
                                 ${
                                   isActive(child.path)
-                                    ? "is-active bg-blue-600 text-white font-medium shadow-sm"
+                                    ? "is-active bg-blue-600 font-medium shadow-sm"
                                     : "hover:bg-black/10"
                                 }
                               `}
@@ -609,7 +609,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                        font-normal transition-all duration-150
                       ${
                         isActive(item.path)
-                          ? "is-active bg-blue-600 text-white font-medium shadow-sm"
+                          ? "is-active bg-blue-600 font-medium shadow-sm"
                           : "hover:bg-black/10"
                       }
                     `}

@@ -500,28 +500,47 @@ textarea:not(.keep-box, table textarea) {
 .sidebar-nav-shell .sidebar-nav-item {
   color: inherit;
 }
-.sidebar-nav-shell .sidebar-nav-item.is-active {
-  color: #fff;
+.sidebar-nav-shell .sidebar-nav-item.is-active,
+.sidebar-nav-shell .sidebar-nav-item.is-active:hover {
+  background-color: #007aff;
+  color: #fff !important;
 }
+
+/* Light: never allow white text on light hover backgrounds */
 :root[data-qayd-theme="light"] .sidebar-nav-shell {
-  background-color: var(--surface);
-  border-color: var(--color-gray-200);
-  color: var(--color-gray-800);
+  background-color: #ffffff;
+  border-color: #e5e7eb;
+  color: #1f2937;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item {
+  color: #1f2937 !important;
 }
 :root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item:hover {
-  background-color: var(--color-gray-100) !important;
-  color: var(--color-gray-900);
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
 }
-:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active {
-  background-color: var(--color-blue-600);
-  color: #fff;
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item:hover *,
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item:not(.is-active) * {
+  color: inherit !important;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active,
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active:hover {
+  background-color: #007aff !important;
+  color: #ffffff !important;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active *,
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-item.is-active:hover * {
+  color: #ffffff !important;
 }
 :root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-footer {
-  border-color: var(--color-gray-200);
+  border-color: #e5e7eb;
+}
+:root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-footer a {
+  color: #1f2937 !important;
 }
 :root[data-qayd-theme="light"] .sidebar-nav-shell .sidebar-nav-footer a:hover {
-  background-color: var(--color-gray-100) !important;
-  color: var(--color-gray-900);
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
 }
 
 /* List sidebar footer — adapts with theme */
