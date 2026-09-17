@@ -19,7 +19,7 @@ import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, Eye } from "lucide-react";
 
 const STATUS_CHIP: Record<string, string> = {
-  Draft: "bg-gray-100 text-gray-600",
+  Draft: "bg-gray-600 text-white",
   Active: "bg-green-100 text-green-700",
   Expired: "bg-amber-100 text-amber-700",
   Terminated: "bg-red-100 text-red-600",
@@ -186,7 +186,7 @@ const Contracts: React.FC = () => {
                 <td className="px-4 py-3.5 text-gray-600">{r.partyName || "—"}</td>
                 <td className="px-4 py-3.5 text-gray-600">{r.type || "—"}</td>
                 <td className="px-4 py-3.5 text-gray-900">{r.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || "bg-gray-100 text-gray-600")}</td>
+                <td className="px-4 py-3.5">{chip(r.status, STATUS_CHIP[r.status] || STATUS_CHIP.Draft)}</td>
                 <td className="px-4 py-3.5 text-gray-600 text-xs whitespace-nowrap">
                   {r.startDate || "—"} → {r.endDate || "—"}
               </td>

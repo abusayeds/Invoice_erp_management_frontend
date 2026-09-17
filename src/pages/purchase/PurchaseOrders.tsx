@@ -89,6 +89,33 @@ const STATUS_BADGE: Record<Status, string> = {
   Received: "bg-green-600 text-white",
 };
 
+/** Backend may send `draft` / `onhold`; normalize so STATUS_BADGE always hits. */
+const normalizePoStatus = (raw: unknown): Status => {
+  const key = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+  const compact = key.replace(/\s+/g, "");
+  const map: Record<string, Status> = {
+    draft: "Draft",
+    sent: "Sent",
+    approved: "Approved",
+    "on hold": "On Hold",
+    onhold: "On Hold",
+    disputed: "Disputed",
+    declined: "Declined",
+    cancelled: "Cancelled",
+    canceled: "Cancelled",
+    closed: "Closed",
+    posted: "Closed",
+    received: "Received",
+  };
+  return map[key] || map[compact] || "Draft";
+};
+
+const poBadge = (status: unknown) => STATUS_BADGE[normalizePoStatus(status)];
+
 const rowDateIso = (value: string): string | null => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
@@ -196,7 +223,7 @@ export const PurchaseOrder: React.FC = () => {
     () => dbOrders.slice().sort((a, b) => b.id - a.id).map((d) => {
       const ven = dbVendors.find((v) => v.id === d.vendorId);
       const vn = ven?.name || "—";
-      return { id: d.id, name: vn, vendor: ven?.contact || ven?.email || "", number: d.number, note: d.notes || "No Notes", date: d.date, amount: fmtMoney(d.total), status: d.status, billNo: d.billNo || "-", billStatus: d.billStatus || "Not Billed" };
+      return { id: d.id, name: vn, vendor: ven?.contact || ven?.email || "", number: d.number, note: d.notes || "No Notes", date: d.date, amount: fmtMoney(d.total), status: normalizePoStatus(d.status), billNo: d.billNo || "-", billStatus: d.billStatus || "Not Billed" };
     }),
     [dbOrders, dbVendors],
   );
@@ -428,7 +455,7 @@ export const PurchaseOrder: React.FC = () => {
                 <div className="flex flex-col items-end flex-shrink-0">
                   <span className="text-xs text-gray-500">{p.date}</span>
                   <span className="text-sm font-semibold text-gray-900 mt-0.5">{p.amount}</span>
-                  <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[p.status]}`}>{p.status}</span>
+                  <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${poBadge(p.status)}`}>{p.status}</span>
                 </div>
               </button>
             );
@@ -505,7 +532,7 @@ export const PurchaseOrder: React.FC = () => {
                 )}
                 <div><div className="text-xs text-gray-500">Bill Status</div><div className={`text-sm font-semibold ${selected.billStatus === "Billed" ? "text-green-600" : "text-red-500"}`}>{selected.billStatus}</div></div>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[selected.status]}`}>{selected.status}</span>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${poBadge(selected.status)}`}>{selected.status}</span>
             </div>
             )}
 
@@ -592,7 +619,7 @@ export const PurchaseOrder: React.FC = () => {
 
             {/* status corner ribbon */}
             <div className="absolute bottom-0 left-0 w-24 h-24 overflow-hidden pointer-events-none">
-              <div className={`absolute bottom-[18px] -left-[34px] w-32 rotate-45 text-[10px] font-semibold py-1 text-center ${STATUS_BADGE[selected.status]}`}>{selected.status}</div>
+              <div className={`absolute bottom-[18px] -left-[34px] w-32 rotate-45 text-[10px] font-semibold py-1 text-center ${poBadge(selected.status)}`}>{selected.status}</div>
             </div>
           </div>
         </section>

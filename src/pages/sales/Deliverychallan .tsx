@@ -48,14 +48,14 @@ const CH_TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 
 const nowLabel = () => "Today " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 const dateRanges = ["All", "Today", "This Week", "This Month", "Last 30 Days", "This Year"];
 const STATUS_BADGE: Record<string, string> = {
-  Draft: "bg-gray-100 text-gray-700 border-gray-300",
+  Draft: "bg-gray-600 text-white border-transparent",
   Open: "bg-blue-50 text-blue-700 border-blue-200",
   Delivered: "bg-green-100 text-green-700 border-green-200",
   Cancelled: "bg-red-100 text-red-700 border-red-200",
 };
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "");
 const numberValue = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0);
-const badgeOf = (value: string) => STATUS_BADGE[value] || "bg-gray-100 text-gray-700 border-gray-300";
+const badgeOf = (value: string) => STATUS_BADGE[value] || "bg-gray-600 text-white border-transparent";
 const apiText = (value: unknown): string => text(value);
 const customerDisplayName = (customer: any): string => apiText(customer?.businessProfile?.companyName) || apiText(customer?.company_name) || apiText(customer?.name) || "—";
 const customerDisplaySubtitle = (customer: any): string => [apiText(customer?.name), apiText(customer?.email)].filter(Boolean).join(" · ");

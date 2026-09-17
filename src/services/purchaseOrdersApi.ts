@@ -12,6 +12,30 @@ export type PurchaseOrderListRow = {
   status: string;
 };
 
+const mapPoListStatus = (raw: unknown): string => {
+  const key = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+  const compact = key.replace(/\s+/g, "");
+  const map: Record<string, string> = {
+    draft: "Draft",
+    sent: "Sent",
+    approved: "Approved",
+    received: "Received",
+    onhold: "On Hold",
+    "on hold": "On Hold",
+    declined: "Declined",
+    cancelled: "Cancelled",
+    canceled: "Cancelled",
+    closed: "Closed",
+    posted: "Closed",
+    disputed: "Disputed",
+  };
+  return map[key] || map[compact] || "Draft";
+};
+
 const mapRow = (doc: any): PurchaseOrderListRow => ({
   _id: String(doc._id ?? ""),
   number: String(doc.invoice_number ?? doc.number ?? ""),
@@ -25,7 +49,7 @@ const mapRow = (doc: any): PurchaseOrderListRow => ({
     : "—",
   amount: typeof doc.total === "number" ? doc.total : Number(doc.total) || 0,
   currency: String(doc.currency || "USD"),
-  status: String(doc.status || "draft"),
+  status: mapPoListStatus(doc.status),
 });
 
 export async function fetchPurchaseOrders(params: {

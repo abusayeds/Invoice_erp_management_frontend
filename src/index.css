@@ -172,6 +172,41 @@
   background-color: var(--app-bg) !important;
 }
 
+/* ── Status / Draft badges (app-wide) ─────────────────────────────
+ * Dark theme inverts the gray ramp, so utilities like
+ * `bg-gray-600 text-white` become light-gray + white (unreadable).
+ * Pin true slate chips whenever gray bg is paired with white text.
+ * Soft Draft chips (`bg-gray-100 text-gray-*`) also get clearer
+ * contrast under dark Appearance. */
+.bg-gray-500.text-white {
+  background-color: #6b7280 !important;
+  color: #ffffff !important;
+}
+.bg-gray-600.text-white {
+  background-color: #4b5563 !important;
+  color: #ffffff !important;
+}
+.bg-gray-700.text-white {
+  background-color: #374151 !important;
+  color: #ffffff !important;
+}
+.bg-gray-800.text-white {
+  background-color: #1f2937 !important;
+  color: #ffffff !important;
+}
+.bg-gray-900.text-white {
+  background-color: #111827 !important;
+  color: #ffffff !important;
+}
+:root:not([data-qayd-theme="light"]) .bg-gray-100.text-gray-600,
+:root:not([data-qayd-theme="light"]) .bg-gray-100.text-gray-700,
+:root:not([data-qayd-theme="light"]) .bg-gray-100.text-gray-700.border-gray-300,
+:root:not([data-qayd-theme="light"]) .bg-gray-100.text-gray-700.border-gray-200 {
+  background-color: #3a444f !important;
+  color: #f3f4f6 !important;
+  border-color: #4b5563 !important;
+}
+
 /* Shared module shell used by Sales/Purchase split layouts so the
  * list panel, detail panel and title bars stay visually consistent. */
 .module-workspace {

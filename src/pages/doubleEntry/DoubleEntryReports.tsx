@@ -332,7 +332,7 @@ export const DoubleEntryReports: React.FC = () => {
                           <td className={`${td} text-gray-900`}>{e.description || "—"}</td>
                           <td className={`${td} text-right`}>{money(e.total_debit)}</td>
                           <td className={`${td} text-right`}>{money(e.total_credit)}</td>
-                          <td className={td}>{chip(String(e.status || "").replace(/^\w/, (c: string) => c.toUpperCase()), e.status === "posted" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")}</td>
+                          <td className={td}>{chip(String(e.status || "").replace(/^\w/, (c: string) => c.toUpperCase()), e.status === "posted" ? "bg-green-100 text-green-700" : "bg-gray-600 text-white")}</td>
                         </tr>
                         {open &&
                           (e.items || []).map((item: any, i: number) => (

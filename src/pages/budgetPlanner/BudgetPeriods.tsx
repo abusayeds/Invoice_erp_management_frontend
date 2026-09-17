@@ -21,7 +21,7 @@ import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, CheckCircle2, Play, X } from "lucide-react";
 
 const STATUS_CHIP: Record<string, string> = {
-  Draft: "bg-gray-100 text-gray-600",
+  Draft: "bg-gray-600 text-white",
   Approved: "bg-amber-100 text-amber-700",
   Active: "bg-blue-100 text-blue-700",
   Closed: "bg-red-100 text-red-600",

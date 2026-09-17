@@ -262,7 +262,7 @@ export const PRIORITY_CHIP: Record<string, string> = {
 
 export const STATUS_CHIP: Record<string, string> = {
   Active: "bg-blue-100 text-blue-700",
-  Draft: "bg-gray-100 text-gray-600",
+  Draft: "bg-gray-600 text-white",
   Completed: "bg-green-100 text-green-700",
   Achieved: "bg-green-100 text-green-700",
   Pending: "bg-yellow-100 text-yellow-700",

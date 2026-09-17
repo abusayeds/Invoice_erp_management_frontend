@@ -376,6 +376,60 @@ const reverseInvoice = async (r: Record<string, any>) => {
 
 // ── Purchase documents (bill / purchase order / debit note) — vendor-keyed ───
 
+/** Backend PO/bill statuses are lowercase (`draft`, `onhold`); UI badges use Title Case. */
+const purchaseStatusIn = (s: unknown): string => {
+  const raw = str(s).trim();
+  if (!raw) return "Draft";
+  const key = raw.toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+  const compact = key.replace(/\s+/g, "");
+  const map: Record<string, string> = {
+    draft: "Draft",
+    sent: "Sent",
+    approved: "Approved",
+    received: "Received",
+    onhold: "On Hold",
+    "on hold": "On Hold",
+    declined: "Declined",
+    cancelled: "Cancelled",
+    canceled: "Cancelled",
+    closed: "Closed",
+    disputed: "Disputed",
+    posted: "Closed",
+    partial: "Partially Paid",
+    "partially paid": "Partially Paid",
+    paid: "Paid",
+    overdue: "Overdue",
+    unused: "Unused",
+    used: "Used",
+    "partially used": "Partially Used",
+    open: "Open",
+    returned: "Returned",
+  };
+  return map[key] || map[compact] || raw.replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const purchaseStatusOut = (s: unknown): string => {
+  const key = str(s).trim().toLowerCase();
+  const map: Record<string, string> = {
+    draft: "draft",
+    sent: "sent",
+    approved: "approved",
+    received: "received",
+    "on hold": "onhold",
+    onhold: "onhold",
+    declined: "declined",
+    cancelled: "declined",
+    canceled: "declined",
+    closed: "posted",
+    disputed: "declined",
+    "partially paid": "partial",
+    partial: "partial",
+    paid: "paid",
+    overdue: "overdue",
+  };
+  return map[key] || "draft";
+};
+
 /** Backend purchase doc → the UI bill/PO/debit-note row shape (vendor-keyed). */
 const mapPurchase: MapFn = (d) => ({
   number: str(d.invoice_number),
@@ -384,7 +438,7 @@ const mapPurchase: MapFn = (d) => ({
   date: fmtDate(d.date ?? d.createdAt),
   due: fmtDate(d.due_date),
   ts: d.date ? new Date(str(d.date)).getTime() : Date.now(),
-  status: invStatus(d.status),
+  status: purchaseStatusIn(d.status),
   items: linesIn(d),
   subTotal: num(d.sub_total),
   tax: num(d.tax),
@@ -428,7 +482,7 @@ const reversePurchase = async (r: Record<string, any>) => {
     balance_amount: num(r.amountDue),
     terms_and_conditions: str(r.terms),
     notes: str(r.notes),
-    status: invStatusOut(r.status),
+    status: purchaseStatusOut(r.status),
   };
 };
 
