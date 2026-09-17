@@ -399,7 +399,7 @@ export const Dashboard: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="p-3 h-[320px] overflow-hidden rounded-b-lg" style={{ background: "#1a212a" }}>
+          <div className="p-3 h-[320px] overflow-hidden rounded-b-lg bg-white">
             {chartLoading ? (
               <div className="flex h-full items-center justify-center text-gray-400">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -415,6 +415,14 @@ export const Dashboard: React.FC = () => {
                 const seriesN = stackPayments ? 1 : Math.max(seriesDraw.length, 1);
                 // Same pillar look as screenshot — shrink only when needed to fit all days.
                 const barSize = Math.max(6, Math.min(28, Math.floor(700 / (n * seriesN))));
+                const axisTick = { fontSize: 11, fill: "var(--color-gray-500)" };
+                const tipStyle = {
+                  background: "var(--surface)",
+                  border: "1px solid var(--color-gray-300)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: "var(--color-gray-900)",
+                };
                 return (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -423,10 +431,13 @@ export const Dashboard: React.FC = () => {
                       barCategoryGap={n > 20 ? "16%" : "26%"}
                       margin={{ top: 12, right: 12, left: 4, bottom: timeUnit === "Days" ? 8 : 4 }}
                     >
-                      <CartesianGrid strokeDasharray="0" vertical={false} stroke="#2f4a38" />
+                      <CartesianGrid strokeDasharray="0" vertical={false} stroke="var(--color-gray-200)" />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: timeUnit === "Days" ? 8 : 10, fill: "#9aa3ad" }}
+                        tick={{
+                          fontSize: timeUnit === "Days" ? 8 : 10,
+                          fill: "var(--color-gray-500)",
+                        }}
                         axisLine={false}
                         tickLine={false}
                         interval={0}
@@ -436,7 +447,7 @@ export const Dashboard: React.FC = () => {
                         height={timeUnit === "Days" ? 48 : 28}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#9aa3ad" }}
+                        tick={axisTick}
                         axisLine={false}
                         tickLine={false}
                         width={40}
@@ -445,14 +456,10 @@ export const Dashboard: React.FC = () => {
                         }
                       />
                       <Tooltip
-                        cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                        contentStyle={{
-                          background: "#1a212a",
-                          border: "1px solid #3a444f",
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: "#e5e7eb",
-                        }}
+                        cursor={{ fill: "var(--color-gray-100)" }}
+                        contentStyle={tipStyle}
+                        labelStyle={{ color: "var(--color-gray-700)" }}
+                        itemStyle={{ color: "var(--color-gray-900)" }}
                       />
                       {seriesDraw.map((s) => (
                         <Bar
@@ -477,7 +484,17 @@ export const Dashboard: React.FC = () => {
                       <Cell key={d.name} fill={d.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--color-gray-300)",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      color: "var(--color-gray-900)",
+                    }}
+                    labelStyle={{ color: "var(--color-gray-700)" }}
+                    itemStyle={{ color: "var(--color-gray-900)" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             )}
