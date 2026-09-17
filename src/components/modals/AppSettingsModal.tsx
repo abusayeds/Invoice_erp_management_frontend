@@ -118,8 +118,10 @@ const DocSettingsPane: React.FC<{
     ? layout.fieldKeys.map((k) => [k, draft.fieldVisibility?.[k] !== false] as const)
     : Object.entries(draft.fieldVisibility || {});
   const colKeys = layout ? [...layout.columnKeys] : (Object.keys(draft.columns || {}) as string[]);
-  const nameCols = colKeys.filter((k) => k === "Service Name" || k === "Product Name" || k === "Description" || k === "Service name");
-  const restCols = colKeys.filter((k) => !nameCols.includes(k));
+  const isNameCol = (k: string) =>
+    k === "Service Name" || k === "Service name" || k === "Product Name" || k === "Description";
+  const nameCols = colKeys.filter(isNameCol);
+  const restCols = colKeys.filter((k) => !isNameCol(k));
   const sumBefore = ["Total Quantity", "Round Off", "Negative Value format with ( )"];
   const sumEntries = layout
     ? layout.summaryKeys.map((k) => [k, draft.summary?.[k] !== false] as const)
