@@ -128,6 +128,12 @@ export const Plan: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionPlan, setActionPlan] = useState<string | null>(null); // plan currently being acted on
+  const [currentPlan, setCurrentPlan] = useState<{
+    id: string;
+    name: string;
+    trial: boolean;
+    expired: boolean;
+  } | null>(null);
 
   // Load one page of plans. Uses api.raw so we can read the pagination envelope
   // (api.get unwraps only the `data` field).
@@ -149,10 +155,33 @@ export const Plan: React.FC = () => {
     }
   }, []);
 
+  const loadCurrentPlan = useCallback(async () => {
+    try {
+      const sub = await api.get<any>("/subscription/my-subscription");
+      if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
+        const expired = !!sub.expired || sub.status === "expired" || sub.status === "cancelled";
+        setCurrentPlan({
+          id: String(sub.plan_id || sub._id || ""),
+          name: String(sub.plan_name || "Premium").trim() || "Premium",
+          trial: !!sub.is_trial,
+          expired,
+        });
+      } else {
+        setCurrentPlan(null);
+      }
+    } catch {
+      setCurrentPlan(null);
+    }
+  }, []);
+
   // (Re)load plans whenever the page changes.
   useEffect(() => {
     loadPlans(page);
   }, [page, loadPlans]);
+
+  useEffect(() => {
+    void loadCurrentPlan();
+  }, [loadCurrentPlan]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleSubscribe = async (plan: Plan) => {
@@ -165,6 +194,7 @@ export const Plan: React.FC = () => {
           billing_cycle: period,
         });
         await alertSuccess("Free plan activated successfully.");
+        await loadCurrentPlan();
         return;
       }
 
@@ -197,11 +227,19 @@ export const Plan: React.FC = () => {
     try {
       await api.post("/subscription/start-trial", { planId: plan.id });
       await alertSuccess("Trial started successfully.");
+      await loadCurrentPlan();
     } catch (err) {
       alertApiError(err, "Couldn't start trial.");
     } finally {
       setActionPlan(null);
     }
+  };
+
+  const isCurrentPlan = (plan: Plan) => {
+    if (!currentPlan) return false;
+    if (currentPlan.id && (currentPlan.id === plan.id || currentPlan.id === plan.name)) return true;
+    return currentPlan.name.toLowerCase() === plan.name.toLowerCase()
+      || currentPlan.name.toLowerCase() === plan.label.toLowerCase();
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -225,10 +263,36 @@ export const Plan: React.FC = () => {
   return (
     <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
       <div className="dashboard-title-bar shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900">Subscription Plans</h1>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg font-semibold text-gray-900">Subscription Plans</h1>
+            {currentPlan && (
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                  currentPlan.expired
+                    ? "bg-red-100 text-red-700"
+                    : currentPlan.trial
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-blue-100 text-blue-700"
+                }`}
+                title={
+                  currentPlan.expired
+                    ? "Your plan has expired"
+                    : currentPlan.trial
+                      ? "You are on a trial plan"
+                      : "Your active purchased plan"
+                }
+              >
+                {currentPlan.name}
+                {currentPlan.trial && !currentPlan.expired ? " · Trial" : ""}
+                {currentPlan.expired ? " · Expired" : " · Current"}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Choose the plan that fits your team
+            {currentPlan && !currentPlan.expired
+              ? `You're on ${currentPlan.name}${currentPlan.trial ? " (trial)" : ""}. Upgrade or switch anytime.`
+              : "Choose the plan that fits your team"}
           </p>
         </div>
         <div className="inline-flex p-1 bg-white border border-gray-300 rounded-lg self-start sm:self-auto">
@@ -285,11 +349,31 @@ export const Plan: React.FC = () => {
               {plans.map((plan) => {
                 const price =
                   period === "monthly" ? plan.monthlyPrice : plan.yearlyPrice;
+                const current = isCurrentPlan(plan);
                 return (
                   <div
                     key={plan.name}
-                    className="relative bg-white rounded-xl shadow-sm flex flex-col items-center pt-8 pb-5 px-5 min-h-[230px] border border-gray-300"
+                    className={`relative bg-white rounded-xl shadow-sm flex flex-col items-center pt-8 pb-5 px-5 min-h-[230px] border ${
+                      current ? "border-blue-500 ring-1 ring-blue-500/30" : "border-gray-300"
+                    }`}
                   >
+                    {current && (
+                      <span
+                        className={`absolute top-3 right-3 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          currentPlan?.expired
+                            ? "bg-red-100 text-red-700"
+                            : currentPlan?.trial
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-blue-600 text-white"
+                        }`}
+                      >
+                        {currentPlan?.expired
+                          ? "Expired"
+                          : currentPlan?.trial
+                            ? "Current · Trial"
+                            : "Current Plan"}
+                      </span>
+                    )}
                     <div className="text-lg font-semibold text-gray-900 mt-1">
                       {plan.label}
                     </div>
@@ -358,10 +442,13 @@ export const Plan: React.FC = () => {
               {plans.map((plan) => {
                 const count = enabledCount(plan);
                 const isBusy = actionPlan === plan.name;
+                const current = isCurrentPlan(plan);
                 return (
                   <div
                     key={plan.name}
-                    className="bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden flex flex-col"
+                    className={`bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col ${
+                      current ? "border-blue-500 ring-1 ring-blue-500/30" : "border-gray-300"
+                    }`}
                   >
                     <div className="bg-gray-100 border-b border-gray-300 py-3 text-center text-sm font-medium text-gray-700">
                       {count}/{features.length} Enabled
@@ -391,13 +478,17 @@ export const Plan: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => void handleSubscribe(plan)}
-                        disabled={isBusy}
+                        disabled={isBusy || (current && !currentPlan?.expired)}
                         className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                       >
                         {isBusy && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {plan.isFree ? "Subscribe to Plan" : "Subscribe & Pay"}
+                        {current && !currentPlan?.expired
+                          ? "Current Plan"
+                          : plan.isFree
+                            ? "Subscribe to Plan"
+                            : "Subscribe & Pay"}
                       </button>
-                      {plan.trialDays > 0 && (
+                      {plan.trialDays > 0 && !(current && currentPlan?.trial && !currentPlan?.expired) && (
                         <button
                           type="button"
                           onClick={() => void handleStartTrial(plan)}
