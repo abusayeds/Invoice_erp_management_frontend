@@ -43,6 +43,7 @@ import {
 import { api } from "../lib/api/client";
 import { ApiError } from "../lib/api/ApiError";
 import { showToast } from "../utils/toast";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1124,8 +1125,7 @@ export const SalesProposals: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Proposal Date
                         </label>
-                        <input
-                          type="date"
+                        <AppDatePicker
                           value={formData.proposalDate}
                           onChange={(e) =>
                             setFormData({
@@ -1140,8 +1140,7 @@ export const SalesProposals: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Due Date
                         </label>
-                        <input
-                          type="date"
+                        <AppDatePicker
                           value={formData.dueDate}
                           onChange={(e) =>
                             setFormData({ ...formData, dueDate: e.target.value })

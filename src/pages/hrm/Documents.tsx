@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
 import { documentHooks, hrmStatusActions } from "@/services/hrm";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -448,8 +449,7 @@ export const Documents: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Effective Date
             </label>
-            <input
-              type="date"
+            <AppDatePicker
               value={documentFormData.effectiveDate}
               onChange={(e) =>
                 setDocumentFormData({

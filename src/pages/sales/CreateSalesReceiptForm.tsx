@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Settings, Pencil, ChevronDown, Calendar, X, Plus } from "lucide-react";
+import { Settings, Pencil, ChevronDown, X, Plus } from "lucide-react";
 import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import { fetchCustomer, fetchCustomers } from "@/services/customersApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 
 const TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
 const TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
 type DraftRow = { key: string; kind: "product" | "service"; name: string; description: string; qty: number; rate: number; taxId: number; discount: number };
-const fcc = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fcc = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600";
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "");
 const mapAddr = (address?: { address_line_1?: string; address_line_2?: string; city?: string; state?: string; zip_code?: string; country?: string }) => ({
   street1: text(address?.address_line_1),
@@ -144,8 +146,8 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
   }, [customerBackendId, customers]);
 
   const shipVal = (k: keyof typeof emptyAddr) => (sameAsBilling ? billing[k] : shipping[k]);
-  const [date, setDate] = useState(receipt?.date || "Jun 22, 2026");
-  const [due, setDue] = useState(receipt?.due || "Jun 22, 2026");
+  const [date, setDate] = useState(toIsoDate(receipt?.date) || todayIso());
+  const [due, setDue] = useState(toIsoDate(receipt?.due) || todayIso());
   const [notes, setNotes] = useState(receipt?.notes ?? "");
   const [terms, setTerms] = useState(receipt?.terms ?? "");
   const [rows, setRows] = useState<DraftRow[]>(
@@ -346,8 +348,8 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="relative fl-wrap"><label className="fl-label">Sales Receipt Date *</label><div className="relative"><input value={date} onChange={(e) => setDate(e.target.value)} placeholder=" " className={fcc} /><Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></div></div>
-          <div className="relative fl-wrap"><label className="fl-label">Due Date</label><div className="relative"><input value={due} onChange={(e) => setDue(e.target.value)} placeholder=" " className={fcc} /><Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></div></div>
+          <AppDatePicker floatingLabel="Sales Receipt Date *" value={date} onValueChange={setDate} className={fcc} />
+          <AppDatePicker floatingLabel="Due Date" value={due} onValueChange={setDue} className={fcc} />
           <input placeholder="Sub Title" className={fcc} />
           <div className="md:col-span-2"><input placeholder="Shipping Method" className={fcc} /></div>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" className="accent-blue-600" /> Discount before tax</label>

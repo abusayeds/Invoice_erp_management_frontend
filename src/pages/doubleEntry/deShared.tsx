@@ -5,6 +5,7 @@
 
 import React from "react";
 import { FileText } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const TONES = {
   green: "text-green-700",
@@ -30,7 +31,7 @@ export function DateField({ label, value, onChange }: { label: string; value: st
   return (
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-      <input type="date" value={value} onChange={(e) => onChange(e.target.value)} className={deFieldCls} />
+      <AppDatePicker value={value} onValueChange={onChange} className={deFieldCls} />
     </div>
   );
 }

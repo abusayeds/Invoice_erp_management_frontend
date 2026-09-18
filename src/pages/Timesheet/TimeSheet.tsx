@@ -30,6 +30,7 @@ import {
   X,
   Calendar,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -650,8 +651,7 @@ const TimesheetModal: React.FC<ModalProps> = ({
                 <span className="px-3 py-2 text-gray-400">
                   <Calendar className="w-4 h-4" />
                 </span>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   className="flex-1 py-2 pr-3 text-sm outline-none bg-white text-gray-700"

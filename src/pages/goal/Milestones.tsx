@@ -18,6 +18,7 @@ import {
 import { Field, inputCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const emptyDraft = () => ({
   id: "",
@@ -256,12 +257,12 @@ export const Milestones: React.FC = () => {
                   </div>
                 </Field>
                 <Field label="Achieved Date">
-                  <input type="date" value={draft.achievedDate} onChange={(e) => setDraft({ ...draft, achievedDate: e.target.value })} className={inputCls} />
+                  <AppDatePicker value={draft.achievedDate} onChange={(e) => setDraft({ ...draft, achievedDate: e.target.value })} className={inputCls} />
                 </Field>
               </div>
             )}
             <Field label="Target Date" required>
-              <input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Description">
               <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Enter Description" rows={3} className={inputCls} />

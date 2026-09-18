@@ -42,6 +42,7 @@ import {
   Calendar,
   Briefcase,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 interface PromotionRow {
   id: string;
@@ -475,8 +476,7 @@ export const Promotions: React.FC = () => {
                 />
               </Field>
               <Field label="Effective Date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.effectiveDate}
                   onChange={(e) => setDraft({ ...draft, effectiveDate: e.target.value })}
                   className={inputCls}

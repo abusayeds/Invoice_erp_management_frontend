@@ -51,6 +51,7 @@ import {
   Loader2,
   Plus,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const categories: { title: string; items: string[] }[] = [
   {
@@ -1047,7 +1048,7 @@ export const Reports: React.FC = () => {
                 <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                   <span className="text-gray-400">Date</span>
                   <span className="text-gray-500">|</span>
-                  <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+                  <AppDatePicker value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                 </label>
               ) : (
                 <PillDropdown label="Date" value={period}>
@@ -1061,11 +1062,11 @@ export const Reports: React.FC = () => {
                 <>
                   <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                     From
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+                    <AppDatePicker value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                   </label>
                   <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                     To
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+                    <AppDatePicker value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
                   </label>
                 </>
               )}
@@ -1454,18 +1455,18 @@ export const Reports: React.FC = () => {
           {!boMode && !salesMode && !purchaseMode && !miscMode && filterKind === "as_of" && (
             <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
               As of
-              <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+              <AppDatePicker value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
             </label>
           )}
           {!boMode && !salesMode && !purchaseMode && !miscMode && filterKind === "range" && (
             <>
               <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                 From
-                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+                <AppDatePicker value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
               </label>
               <label className="inline-flex items-center gap-2 text-xs text-gray-700 border border-gray-300 rounded-full px-2.5 py-1">
                 To
-                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
+                <AppDatePicker value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent outline-none text-gray-900" />
               </label>
             </>
           )}

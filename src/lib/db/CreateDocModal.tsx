@@ -9,6 +9,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { X, Plus } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { todayIso } from "@/lib/dateIso";
 import { useCollection } from "./hooks";
 import { repo, nextNumber } from "./repo";
 import { money } from "./format";
@@ -37,7 +39,7 @@ export const CreateDocModal: React.FC<{
     [products, services, buy],
   );
   const [partyId, setPartyId] = useState<number | "">("");
-  const [date, setDate] = useState("Jun 22, 2026");
+  const [date, setDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<{ key: string; name: string; qty: number; rate: number; taxId: number }[]>([{ key: "", name: "", qty: 1, rate: 0, taxId: 1 }]);
 
@@ -94,7 +96,7 @@ export const CreateDocModal: React.FC<{
                 {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500">Date</label><input value={date} onChange={(e) => setDate(e.target.value)} className={`mt-1 ${fc}`} /></div>
+            <div><label className="text-xs text-gray-500">Date</label><AppDatePicker value={date} onValueChange={setDate} className={`mt-1 ${fc}`} /></div>
           </div>
           <div className="border border-gray-200 rounded-md overflow-hidden">
             <table className="w-full text-sm">

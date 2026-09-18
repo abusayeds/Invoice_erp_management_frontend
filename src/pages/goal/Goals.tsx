@@ -20,6 +20,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, PRIORITY_CHIP, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Eye, Edit, Trash2, CheckCircle2, X } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const GOAL_TYPES = ["savings", "expense reduction", "debt reduction"] as const;
 const GOAL_PRIORITIES = ["Low", "Medium", "High", "Critical"] as const;
@@ -359,10 +360,10 @@ export const Goals: React.FC = () => {
               </div>
             </Field>
             <Field label="Start Date" required>
-              <input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Target Date" required>
-              <input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Chart of Account" className="md:col-span-2">
               <AsyncSearchSelect

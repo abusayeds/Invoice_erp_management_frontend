@@ -22,6 +22,7 @@ import { SummaryCard, ReportTitle, downloadTablePdf, deFieldCls } from "./deShar
 import { chip, ModalShell } from "../goal/goalShared";
 import { showToast } from "../../utils/toast";
 import { Plus, StickyNote, GitCompareArrows, Download, CheckCircle2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 function LineRow({ line, indent }: { line: BsLine; indent?: boolean }) {
   return (
@@ -228,7 +229,7 @@ export const BalanceSheet: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Balance Sheet Date *</label>
-                <input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} className={`${deFieldCls} w-full`} />
+                <AppDatePicker value={genDate} onChange={(e) => setGenDate(e.target.value)} className={`${deFieldCls} w-full`} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year *</label>
@@ -346,7 +347,7 @@ export const BalanceSheet: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Balance Sheet Date *</label>
-              <input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} className={`${deFieldCls} w-full`} />
+              <AppDatePicker value={genDate} onChange={(e) => setGenDate(e.target.value)} className={`${deFieldCls} w-full`} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year *</label>

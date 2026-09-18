@@ -19,6 +19,7 @@ import {
 import { Field, inputCls } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, CheckCircle2, Play, X } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STATUS_CHIP: Record<string, string> = {
   Draft: "bg-gray-600 text-white",
@@ -272,10 +273,10 @@ export const BudgetPeriods: React.FC = () => {
               />
             </Field>
             <Field label="Start Date" required>
-              <input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="End Date" required>
-              <input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
             </Field>
           </div>
         </ModalShell>

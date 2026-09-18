@@ -28,6 +28,7 @@ import {
   X,
   Pencil,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const LIST_PARAMS = { page: 1, limit: 100 };
 
@@ -795,10 +796,10 @@ export const SetSalaryDetail: React.FC = () => {
             <input type="number" min={0} value={String(draft.amount ?? "")} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Enter amount" className={inputCls} />
           </Field>
           <Field label="Start Date" required>
-            <input type="date" value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+            <AppDatePicker value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
           </Field>
           <Field label="End Date" required>
-            <input type="date" value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+            <AppDatePicker value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
           </Field>
           <Field label="Reason">
             <textarea value={String(draft.reason || "")} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Enter reason for loan" rows={3} className={inputCls} />
@@ -824,10 +825,10 @@ export const SetSalaryDetail: React.FC = () => {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Start Date" required>
-              <input type="date" value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={String(draft.startDate || "")} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="End Date" required>
-              <input type="date" value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={String(draft.endDate || "")} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
             </Field>
           </div>
           <Field label="Status" required>

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
 import { announcementHooks, hrmStatusActions } from "@/services/hrm";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -544,8 +545,7 @@ export const Announcements: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={announcementFormData.startDate}
                 onChange={(e) =>
                   setAnnouncementFormData({
@@ -560,8 +560,7 @@ export const Announcements: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 End Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={announcementFormData.endDate}
                 onChange={(e) =>
                   setAnnouncementFormData({

@@ -27,6 +27,7 @@ import {
   Globe,
   FileText,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 function hday(v: unknown): string {
   if (!v) return "";
@@ -336,10 +337,10 @@ export const Holidays: React.FC = () => {
                 </div>
               </Field>
               <Field label="Start Date" required>
-                <input type="date" value={draft.start} onChange={(e) => setDraft({ ...draft, start: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.start} onChange={(e) => setDraft({ ...draft, start: e.target.value })} className={inputCls} />
               </Field>
               <Field label="End Date" required>
-                <input type="date" value={draft.end} onChange={(e) => setDraft({ ...draft, end: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.end} onChange={(e) => setDraft({ ...draft, end: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Holiday Type" required>
                 <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} className={`keep-box ua-field ${inputCls}`}>

@@ -13,6 +13,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { downloadDocPdf } from "@/lib/db";
@@ -22,8 +23,6 @@ import {
   Search,
   Plus,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Check,
   Pencil,
   DollarSign,
@@ -41,7 +40,6 @@ import {
   MessageCircle,
   Sparkles,
   RotateCcw,
-  Calendar,
   Bold,
   Italic,
   Underline,
@@ -235,11 +233,11 @@ const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ o
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500">Start Date</label>
-            <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
+            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
           </div>
           <div>
             <label className="text-xs text-gray-500">End Date</label>
-            <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
+            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
           </div>
         </div>
         <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
@@ -362,67 +360,10 @@ const Toggle: React.FC<{ on: boolean; onChange: () => void }> = ({ on, onChange 
   </button>
 );
 
-/* ── Calendar date-picker popover ──────────────────────────────────── */
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-const CalendarPopover: React.FC<{ value: string; onPick: (v: string) => void; onClose: () => void }> = ({ value, onPick, onClose }) => {
-  const parsed = value && !Number.isNaN(Date.parse(value)) ? new Date(value) : new Date();
-  const [view, setView] = useState(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [onClose]);
-  const first = new Date(view.getFullYear(), view.getMonth(), 1);
-  const days = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
-  const lead = first.getDay();
-  const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
-  const isSel = (d: number) => value && !Number.isNaN(Date.parse(value)) && parsed.getDate() === d && parsed.getMonth() === view.getMonth() && parsed.getFullYear() === view.getFullYear();
-  const nav = (delta: number) => setView((v) => new Date(v.getFullYear(), v.getMonth() + delta, 1));
-  return (
-    <div ref={ref} className="absolute right-0 top-full z-40 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-2xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-gray-900">{MONTHS[view.getMonth()]} {view.getFullYear()}</span>
-        <div className="flex items-center gap-1">
-          <button onClick={() => nav(-1)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100"><ChevronLeft className="w-4 h-4 text-gray-600" /></button>
-          <button onClick={() => nav(1)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100"><ChevronRight className="w-4 h-4 text-gray-600" /></button>
-        </div>
-      </div>
-      <div className="grid grid-cols-7 text-center text-[11px] text-gray-500 mb-1">
-        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <span key={i} className="py-1">{d}</span>)}
-      </div>
-      <div className="grid grid-cols-7 text-center">
-        {cells.map((d, i) => d === null
-          ? <span key={i} />
-          : (
-            <button key={i}
-              onClick={() => { onPick(fmtDate(new Date(view.getFullYear(), view.getMonth(), d))); onClose(); }}
-              className={`w-8 h-8 mx-auto my-0.5 rounded-full text-sm transition-colors ${isSel(d) ? "border border-blue-600 text-blue-700 font-semibold" : "text-gray-800 hover:bg-gray-100"}`}>
-              {d}
-            </button>
-          ))}
-      </div>
-    </div>
-  );
-};
-
-const DateField: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative fl-wrap">
-      <label className="fl-label">{label}</label>
-      <div className="relative">
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder=" "
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600" />
-        <button type="button" onClick={() => setOpen((o) => !o)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-          <Calendar className="w-4 h-4" />
-        </button>
-      </div>
-      {open && <CalendarPopover value={value} onPick={onChange} onClose={() => setOpen(false)} />}
-    </div>
-  );
-};
+/* ── Date field (AppDatePicker) ───────────────────────────────────── */
+const DateField: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+  <AppDatePicker floatingLabel={label} value={value} onValueChange={onChange} />
+);
 
 /* ── Rich text editor ──────────────────────────────────────────────── */
 const RichTextEditor: React.FC<{ value: string; onChange: (html: string) => void; placeholder?: string }> = ({ value, onChange, placeholder }) => {
@@ -459,7 +400,7 @@ const RichTextEditor: React.FC<{ value: string; onChange: (html: string) => void
 };
 
 /* ── Edit Customer form ────────────────────────────────────────────── */
-const editFieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const editFieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600";
 const EditField: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; icon?: React.ReactNode }> = ({ label, value, onChange, placeholder, icon }) => (
   <div className="relative fl-wrap">
     <label className="fl-label">{label}</label>
@@ -697,7 +638,7 @@ const EditCustomer: React.FC<{
           </div>
           {show("Notes") && (
             <div>
-              <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={5} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-y" />
+              <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={5} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600 resize-y" />
             </div>
           )}
           {show("Payment Reminder") && (

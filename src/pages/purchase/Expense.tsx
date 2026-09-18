@@ -29,6 +29,8 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { updateExpense } from "@/services/accountingApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import {
   Search,
   Plus,
@@ -106,7 +108,7 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
 };
 
 /* ── Floating-label field ──────────────────────────────────────── */
-const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600";
 const FloatBox: React.FC<{ label?: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="relative fl-wrap">
     {label && <label className="fl-label">{label}</label>}
@@ -156,7 +158,10 @@ const AddVendorModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               <FloatField label="Last Name" placeholder="Last Name" />
               <FloatField label="Email" placeholder="Email" />
               <div className="grid grid-cols-2 gap-4"><FloatField label="Mobile" placeholder="Mobile" /><FloatField label="Home Phone" placeholder="Home Phone" /></div>
-              <div className="grid grid-cols-2 gap-4"><FloatField label="Birthday" placeholder="Birthday" icon={<Calendar className="w-4 h-4" />} /><FloatField label="Anniversary" placeholder="Anniversary" icon={<Calendar className="w-4 h-4" />} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <AppDatePicker floatingLabel="Birthday" />
+                <AppDatePicker floatingLabel="Anniversary" />
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
@@ -281,9 +286,9 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
   const [payType, setPayType] = useState(initial?.paymentType ?? "");
   const [amount, setAmount] = useState(initial?.amount ? String(initial.amount) : "");
   const [shipping, setShipping] = useState(initial?.shipping ? String(initial.shipping) : "");
-  const [date, setDate] = useState(initial?.date ?? new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+  const [date, setDate] = useState(toIsoDate(initial?.date) || todayIso());
   const [recurring, setRecurring] = useState(initial?.recurring ?? "Never");
-  const [upTo, setUpTo] = useState(initial?.upTo ?? "");
+  const [upTo, setUpTo] = useState(toIsoDate(initial?.upTo) || "");
   const [description, setDescription] = useState(initial?.notes ?? "");
   const [number] = useState(initial?.number?.replace("#", "") ?? "");
   const [attachment, setAttachment] = useState(initial?.Attachment || initial?.attachments || "");
@@ -416,10 +421,7 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
             <FloatField label="Expense #" value={number} placeholder="Auto" readOnly />
             <FloatField label="Currency" value="$ USD" readOnly />
             <FloatBox label="Expense Date">
-              <div className="relative">
-                <input value={date} onChange={(e) => setDate(e.target.value)} placeholder=" " className={fieldCls} />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400"><Calendar className="w-4 h-4" /></span>
-              </div>
+              <AppDatePicker value={date} onValueChange={setDate} className={fieldCls} />
             </FloatBox>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -437,10 +439,7 @@ const ExpenseFormLive: React.FC<{ initial?: any; onClose: () => void; onSaved: (
             </FieldSelect>
             {recurring !== "Never" && (
               <FloatBox label="Up to *">
-                <div className="relative">
-                  <input value={upTo} onChange={(e) => setUpTo(e.target.value)} placeholder=" " className={fieldCls} />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400"><Calendar className="w-4 h-4" /></span>
-                </div>
+                <AppDatePicker value={upTo} onValueChange={setUpTo} className={fieldCls} />
               </FloatBox>
             )}
           </div>

@@ -35,6 +35,7 @@ import {
 } from "@/services/globalSearchApi";
 import { dateBounds } from "@/services/dashboardSummaryApi";
 import { FOCUS_GLOBAL_SEARCH_EVENT } from "@/lib/listToolbarEvents";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const MODULE_ICON: Record<Exclude<GlobalSearchModule, "All">, React.ElementType> = {
   Customers: Users,
@@ -382,8 +383,7 @@ export const GlobalSearch: React.FC = () => {
                       </button>
                     </div>
                     <div className="flex items-center gap-2 pl-6">
-                      <input
-                        type="date"
+                      <AppDatePicker
                         value={customFrom}
                         onChange={(e) => {
                           setCustomFrom(e.target.value);
@@ -392,8 +392,7 @@ export const GlobalSearch: React.FC = () => {
                         className="keep-box ua-field flex-1 min-w-0 px-2 py-1.5 text-xs rounded"
                       />
                       <span className="text-gray-500 text-xs">–</span>
-                      <input
-                        type="date"
+                      <AppDatePicker
                         value={customTo}
                         onChange={(e) => {
                           setCustomTo(e.target.value);

@@ -50,6 +50,7 @@ import {
   Download,
   Printer,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const QAYD_ADDRESS = ["B-102, Orbit Heights, Lakeview Lane", "Ahmedabad, Gujarat", "India - 380015"];
 
@@ -581,8 +582,7 @@ export const AddPos: React.FC = () => {
               {showDeliveryDate && (
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-gray-600">Delivery Date</span>
-                  <input
-                    type="date"
+                  <AppDatePicker
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
                     className="px-2 py-1 text-sm border border-gray-300 rounded-md"

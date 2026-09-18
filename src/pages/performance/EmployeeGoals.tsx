@@ -18,6 +18,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const emptyDraft = () => ({
   id: "",
@@ -282,16 +283,14 @@ export const EmployeeGoals: React.FC = () => {
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Start Date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.startDate}
                   onChange={(e) => setDraft({ ...draft, startDate: e.target.value })}
                   className={inputCls}
                 />
               </Field>
               <Field label="End Date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.endDate}
                   onChange={(e) => setDraft({ ...draft, endDate: e.target.value })}
                   className={inputCls}

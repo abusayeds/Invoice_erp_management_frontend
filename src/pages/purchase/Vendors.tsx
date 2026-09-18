@@ -37,6 +37,7 @@ import { TabSlide } from "@/components/ui/TabSlide";
 import { RecentActivities } from "@/components/ui/RecentActivities";
 import { showToast } from "@/utils/toast";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import {
   Search,
   Plus,
@@ -268,11 +269,11 @@ const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ o
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500">Start Date</label>
-            <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
+            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
           </div>
           <div>
             <label className="text-xs text-gray-500">End Date</label>
-            <input type="date" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
+            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
           </div>
         </div>
         <div className="flex items-center justify-between gap-3">
@@ -349,7 +350,7 @@ const Toggle: React.FC<{ on: boolean; onChange: () => void }> = ({ on, onChange 
 );
 
 /* ── Vendor form (inline right panel — Create & Edit) ───────────── */
-const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600";
 const VField: React.FC<{
   label: string;
   value: string;
@@ -357,7 +358,10 @@ const VField: React.FC<{
   placeholder?: string;
   type?: string;
   disabled?: boolean;
-}> = ({ label, value, onChange, placeholder, type = "text", disabled }) => (
+}> = ({ label, value, onChange, placeholder, type = "text", disabled }) =>
+  type === "date" ? (
+    <AppDatePicker floatingLabel={label} value={value} onValueChange={onChange} disabled={disabled} placeholder={placeholder} />
+  ) : (
   <div className="relative fl-wrap">
     <label className="fl-label">{label}</label>
     <input
@@ -546,7 +550,7 @@ const VendorForm: React.FC<{
             {show("Opening Balance Date") && <VField label="Opening Balance Date" value={f.openingBalanceDate} onChange={(v) => set("openingBalanceDate", v)} type="date" />}
           </div>
           {show("Notes") && (
-            <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={4} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-y" />
+            <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Notes" rows={4} className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-0 focus:border-blue-600 resize-y" />
           )}
           <div className="space-y-4 pt-2">
             {show("Payment Reminder") && (

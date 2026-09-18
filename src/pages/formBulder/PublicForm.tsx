@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchPublicForm, submitPublicForm } from "@/services/formBuilderApi";
 import { showToast } from "@/utils/toast";
 import { inputCls, selectCls } from "../hrm/hrmShared";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const PublicForm: React.FC = () => {
   const { code = "" } = useParams();
@@ -213,11 +214,24 @@ const PublicForm: React.FC = () => {
                       ? "url"
                       : f.type === "password"
                         ? "password"
-                        : f.type === "date"
-                          ? "date"
-                          : f.type === "time"
-                            ? "time"
-                            : "text";
+                        : f.type === "time"
+                          ? "time"
+                          : "text";
+
+            if (f.type === "date") {
+              return (
+                <div key={fid}>
+                  {commonLabel}
+                  <AppDatePicker
+                    value={String(values[fid] ?? "")}
+                    onValueChange={(v) => setVal(fid, v)}
+                    placeholder={f.placeholder}
+                    className={inputCls}
+                    required={f.required}
+                  />
+                </div>
+              );
+            }
 
             return (
               <div key={fid}>

@@ -8,6 +8,7 @@ import { Field, inputCls, selectCls } from "../hrm/hrmShared";
 import { HrmBreadcrumb } from "../hrm/hrmShared";
 import { useNavigate } from "react-router-dom";
 import { FileBarChart, Loader2, RefreshCw, Clock, Receipt, Users, Building2, Calculator } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 type ParamKind = "as_of_date" | "date_range" | "as_of_zero" | "none";
 
@@ -120,13 +121,13 @@ export const AccountsReports: React.FC = () => {
           </Field>
           {(def.params === "as_of_date" || def.params === "as_of_zero") && (
             <Field label="As of date">
-              <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className={inputCls} />
+              <AppDatePicker value={asOf} onChange={(e) => setAsOf(e.target.value)} className={inputCls} />
             </Field>
           )}
           {def.params === "date_range" && (
             <>
-              <Field label="From"><input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} /></Field>
-              <Field label="To"><input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} /></Field>
+              <Field label="From"><AppDatePicker value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} /></Field>
+              <Field label="To"><AppDatePicker value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} /></Field>
             </>
           )}
           {def.params === "as_of_zero" && (

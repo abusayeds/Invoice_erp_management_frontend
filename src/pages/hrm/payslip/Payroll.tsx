@@ -36,6 +36,7 @@ import {
   Play,
   X,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 type SortField = "title" | "frequency" | "periodStart" | "periodEnd" | "payDate" | "status";
 
@@ -435,13 +436,13 @@ export const Payroll: React.FC = () => {
                 </select>
               </Field>
               <Field label="Pay Period Start" required>
-                <input type="date" value={draft.periodStart} onChange={(e) => setDraft({ ...draft, periodStart: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.periodStart} onChange={(e) => setDraft({ ...draft, periodStart: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Pay Period End" required>
-                <input type="date" value={draft.periodEnd} onChange={(e) => setDraft({ ...draft, periodEnd: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.periodEnd} onChange={(e) => setDraft({ ...draft, periodEnd: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Pay Date" required>
-                <input type="date" value={draft.payDate} onChange={(e) => setDraft({ ...draft, payDate: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.payDate} onChange={(e) => setDraft({ ...draft, payDate: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Bank Account" required>
                 <AsyncSearchSelect

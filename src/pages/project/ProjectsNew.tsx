@@ -39,6 +39,7 @@ import {
   File,
   Archive,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -668,8 +669,7 @@ export const ProjectsNew: React.FC = () => {
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="date"
+                  <AppDatePicker
                     value={formData.startDate}
                     onChange={(e) =>
                       setFormData({ ...formData, startDate: e.target.value })
@@ -684,8 +684,7 @@ export const ProjectsNew: React.FC = () => {
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="date"
+                  <AppDatePicker
                     value={formData.endDate}
                     onChange={(e) =>
                       setFormData({ ...formData, endDate: e.target.value })

@@ -40,6 +40,7 @@ import {
   HrmFileUploadButton,
   hrmFileLabel,
 } from "./hrmShared";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -462,8 +463,7 @@ export const Terminations: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Notice Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={terminationFormData.noticeDate}
                 onChange={(e) =>
                   setTerminationFormData({
@@ -478,8 +478,7 @@ export const Terminations: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Termination Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={terminationFormData.terminationDate}
                 onChange={(e) =>
                   setTerminationFormData({

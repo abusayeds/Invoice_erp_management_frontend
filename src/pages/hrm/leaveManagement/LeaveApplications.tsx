@@ -45,6 +45,7 @@ import {
   CheckCircle,
   MessageSquare,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 type LeaveRow = LeaveApplication & {
   leaveTypeColor?: string;
@@ -452,10 +453,10 @@ export const LeaveApplications: React.FC = () => {
                 />
               </Field>
               <Field label="Start Date" required>
-                <input type="date" value={draft.start} onChange={(e) => setDraft({ ...draft, start: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.start} onChange={(e) => setDraft({ ...draft, start: e.target.value })} className={inputCls} />
               </Field>
               <Field label="End Date" required>
-                <input type="date" value={draft.end} onChange={(e) => setDraft({ ...draft, end: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.end} onChange={(e) => setDraft({ ...draft, end: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Reason" required>
                 <div className="flex gap-2">

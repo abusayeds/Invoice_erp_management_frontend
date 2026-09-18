@@ -30,6 +30,7 @@ import {
   HrmDocumentLink,
 } from "./hrmShared";
 import { ArrowLeft, Plus, Trash2, Upload } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STEPS = ["Personal", "Employment", "Contact", "Banking", "Hours & Rates", "Documents"] as const;
 
@@ -194,7 +195,7 @@ const EmployeeCreate: React.FC = () => {
                 />
               </Field>
               <Field label="Date Of Birth" required>
-                <input type="date" value={form.dob} onChange={(e) => set({ dob: e.target.value })} className={inputCls} />
+                <AppDatePicker value={form.dob} onChange={(e) => set({ dob: e.target.value })} className={inputCls} />
               </Field>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
@@ -231,7 +232,7 @@ const EmployeeCreate: React.FC = () => {
                 <SearchSelect value={form.shift} onChange={(v) => set({ shift: v })} options={lookups.shifts} placeholder="Select Shift" />
               </Field>
               <Field label="Date Of Joining">
-                <input type="date" value={form.dateOfJoining} onChange={(e) => set({ dateOfJoining: e.target.value })} className={inputCls} />
+                <AppDatePicker value={form.dateOfJoining} onChange={(e) => set({ dateOfJoining: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Employment Type" required>
                 <select

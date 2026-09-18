@@ -22,8 +22,10 @@ import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdo
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
 import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, updatePaymentReceived, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { showToast } from "@/utils/toast";
 import { RecordPaymentReceivedForm, type PaymentReceivedPrefill } from "@/components/payments/RecordPaymentReceivedForm";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import {
   Search,
   Plus,
@@ -205,7 +207,7 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | 
   );
   const [amount, setAmount] = useState(record?.amount != null ? String(record.amount) : "0.00");
   const [method, setMethod] = useState(record?.method || "Cash");
-  const [date, setDate] = useState(record?.date || "Jun 22, 2026");
+  const [date, setDate] = useState(toIsoDate(record?.date) || todayIso());
   const [notes, setNotes] = useState(record?.notes ?? "");
   const [attachment, setAttachment] = useState(record?.Attachment || record?.attachments || "");
   // auto-fill the amount to the invoice's due only when CREATING (edit keeps the payment's amount)
@@ -261,7 +263,7 @@ const RecordPaymentForm: React.FC<{ onClose: () => void; onSaved: (id: string | 
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500">Payment date</label><input value={date} onChange={(e) => setDate(e.target.value)} className={fc} /></div>
+            <div><label className="text-xs text-gray-500">Payment date</label><AppDatePicker value={date} onValueChange={setDate} className={fc} /></div>
             <div><label className="text-xs text-gray-500">Payment Type</label><select value={method} onChange={(e) => setMethod(e.target.value)} className={fc}>{payMethods.map((m) => <option key={m}>{m}</option>)}</select></div>
           </div>
           <div>

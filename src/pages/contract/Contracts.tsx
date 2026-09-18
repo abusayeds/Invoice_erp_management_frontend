@@ -17,6 +17,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, Eye } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STATUS_CHIP: Record<string, string> = {
   Draft: "bg-gray-600 text-white",
@@ -254,10 +255,10 @@ const Contracts: React.FC = () => {
               </select>
               </Field>
               <Field label="Start date">
-                <input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className={inputCls} />
               </Field>
               <Field label="End date">
-                <input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
+                <AppDatePicker value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Duration (days)">
                 <input type="number" value={draft.duration} onChange={(e) => setDraft({ ...draft, duration: e.target.value })} className={inputCls} />

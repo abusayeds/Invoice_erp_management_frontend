@@ -39,6 +39,7 @@ import {
   HrmFileUploadButton,
   hrmFileLabel,
 } from "./hrmShared";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -403,8 +404,7 @@ export const Resignations: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Last Working Date *
             </label>
-            <input
-              type="date"
+            <AppDatePicker
               value={resignationFormData.lastWorkingDate}
               onChange={(e) =>
                 setResignationFormData({

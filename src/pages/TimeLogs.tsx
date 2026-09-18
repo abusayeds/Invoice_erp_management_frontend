@@ -18,6 +18,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, repo } from "@/lib/db";
 import { useAppSettings, isTimeLogColumnOn } from "@/lib/db/appSettings";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import {
   Search,
   Plus,
@@ -35,7 +37,6 @@ import {
   Square,
   ClipboardList,
   Clock,
-  Calendar,
   CheckCircle2,
 } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
@@ -206,7 +207,7 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
   const [project, setProject] = useState(log?.project ?? "");
   const [task, setTask] = useState(log?.task ?? "");
   const [notes, setNotes] = useState(log?.notes ?? "");
-  const [dateVal, setDateVal] = useState(mode === "edit" ? (log?.dateLabel || "6/21/2026") : "6/21/2026");
+  const [dateVal, setDateVal] = useState(mode === "edit" ? (toIsoDate(log?.dateLabel) || todayIso()) : todayIso());
   const handleSave = () => {
     let totalMins = (parseInt(hh, 10) || 0) * 60 + (parseInt(mm, 10) || 0);
     totalMins = roundMinutes(totalMins, roundingStep);
@@ -249,11 +250,7 @@ const TimeLogForm: React.FC<{ mode: "create" | "edit"; log?: TLog; onClose: () =
 
       <SectionBar title="Details" />
       <div className="px-6 py-6 max-w-2xl space-y-6">
-        <div className="relative fl-wrap">
-          <label className="fl-label">Date *</label>
-          <input value={dateVal} onChange={(e) => setDateVal(e.target.value)} placeholder=" " className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600" />
-          <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-        </div>
+        <AppDatePicker floatingLabel="Date *" value={dateVal} onValueChange={setDateVal} />
         <div className="flex items-center gap-3">
           <input value={project} onChange={(e) => setProject(e.target.value)} placeholder="Project" className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-600" />
           <button type="button" className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"><Plus className="w-4 h-4" /></button>

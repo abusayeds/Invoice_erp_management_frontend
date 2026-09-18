@@ -18,6 +18,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const emptyDraft = () => ({
   id: "",
@@ -246,7 +247,7 @@ export const Contributions: React.FC = () => {
               />
             </Field>
             <Field label="Date" required>
-              <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Amount" required>
               <div className="relative">

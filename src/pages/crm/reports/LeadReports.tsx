@@ -35,6 +35,7 @@ import {
   Sector,
 } from "recharts";
 import { showToast } from "@/utils/toast";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -173,8 +174,7 @@ export const LeadReports: React.FC = () => {
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
-          <input
-            type="date"
+          <AppDatePicker
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"
@@ -182,8 +182,7 @@ export const LeadReports: React.FC = () => {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
-          <input
-            type="date"
+          <AppDatePicker
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"

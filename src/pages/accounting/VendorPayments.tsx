@@ -20,6 +20,7 @@ import {
 import { Field, inputCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Trash2, CheckCircle2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STATUS_CHIP: Record<string, string> = {
   Pending: "bg-amber-100 text-amber-700",
@@ -226,7 +227,7 @@ export const VendorPayments: React.FC = () => {
         <ModalShell title="Create Vendor Payment" onClose={() => setModal(false)} onSubmit={submit} submitLabel="Create" wide>
           <div className="space-y-4">
             <Field label="Payment Date" required>
-              <input type="date" value={draft.payment_date} onChange={(e) => setDraft({ ...draft, payment_date: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.payment_date} onChange={(e) => setDraft({ ...draft, payment_date: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Vendor" required>
               <AsyncSearchSelect value={draft.vendor_id} displayName={draft.vendor_name} onChange={(id, opt) => void onVendor(id, opt?.name || "")} onSearch={searchVendors} placeholder="Search vendors…" />

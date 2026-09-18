@@ -5,7 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Check, Info } from "lucide-react";
+import { Settings, Pencil, ChevronDown, X, Plus, Check, Info } from "lucide-react";
 import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
 import { db } from "@/lib/db/db";
 import { useAppSettings, isLayoutSettingOn, DOC_LAYOUTS, type DocLayoutId } from "@/lib/db/appSettings";
@@ -13,11 +13,13 @@ import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { DocumentCreateHeader, type SendMenuAction } from "@/components/documents/DocumentCreateHeader";
 import { DocumentSendEmailModal } from "@/components/documents/DocumentSendEmailModal";
 import { DOC_FIELD, RECURRING_OPTIONS, isRecurringActive } from "@/components/documents/documentCreateShared";
 import { PdfPreviewModal } from "@/lib/db/PdfPreviewModal";
 import { printServerPdf } from "@/lib/db/serverPdf";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import { fetchCustomer, fetchCustomers } from "@/services/customersApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import type { EmailNavKey } from "@/services/emailTemplatesApi";
@@ -203,15 +205,15 @@ export const CreateInvoiceForm: React.FC<{
   }, [customerBackendId, customers]);
   const shipVal = (k: keyof typeof emptyAddr) => (sameAsBilling ? billing[k] : shipping[k]);
 
-  const [date, setDate] = useState(invoice?.date || new Date().toLocaleDateString("en-US"));
-  const [due, setDue] = useState(invoice?.due || new Date().toLocaleDateString("en-US"));
+  const [date, setDate] = useState(toIsoDate(invoice?.date) || todayIso());
+  const [due, setDue] = useState(toIsoDate(invoice?.due) || todayIso());
   const [notes, setNotes] = useState(invoice?.notes ?? "Mollit fugiat elit");
   const [terms, setTerms] = useState(invoice?.terms ?? "Perferendis ad vero");
   const [internalNotes, setInternalNotes] = useState(invoice?.internalNotes ?? "");
   const [currency, setCurrency] = useState(invoice?.currency || "BDT");
   const [subTitle, setSubTitle] = useState(invoice?.subTitle ?? "");
   const [poNumber, setPoNumber] = useState(invoice?.poNumber ?? "");
-  const [poDate, setPoDate] = useState(invoice?.poDate ?? "");
+  const [poDate, setPoDate] = useState(toIsoDate(invoice?.poDate) || "");
   const [recipientName, setRecipientName] = useState(invoice?.recipientName ?? "");
   const [salesperson, setSalesperson] = useState(invoice?.salesperson ?? "");
   const [shippingMethod, setShippingMethod] = useState(invoice?.shippingMethod ?? "");
@@ -221,7 +223,7 @@ export const CreateInvoiceForm: React.FC<{
   const [cashDenomination, setCashDenomination] = useState(invoice?.cashDenomination ?? "");
   const [discountBeforeTax, setDiscountBeforeTax] = useState(!!invoice?.discountBeforeTax);
   const [recurring, setRecurring] = useState(invoice?.recurring ?? "None");
-  const [recurringUntil, setRecurringUntil] = useState(invoice?.recurringUntil ?? new Date().toLocaleDateString("en-US"));
+  const [recurringUntil, setRecurringUntil] = useState(toIsoDate(invoice?.recurringUntil) || todayIso());
   const [deposit, setDeposit] = useState(invoice?.deposit ?? "");
   const [docDiscount, setDocDiscount] = useState(invoice?.docDiscount ?? "");
   const [shippingCost, setShippingCost] = useState(String(invoice?.shipping ?? ""));
@@ -511,21 +513,9 @@ export const CreateInvoiceForm: React.FC<{
             </div>
           </div>
           <CurrencyCombobox value={currency} onChange={setCurrency} />
-          <div className="relative fl-wrap">
-            <label className="fl-label">{docLabel} date *</label>
-            <div className="relative">
-              <input value={date} onChange={(e) => setDate(e.target.value)} placeholder=" " className={DOC_FIELD} />
-              <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
+          <AppDatePicker floatingLabel={`${docLabel} date *`} value={date} onValueChange={setDate} className={DOC_FIELD} />
           {show("Due Date") && (
-            <div className="relative fl-wrap">
-              <label className="fl-label">Due Date</label>
-              <div className="relative">
-                <input value={due} onChange={(e) => setDue(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="Due Date" value={due} onValueChange={setDue} className={DOC_FIELD} />
           )}
         </div>
 
@@ -576,13 +566,7 @@ export const CreateInvoiceForm: React.FC<{
           {show("Sub Title") && <input value={subTitle} onChange={(e) => setSubTitle(e.target.value)} placeholder="Sub Title" className={DOC_FIELD} />}
           {show("PO #") && <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO #" className={DOC_FIELD} />}
           {show("P.O. Date") && (
-            <div className="relative fl-wrap">
-              <label className="fl-label">P.O. Date</label>
-              <div className="relative">
-                <input value={poDate} onChange={(e) => setPoDate(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="P.O. Date" value={poDate} onValueChange={setPoDate} className={DOC_FIELD} />
           )}
           {show("Recipient name") && <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" className={DOC_FIELD} />}
           {show("Salesperson") && <input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson" className={DOC_FIELD} />}
@@ -622,13 +606,7 @@ export const CreateInvoiceForm: React.FC<{
             </select>
           </div>
           {isRecurringActive(recurring) ? (
-            <div className="relative fl-wrap">
-              <label className="fl-label">Up to</label>
-              <div className="relative">
-                <input value={recurringUntil} onChange={(e) => setRecurringUntil(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="Up to" value={recurringUntil} onValueChange={setRecurringUntil} className={DOC_FIELD} />
           ) : (
             <div className="hidden md:block" aria-hidden />
           )}

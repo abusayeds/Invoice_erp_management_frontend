@@ -18,6 +18,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "./goalShared";
 import { ArrowUpDown, Eye, Edit, Trash2, X } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const TRACK_FILTER_BE: Record<string, string> = {
   "On track": "on_track",
@@ -276,7 +277,7 @@ export const Tracking: React.FC = () => {
               />
             </Field>
             <Field label="Tracking Date" required className="md:col-span-2">
-              <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Previous Amount" required>
               <div className="relative">
@@ -339,7 +340,7 @@ export const Tracking: React.FC = () => {
               <input type="number" min={0} value={draft.daysLeft || ""} onChange={(e) => setDraft({ ...draft, daysLeft: Number(e.target.value) })} placeholder="0" className={inputCls} />
             </Field>
             <Field label="Projected Completion Date">
-              <input type="date" value={draft.projectedDate} onChange={(e) => setDraft({ ...draft, projectedDate: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.projectedDate} onChange={(e) => setDraft({ ...draft, projectedDate: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Status" className="md:col-span-2">
               <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as TrackingRow["status"] })} className={selectCls}>

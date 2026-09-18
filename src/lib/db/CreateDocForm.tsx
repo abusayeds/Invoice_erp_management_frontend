@@ -4,11 +4,13 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, Pencil, ChevronDown, Calendar, X, Plus, Check, Info } from "lucide-react";
+import { Settings, Pencil, ChevronDown, X, Plus, Check, Info } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { DocumentCreateHeader, type SendMenuAction } from "@/components/documents/DocumentCreateHeader";
 import { DocumentSendEmailModal } from "@/components/documents/DocumentSendEmailModal";
 import { DOC_FIELD, RECURRING_OPTIONS, emailNavForCollection, isRecurringActive } from "@/components/documents/documentCreateShared";
+import { toIsoDate, todayIso } from "@/lib/dateIso";
 import { useCollection } from "./hooks";
 import { repo, nextNumber } from "./repo";
 import { money } from "./format";
@@ -161,8 +163,8 @@ export const CreateDocForm: React.FC<{
     if (p?.email) setPartyEmail(String(p.email));
   }, [partyId, parties]);
 
-  const [date, setDate] = useState(record?.date || new Date().toLocaleDateString("en-US"));
-  const [due, setDue] = useState(record?.due || new Date().toLocaleDateString("en-US"));
+  const [date, setDate] = useState(toIsoDate(record?.date) || todayIso());
+  const [due, setDue] = useState(toIsoDate(record?.due) || todayIso());
   const [notes, setNotes] = useState(record?.notes ?? "");
   const [terms, setTerms] = useState(record?.terms ?? "Perferendis ad vero");
   const [internalNotes, setInternalNotes] = useState(record?.internalNotes ?? "");
@@ -222,7 +224,7 @@ export const CreateDocForm: React.FC<{
   }, []);
   const [subTitle, setSubTitle] = useState(record?.subTitle ?? "");
   const [poNumber, setPoNumber] = useState(record?.poNumber ?? "");
-  const [poDate, setPoDate] = useState(record?.poDate ?? "");
+  const [poDate, setPoDate] = useState(toIsoDate(record?.poDate) || "");
   const [recipientName, setRecipientName] = useState(record?.recipientName ?? "");
   const [salesperson, setSalesperson] = useState(record?.salesperson ?? "");
   const [shippingMethod, setShippingMethod] = useState(record?.shippingMethod ?? "");
@@ -237,7 +239,7 @@ export const CreateDocForm: React.FC<{
   const [attachment, setAttachment] = useState(record?.Attachment || record?.attachments || "");
   const [discountBeforeTax, setDiscountBeforeTax] = useState(!!record?.discountBeforeTax);
   const [recurring, setRecurring] = useState(record?.recurring ?? "None");
-  const [recurringUntil, setRecurringUntil] = useState(record?.recurringUntil ?? new Date().toLocaleDateString("en-US"));
+  const [recurringUntil, setRecurringUntil] = useState(toIsoDate(record?.recurringUntil) || todayIso());
   const [deposit, setDeposit] = useState(record?.deposit ?? "");
   const [docDiscount, setDocDiscount] = useState(record?.docDiscount ?? "");
   const [shippingCost, setShippingCost] = useState(String(record?.shipping ?? record?.shippingCost ?? ""));
@@ -478,21 +480,9 @@ export const CreateDocForm: React.FC<{
           ) : (
             <div className="hidden md:block" aria-hidden />
           )}
-          <div className="relative fl-wrap">
-            <label className="fl-label">{docNoLabel} date *</label>
-            <div className="relative">
-              <input value={date} onChange={(e) => setDate(e.target.value)} placeholder=" " className={DOC_FIELD} />
-              <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
+          <AppDatePicker floatingLabel={`${docNoLabel} date *`} value={date} onValueChange={setDate} className={DOC_FIELD} />
           {show("Due Date") && (
-            <div className="relative fl-wrap md:col-span-1">
-              <label className="fl-label">Due Date</label>
-              <div className="relative">
-                <input value={due} onChange={(e) => setDue(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="Due Date" value={due} onValueChange={setDue} className={DOC_FIELD} />
           )}
         </div>
 
@@ -545,13 +535,7 @@ export const CreateDocForm: React.FC<{
             <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO #" className={DOC_FIELD} />
           )}
           {show("P.O. Date") && (
-            <div className="relative fl-wrap">
-              <label className="fl-label">P.O. Date</label>
-              <div className="relative">
-                <input value={poDate} onChange={(e) => setPoDate(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="P.O. Date" value={poDate} onValueChange={setPoDate} className={DOC_FIELD} />
           )}
           {show("Recipient name") && <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" className={DOC_FIELD} />}
           {show("Salesperson") && <input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson" className={DOC_FIELD} />}
@@ -596,13 +580,7 @@ export const CreateDocForm: React.FC<{
             </select>
           </div>
           {isRecurringActive(recurring) ? (
-            <div className="relative fl-wrap">
-              <label className="fl-label">Up to</label>
-              <div className="relative">
-                <input value={recurringUntil} onChange={(e) => setRecurringUntil(e.target.value)} placeholder=" " className={DOC_FIELD} />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+            <AppDatePicker floatingLabel="Up to" value={recurringUntil} onValueChange={setRecurringUntil} className={DOC_FIELD} />
           ) : (
             <div className="hidden md:block" aria-hidden />
           )}

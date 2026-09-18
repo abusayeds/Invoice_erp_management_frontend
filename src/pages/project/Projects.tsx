@@ -43,6 +43,7 @@ import {
   type BoardBug,
   type StageRow,
 } from "@/services/projectApi";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const fmt = (n: number) =>
   `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -235,11 +236,11 @@ const CreateProjectModal: React.FC<{
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={label}>Start *</label>
-            <input type="date" className={field} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <AppDatePicker className={field} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
           <div>
             <label className={label}>End *</label>
-            <input type="date" className={field} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <AppDatePicker className={field} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -876,8 +877,8 @@ const MilestoneModal: React.FC<{
         <div><label className={label}>Title *</label><input className={field} value={title} onChange={(e) => setTitle(e.target.value)} /></div>
         <div><label className={label}>Cost</label><input className={field} value={cost} onChange={(e) => setCost(e.target.value)} /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className={label}>Start</label><input type="date" className={field} value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
-          <div><label className={label}>End</label><input type="date" className={field} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
+          <div><label className={label}>Start</label><AppDatePicker className={field} value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
+          <div><label className={label}>End</label><AppDatePicker className={field} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

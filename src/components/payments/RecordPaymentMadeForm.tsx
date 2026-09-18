@@ -4,13 +4,14 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Check, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { fetchBills, updateBill, type BillListRow } from "@/services/billsApi";
 import { createVendorPayment } from "@/services/vendorPaymentsApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 export type PaymentMadePrefillBill = {
   _id: string;
@@ -452,10 +453,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500">Payment date</label>
-              <div className="relative">
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} pr-10`} />
-                <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-              </div>
+              <AppDatePicker value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass} />
             </div>
             <div>
               <label className="text-xs text-gray-500">Payment Type</label>

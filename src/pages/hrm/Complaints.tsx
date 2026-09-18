@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
 import { complaintHooks, hrmStatusActions } from "@/services/hrm";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -547,8 +548,7 @@ export const Complaints: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Complaint Date *
             </label>
-            <input
-              type="date"
+            <AppDatePicker
               value={complaintFormData.complaintDate}
               onChange={(e) =>
                 setComplaintFormData({

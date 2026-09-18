@@ -57,6 +57,7 @@ import {
   Mail,
   Clock,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const activityIcon = (kind: LeadActivity["kind"]) => {
   switch (kind) {
@@ -819,7 +820,7 @@ export const DealDetail: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date <span className="text-red-500">*</span></label>
-                  <input type="date" value={taskForm.date} onChange={(e) => setTaskForm({ ...taskForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                  <AppDatePicker value={taskForm.date} onChange={(e) => setTaskForm({ ...taskForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>

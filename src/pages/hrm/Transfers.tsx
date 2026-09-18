@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useResourceData } from "@/hooks/useResourceData";
 import { employeeTransferHooks, hrmStatusActions } from "@/services/hrm";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -552,8 +553,7 @@ export const EmployeeTransfers: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Effective Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={transferFormData.effectiveDate}
                 onChange={(e) =>
                   setTransferFormData({

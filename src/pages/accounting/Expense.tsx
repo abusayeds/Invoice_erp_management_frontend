@@ -22,6 +22,7 @@ import {
 import { Field, inputCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, CheckCircle2, Send } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STATUS_CHIP: Record<string, string> = {
   Draft: "bg-gray-600 text-white",
@@ -235,7 +236,7 @@ export const Expense: React.FC = () => {
         <ModalShell title={modal === "edit" ? "Edit Expense" : "Create Expense"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"} wide>
           <div className="space-y-4">
             <Field label="Date" required>
-              <input type="date" value={draft.expense_date} onChange={(e) => setDraft({ ...draft, expense_date: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.expense_date} onChange={(e) => setDraft({ ...draft, expense_date: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Category" required>
               <AsyncSearchSelect value={draft.category_id} displayName={draft.category_name} onChange={(id, opt) => setDraft({ ...draft, category_id: id, category_name: opt?.name || "" })} onSearch={searchExpenseCategories} placeholder="Search categories…" />

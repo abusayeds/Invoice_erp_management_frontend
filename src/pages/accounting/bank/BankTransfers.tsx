@@ -19,6 +19,7 @@ import {
 import { Field, inputCls, AsyncSearchSelect } from "../../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip } from "../../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, Send } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const STATUS_CHIP: Record<string, string> = {
   Pending: "bg-amber-100 text-amber-700",
@@ -237,7 +238,7 @@ export const BankTransfers: React.FC = () => {
         <ModalShell title={modal === "edit" ? "Edit Transfer" : "Create Transfer"} onClose={() => setModal(null)} onSubmit={submit} submitLabel={modal === "edit" ? "Update" : "Create"} wide>
           <div className="space-y-4">
             <Field label="Transfer Date" required>
-              <input type="date" value={draft.transfer_date} onChange={(e) => setDraft({ ...draft, transfer_date: e.target.value })} className={inputCls} />
+              <AppDatePicker value={draft.transfer_date} onChange={(e) => setDraft({ ...draft, transfer_date: e.target.value })} className={inputCls} />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="From Account" required>

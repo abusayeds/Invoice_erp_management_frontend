@@ -22,6 +22,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell, chip, STATUS_CHIP } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2, Mail, Check, UserPlus } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const emptyDraft = () => ({
   id: "",
@@ -367,24 +368,21 @@ export const Offers: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Offer date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.offerDate}
                   onChange={(e) => setDraft({ ...draft, offerDate: e.target.value })}
                   className={inputCls}
                 />
               </Field>
               <Field label="Start date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.startDate}
                   onChange={(e) => setDraft({ ...draft, startDate: e.target.value })}
                   className={inputCls}
                 />
               </Field>
               <Field label="Expiration" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.expirationDate}
                   onChange={(e) => setDraft({ ...draft, expirationDate: e.target.value })}
                   className={inputCls}

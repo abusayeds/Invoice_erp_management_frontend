@@ -41,6 +41,7 @@ import {
   Users,
   Sparkles,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -566,8 +567,7 @@ export const Leads: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Follow Up Date <span className="text-red-500">*</span>
             </label>
-            <input
-              type="date"
+            <AppDatePicker
               value={formData.followUpDate}
               onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"

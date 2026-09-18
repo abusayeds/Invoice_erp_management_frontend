@@ -19,6 +19,7 @@ import {
 import { Field, inputCls, selectCls, AsyncSearchSelect } from "../hrm/hrmShared";
 import { ListShell, DeleteConfirm, ModalShell } from "../goal/goalShared";
 import { ArrowUpDown, Edit, Trash2 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const emptyDraft = () => ({
   id: "",
@@ -361,8 +362,7 @@ export const Candidates: React.FC = () => {
                 </select>
               </Field>
               <Field label="Application date">
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.applicationDate}
                   onChange={(e) => setDraft({ ...draft, applicationDate: e.target.value })}
                   className={inputCls}
@@ -378,8 +378,7 @@ export const Candidates: React.FC = () => {
                 />
               </Field>
               <Field label="DOB">
-                <input
-                  type="date"
+                <AppDatePicker
                   value={draft.dob}
                   onChange={(e) => setDraft({ ...draft, dob: e.target.value })}
                   className={inputCls}

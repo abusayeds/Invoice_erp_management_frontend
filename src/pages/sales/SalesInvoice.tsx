@@ -36,6 +36,8 @@ import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { todayIso } from "@/lib/dateIso";
 import {
   Search,
   Plus,
@@ -718,8 +720,8 @@ const CreateInvoiceModal: React.FC<{ onClose: () => void; onSaved: (id: number) 
     [products, services],
   );
   const [customerId, setCustomerId] = useState<number | "">("");
-  const [date, setDate] = useState("Jun 22, 2026");
-  const [due, setDue] = useState("Jun 29, 2026");
+  const [date, setDate] = useState(todayIso());
+  const [due, setDue] = useState(todayIso());
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<DraftRow[]>([{ key: "", name: "", qty: 1, rate: 0, taxId: 1 }]);
 
@@ -770,8 +772,8 @@ const CreateInvoiceModal: React.FC<{ onClose: () => void; onSaved: (id: number) 
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500">Invoice date</label><input value={date} onChange={(e) => setDate(e.target.value)} className={`mt-1 ${fc}`} /></div>
-            <div><label className="text-xs text-gray-500">Due date</label><input value={due} onChange={(e) => setDue(e.target.value)} className={`mt-1 ${fc}`} /></div>
+            <div><label className="text-xs text-gray-500">Invoice date</label><AppDatePicker value={date} onValueChange={setDate} className={`mt-1 ${fc}`} /></div>
+            <div><label className="text-xs text-gray-500">Due date</label><AppDatePicker value={due} onValueChange={setDue} className={`mt-1 ${fc}`} /></div>
           </div>
 
           <div className="border border-gray-200 rounded-md overflow-hidden">

@@ -34,6 +34,7 @@ import {
   useHrmSearchListParams,
 } from "./hrmShared";
 import { eventHooks, hrmStatusActions } from "@/services/hrm";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -538,8 +539,7 @@ export const Events: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={eventFormData.startDate}
                 onChange={(e) =>
                   setEventFormData({
@@ -554,8 +554,7 @@ export const Events: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 End Date *
               </label>
-              <input
-                type="date"
+              <AppDatePicker
                 value={eventFormData.endDate}
                 onChange={(e) =>
                   setEventFormData({

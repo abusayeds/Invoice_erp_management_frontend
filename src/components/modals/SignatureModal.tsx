@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { RotateCcw, Upload, Calendar } from "lucide-react";
+import { RotateCcw, Upload } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { todayIso } from "@/lib/dateIso";
 
 interface SignatureModalProps {
   onClose: () => void;
@@ -27,7 +29,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [name, setName] = useState(defaultName);
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(() => new Date().toLocaleDateString("en-US"));
+  const [date, setDate] = useState(() => todayIso());
   const [authorizedSig, setAuthorizedSig] = useState(authorizedLabel);
   const [authorizedChecked, setAuthorizedChecked] = useState(true);
   const [penColor, setPenColor] = useState("#000000");
@@ -207,16 +209,12 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               placeholder="Title"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-gray-400"
             />
-            <div className="relative">
-              <input
-                type="text"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                placeholder="Date*"
-                className="w-full px-3 py-2 pr-9 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-gray-400"
-              />
-              <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
+            <AppDatePicker
+              value={date}
+              onValueChange={setDate}
+              placeholder="Date*"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-gray-400"
+            />
           </div>
 
           {/* Authorized Signature row */}

@@ -33,6 +33,7 @@ import {
   ArrowLeftToLine,
   Clock,
 } from "lucide-react";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 const MONTHS = [
   "January",
@@ -579,8 +580,7 @@ export const Attendances: React.FC = () => {
                 />
               </Field>
               <Field label="Date" required>
-                <input
-                  type="date"
+                <AppDatePicker
                   value={createDraft.date}
                   onChange={(e) => setCreateDraft({ ...createDraft, date: e.target.value })}
                   className={inputCls}
@@ -642,7 +642,7 @@ export const Attendances: React.FC = () => {
                 <input value={editCell.emp.name} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
               </Field>
               <Field label="Date" required>
-                <input type="date" value={editCell.date} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
+                <AppDatePicker value={editCell.date} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
               </Field>
               <Field label="Status">
                 <select

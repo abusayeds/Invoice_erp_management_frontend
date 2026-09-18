@@ -24,6 +24,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, DocPreview, PdfPreviewModal } from "@/lib/db";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { RecordPaymentMadeForm, type PaymentMadePrefill } from "@/components/payments/RecordPaymentMadeForm";
 import { showToast } from "@/utils/toast";
 import {
@@ -42,7 +43,6 @@ import {
   Trash2,
   MessageCircle,
   Settings,
-  Calendar,
 } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
 
@@ -160,7 +160,7 @@ const EditModal: React.FC<{ onClose: () => void; p: Payment }> = ({ onClose, p }
           <div><label className="text-xs text-gray-500">Vendor *</label><input defaultValue={p.name} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500">Payment date *</label>
-              <div className="relative mt-1"><input defaultValue="6/21/2026" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /><Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></div>
+              <div className="mt-1"><AppDatePicker defaultValue="2026-06-21" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" /></div>
             </div>
             <div><label className="text-xs text-gray-500">Type *</label>
               <select defaultValue={p.method} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">{[p.method, ...paymentTypes.filter((t) => t !== p.method)].map((m) => <option key={m}>{m}</option>)}</select>

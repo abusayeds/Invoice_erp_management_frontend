@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
+import { Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { showToast } from "@/utils/toast";
 import { useCollection } from "@/lib/db";
@@ -19,6 +19,7 @@ import {
 } from "@/services/paymentReceivedApi";
 import type { PaymentMethodOption } from "@/services/paymentMethodsApi";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
+import { AppDatePicker } from "@/components/ui/AppDatePicker";
 
 interface InvoicePaymentsModalProps {
   open: boolean;
@@ -817,10 +818,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                           <label className="text-xs text-gray-500">Payment date</label>
-                          <div className="relative">
-                            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={`${fieldClass} pr-10`} />
-                            <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                          </div>
+                          <AppDatePicker value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={fieldClass} />
                         </div>
                         <div>
                           <label className="text-xs text-gray-500">Payment Type</label>
