@@ -28,6 +28,7 @@ import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchSalesReceipt, fetchSalesReceipts, hardDeleteSalesReceipt, hardDeleteSalesReceipts, restoreSalesReceipts } from "@/services/salesReceiptsApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import {
   Search,
   Plus,
@@ -537,7 +538,12 @@ export const SalesReceipts: React.FC = () => {
         <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
-              <div className="min-w-0"><h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1><button className="text-xs text-blue-600 hover:text-blue-700 underline">{selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || "View Contact"}</button></div>
+              <DocPartyHeader
+                party="customer"
+                partyId={partyIdFromRef(selectedDoc?.customer_id) || partyIdFromRef((selectedCustomer as any)._id)}
+                title={selected.name}
+                subtitle={selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || ""}
+              />
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Sales Receipt ${selectedDb.number} printed.`); setModal("preview"); } }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>)}
                 <Dropdown align="right" panelClass="w-56" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>

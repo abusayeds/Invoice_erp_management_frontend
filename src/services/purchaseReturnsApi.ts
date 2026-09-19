@@ -6,6 +6,7 @@ export type PurchaseReturnListRow = {
   _id: string;
   number: string;
   vendorName: string;
+  vendorId: string;
   invoice: string;
   note: string;
   reason: string;
@@ -23,6 +24,12 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+const vendorIdOf = (doc: any): string => {
+  const v = doc?.vendor_id;
+  if (v && typeof v === "object") return text(v._id);
+  return text(v);
+};
+
 const mapPurchaseReturn = (doc: any): PurchaseReturnListRow => {
   const inv =
     text(doc?.purchase_invoice_id?.invoice_number) ||
@@ -38,6 +45,7 @@ const mapPurchaseReturn = (doc: any): PurchaseReturnListRow => {
       text(doc?.vendor_id?.name) ||
       text(doc?.vendor_name) ||
       "—",
+    vendorId: vendorIdOf(doc),
     invoice: inv ? (inv.startsWith("#") ? inv : `#${inv}`) : "—",
     note: text(doc.notes) || "No Notes",
     reason: text(doc.return_reason || doc.reason) || "",

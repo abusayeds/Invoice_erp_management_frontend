@@ -30,8 +30,10 @@ import {
   hardDeleteProformaInvoice,
   hardDeleteProformaInvoices,
   restoreProformaInvoices,
+  proformaCustomerId,
   type BackendProformaInvoiceDoc,
 } from "@/services/proformaInvoicesApi";
+import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import {
   Search,
   Plus,
@@ -744,8 +746,12 @@ export const ProformaInvoices: React.FC = () => {
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <div className="min-w-0">
-                <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
-                <button className="text-xs text-blue-600 hover:text-blue-700 underline">{selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || "View Contact"}</button>
+                <DocPartyHeader
+                  party="customer"
+                  partyId={proformaCustomerId(selectedDoc) || partyIdFromRef((selectedCustomer as any)._id)}
+                  title={selected.name}
+                  subtitle={selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || ""}
+                />
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {[

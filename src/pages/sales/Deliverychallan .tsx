@@ -20,7 +20,8 @@ import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { deleteDeliveryChallan, hardDeleteDeliveryChallan, hardDeleteDeliveryChallans, restoreDeliveryChallans, fetchDeliveryChallan, fetchDeliveryChallans, updateDeliveryChallan, type BackendDeliveryChallanDoc } from "@/services/deliveryChallansApi";
+import { deleteDeliveryChallan, hardDeleteDeliveryChallan, hardDeleteDeliveryChallans, restoreDeliveryChallans, fetchDeliveryChallan, fetchDeliveryChallans, updateDeliveryChallan, deliveryChallanCustomerId, type BackendDeliveryChallanDoc } from "@/services/deliveryChallansApi";
+import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import { Search, Plus, ChevronDown, ChevronRight, Check, Settings, SlidersHorizontal, Pencil, PenTool, Eye, Printer, Mail, MoreVertical, Trash2, MessageCircle, CircleChevronUp, CircleChevronDown, RotateCcw } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
 
@@ -529,8 +530,12 @@ export const DeliveryChallan: React.FC = () => {
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
               <div className="min-w-0">
-                <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
-                <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>
+                <DocPartyHeader
+                  party="customer"
+                  partyId={deliveryChallanCustomerId(selectedDoc) || partyIdFromRef((selectedCustomer as any)?._id)}
+                  title={selected.name}
+                  subtitle={selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || ""}
+                />
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (

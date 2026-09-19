@@ -6,6 +6,7 @@ export type DebitNoteListRow = {
   _id: string;
   number: string;
   vendorName: string;
+  vendorId: string;
   note: string;
   amount: number;
   dateLabel: string;
@@ -22,6 +23,12 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+const vendorIdOf = (doc: any): string => {
+  const v = doc?.vendor_id;
+  if (v && typeof v === "object") return text(v._id);
+  return text(v);
+};
+
 const mapDebitNote = (doc: any): DebitNoteListRow => ({
   _id: String(doc._id),
   number: text(doc.invoice_number || doc.debit_note_number || doc.number) || "—",
@@ -30,6 +37,7 @@ const mapDebitNote = (doc: any): DebitNoteListRow => ({
     text(doc?.vendor_id?.name) ||
     text(doc?.vendor_name) ||
     "—",
+  vendorId: vendorIdOf(doc),
   note: text(doc.notes) || "No Notes",
   amount: num(doc.total ?? doc.grand_total),
   dateLabel: formatDate(doc.date || doc.createdAt),

@@ -45,8 +45,11 @@ import {
   Underline,
   SlidersHorizontal,
   Merge,
+  Settings,
 } from "lucide-react";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
+import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { PartyStatementModal, type StatementConfig } from "@/components/modals/PartyStatementModal";
 import { PdfDocPreview } from "@/lib/db/PdfDocPreview";
 import { usePdfSettings, getPdfSettings } from "@/lib/db/pdfSettings";
 import { TabSlide } from "@/components/ui/TabSlide";
@@ -214,42 +217,6 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
     </div>
   );
 };
-
-/* ── Statement config modal ────────────────────────────────────────── */
-const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ onClose, onGo }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-md my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-semibold text-gray-900">Statement</h3>
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onGo} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Go</button>
-        </div>
-      </div>
-      <div className="p-5 space-y-4">
-        <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-          {["All", "Outstanding", "Custom"].map((o) => <option key={o}>{o}</option>)}
-        </select>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500">Start Date</label>
-            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">End Date</label>
-            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-        </div>
-        <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-          {["All Transactions", "Invoices", "Payments"].map((o) => <option key={o}>{o}</option>)}
-        </select>
-        <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-          {["PDF", "CSV", "Excel"].map((o) => <option key={o}>{o}</option>)}
-        </select>
-      </div>
-    </div>
-  </Overlay>
-);
 
 /* ── Statement preview ─────────────────────────────────────────────── */
 const StatementPreview: React.FC<{
@@ -716,7 +683,8 @@ export const Customers: React.FC = () => {
   }, [openCreateFromNav, location.pathname, navigate]);
   const [editMode, setEditMode] = useState(false);
   const [tab, setTab] = useState<"Overview" | "Details" | "Settings">("Overview");
-  const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "pdfSettings">(null);
+  const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "pdfSettings" | "settings">(null);
+  const [statementConfig, setStatementConfig] = useState<StatementConfig | null>(null);
   const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -972,6 +940,7 @@ export const Customers: React.FC = () => {
             <div className="flex items-center gap-0.5">
               <button type="button" title="Search" onClick={() => focusNavbarSearch("Customers")} className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select customers"><Pencil className="w-4 h-4 text-gray-500" /></button>
+              <button type="button" title="Settings" onClick={() => setModal("settings")} className="p-1.5 hover:bg-gray-100 rounded-md"><Settings className="w-4 h-4 text-gray-500" /></button>
               <Dropdown align="right" trigger={<span className="p-1.5 hover:bg-gray-100 rounded-md inline-flex cursor-pointer"><MoreVertical className="w-4 h-4 text-gray-500" /></span>}>{(close) => (<><button onClick={() => { openListImport("contacts"); close(); }} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Import</button><button onClick={() => { openListExport("contacts"); close(); }} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Export</button></>)}</Dropdown>
             </div>
           </div>
@@ -1084,6 +1053,7 @@ export const Customers: React.FC = () => {
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-0.5">
               <button onClick={() => setEditMode(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Edit"><Pencil className="w-4 h-4" /></button>
+              <button onClick={() => setModal("settings")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Settings"><Settings className="w-4 h-4" /></button>
               <button onClick={() => setModal("payment")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Add Payment"><DollarSign className="w-4 h-4" /></button>
               <button onClick={() => setModal("statement")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Statement"><FileText className="w-4 h-4" /></button>
               <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><MoreVertical className="w-4 h-4" /></span>}>
@@ -1280,7 +1250,19 @@ export const Customers: React.FC = () => {
           }}
         />
       )}
-      {modal === "statement" && <StatementModal onClose={() => setModal(null)} onGo={() => setModal("preview")} />}
+      {modal === "statement" && (
+        <PartyStatementModal
+          party="customer"
+          onClose={() => setModal(null)}
+          onExport={(config) => {
+            setStatementConfig(config);
+            if (config.exportFormat !== "PDF") {
+              showToast(`${config.exportFormat} export coming soon — opening PDF preview`, "info");
+            }
+            setModal("preview");
+          }}
+        />
+      )}
       {modal === "preview" && selected && (
         <StatementPreview
           onClose={() => setModal(null)}
@@ -1293,15 +1275,32 @@ export const Customers: React.FC = () => {
             docTitle: "STATEMENT",
             partyLabel: "Statement To",
             partyLines: [selected.name, doc?.email, doc?.phone].filter(Boolean) as string[],
-            meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance]],
+            meta: [
+              ["Amount", stmtSummary.amount],
+              ["Paid", stmtSummary.paid],
+              ["Balance", stmtSummary.balance],
+              ...(statementConfig?.dateFrom ? [["From", statementConfig.dateFrom] as [string, string]] : []),
+              ...(statementConfig?.dateTo ? [["To", statementConfig.dateTo] as [string, string]] : []),
+              ...(statementConfig?.dataType ? [["Type", statementConfig.dataType] as [string, string]] : []),
+              ...(statementConfig?.status ? [["Status", statementConfig.status] as [string, string]] : []),
+            ],
             itemHead: ["Date", "Details", "Amount", "Paid", "Balance"],
             itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"]],
+            note: statementConfig?.message
+              ? {
+                  label: statementConfig.messagePlacement === "top" ? "Statement Message" : "Statement Message",
+                  value: statementConfig.message,
+                }
+              : undefined,
             settings: await getPdfSettings("statement", "normal"),
           })}
         />
       )}
       {modal === "pdfSettings" && selected && (
         <PdfPrintSettingsModal onClose={() => setModal("preview")} initialDocType="statement" partyId={selected.id} />
+      )}
+      {modal === "settings" && (
+        <AppSettingsModal initialTab="Customer" onClose={() => setModal(null)} />
       )}
       {(selAction === "merge" || selAction === "mergeConfirm") && (
         <MergeCustomersModal

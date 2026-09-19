@@ -26,6 +26,7 @@ import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { useCollection, repo, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import {
   Search,
   Plus,
@@ -64,6 +65,7 @@ interface Return {
   id: string;
   backendId: string;
   name: string;
+  vendorId: string;
   number: string;
   invoice: string;
   note: string;
@@ -87,6 +89,7 @@ const mapReturnRow = (row: PurchaseReturnListRow): Return => ({
   id: row._id,
   backendId: row._id,
   name: row.vendorName,
+  vendorId: row.vendorId || "",
   number: row.number.startsWith("#") ? row.number : `#${String(row.number).replace(/^#/, "")}`,
   invoice: row.invoice,
   note: row.note,
@@ -506,6 +509,15 @@ export const PurchaseReturns: React.FC = () => {
   const selected = returns.find((i) => i.id === selectedId) || returns[0];
   const selectedDb: any =
     dbReturns.find((d) => String(d._id) === selected?.backendId || String(d.id) === selectedId) || {};
+  const selectedVendor: any =
+    dbVendors.find((v) => String(v._id) === selected?.vendorId) ||
+    dbVendors.find((v) => v.id === selectedDb.vendorId) ||
+    {};
+  const partyBackendId =
+    selected?.vendorId ||
+    partyIdFromRef(selectedVendor._id) ||
+    partyIdFromRef(selectedDb.vendorId) ||
+    "";
 
   useEffect(() => {
     if (returns.length > 0 && !returns.some((p) => p.id === selectedId)) {
@@ -657,10 +669,13 @@ export const PurchaseReturns: React.FC = () => {
         <section className="module-detail-panel custom-scrollbar">
           <div className="relative flex-1 overflow-hidden flex flex-col">
             <div className="module-title-bar">
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
-                <button className="text-xs text-blue-600 hover:text-blue-700 underline">View Contact</button>
-              </div>
+              <DocPartyHeader
+                party="vendor"
+                partyId={partyBackendId}
+                title={selected?.name}
+                subtitle={selectedVendor.contact || selectedVendor.email || ""}
+                titleClassName="text-lg font-semibold text-gray-900 truncate"
+              />
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (
                   <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><a.icon className="w-4 h-4" /></button>

@@ -29,10 +29,14 @@ import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useCollection, repo, nextNumber, money as fmtMoney } from "@/lib/db";
 import { CreateInvoiceForm } from "./CreateInvoiceForm";
-import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, type BackendInvoiceDoc } from "@/services/invoicesApi";
+import { fetchInvoice, fetchInvoices, updateInvoice, hardDeleteInvoice, hardDeleteInvoices, restoreInvoices, invoiceCustomerId, type BackendInvoiceDoc } from "@/services/invoicesApi";
 import { fetchPaymentMethods, type PaymentMethodOption } from "@/services/paymentMethodsApi";
 import { resolveMediaUrl } from "@/lib/env";
 import { InvoicePaymentsModal } from "@/components/modals/InvoicePaymentsModal";
+import {
+  DocPartyHeader,
+  partyIdFromRef,
+} from "@/components/modals/PartyDetailModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
 import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
@@ -950,6 +954,11 @@ export const SalesInvoice: React.FC = () => {
     placeholderData: (prev) => prev,
   });
 
+  const partyBackendId =
+    invoiceCustomerId(selectedInvoiceDoc) ||
+    partyIdFromRef(selectedCustomer._id) ||
+    "";
+
   const detailLines = useMemo<DetailLine[]>(() => {
     const products = (selectedInvoiceDoc?.product ?? []).map((item, index) => ({
       id: `p-${index}`,
@@ -1512,10 +1521,12 @@ export const SalesInvoice: React.FC = () => {
       <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col m-2 bg-white border border-gray-300 shadow-sm">
           <div className="relative flex-1 flex flex-col min-h-0">
             <div className="h-12 flex items-center justify-between gap-3 px-6 border-b border-gray-300 bg-gray-100">
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
-              <button className="text-xs text-blue-600 hover:text-blue-700 underline">{customerDisplaySubtitle(selectedCustomer) || "View Contact"}</button>
-            </div>
+            <DocPartyHeader
+              party="customer"
+              partyId={partyBackendId}
+              title={selected?.name}
+              subtitle={customerDisplaySubtitle(selectedCustomer) || selected?.customerSubtitle || ""}
+            />
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {actionIcons.map((a) => (
                 <button

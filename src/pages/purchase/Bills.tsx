@@ -32,6 +32,7 @@ import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal
 import { ActivityLogModal } from "@/components/modals/ActivityLogModal";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { BillPaymentsModal, type BillPaymentDoc } from "@/components/modals/BillPaymentsModal";
+import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
 import {
@@ -656,10 +657,13 @@ export const Bills: React.FC = () => {
           <div className="relative flex-1 overflow-hidden flex flex-col">
             {/* header */}
             <div className="module-title-bar">
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">{selected.name}</h1>
-                <button className="text-xs text-blue-600 hover:text-blue-700 underline">{selectedVendor.contact || selectedVendor.email || "View Contact"}</button>
-              </div>
+              <DocPartyHeader
+                party="vendor"
+                partyId={selectedBillRow?.vendorId || partyIdFromRef(selectedVendor._id)}
+                title={selected.name}
+                subtitle={selectedVendor.contact || selectedVendor.email || ""}
+                titleClassName="text-lg font-semibold text-gray-900 truncate"
+              />
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (
                   <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><a.icon className="w-4 h-4" /></button>

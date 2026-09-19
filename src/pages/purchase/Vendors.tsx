@@ -38,6 +38,8 @@ import { RecentActivities } from "@/components/ui/RecentActivities";
 import { showToast } from "@/utils/toast";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
+import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
+import { PartyStatementModal, type StatementConfig } from "@/components/modals/PartyStatementModal";
 import {
   Search,
   Plus,
@@ -60,6 +62,7 @@ import {
   Bold,
   Italic,
   Underline,
+  Settings,
 } from "lucide-react";
 import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToolbarEvents";
 import { useAppSettings, isVendorFieldVisible } from "@/lib/db/appSettings";
@@ -250,44 +253,6 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
     </div>
   );
 };
-
-/* ── Statement config modal ────────────────────────────────────── */
-const StatementModal: React.FC<{ onClose: () => void; onGo: () => void }> = ({ onClose, onGo }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-md my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-        <h3 className="text-base font-semibold text-gray-900">Statement</h3>
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onGo} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Go</button>
-        </div>
-      </div>
-      <div className="p-5 space-y-4">
-        <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-          {["All", "Outstanding", "Custom"].map((o) => <option key={o}>{o}</option>)}
-        </select>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500">Start Date</label>
-            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">End Date</label>
-            <AppDatePicker className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white" />
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <select className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-            {["All Transactions", "Bills", "Payments"].map((o) => <option key={o}>{o}</option>)}
-          </select>
-          <select className="px-3 py-2 border border-gray-200 rounded-md text-sm bg-white">
-            {["PDF", "CSV", "XLSX"].map((o) => <option key={o}>{o}</option>)}
-          </select>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
 
 /* ── Statement preview (white document) ────────────────────────── */
 interface StmtRow { date: string; details: string; amount: string; paid: string; balance: string }
@@ -648,7 +613,8 @@ export const Vendors: React.FC = () => {
   const venPayments = vendorPaymentsData?.rows ?? [];
 
   const [activityFilter, setActivityFilter] = useState("All");
-  const [modal, setModal] = useState<null | "payment" | "statement" | "preview">(null);
+  const [modal, setModal] = useState<null | "payment" | "statement" | "preview" | "settings">(null);
+  const [statementConfig, setStatementConfig] = useState<StatementConfig | null>(null);
   const [selAction, setSelAction] = useState<null | "merge" | "mergeConfirm" | "archive" | "delete">(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -917,6 +883,7 @@ export const Vendors: React.FC = () => {
             <div className="flex items-center gap-0.5">
               <button type="button" title="Search" onClick={() => focusNavbarSearch("Vendors")} className="p-1.5 hover:bg-gray-100 rounded-md"><Search className="w-4 h-4 text-gray-500" /></button>
               <button onClick={() => setSelectMode(true)} className="p-1.5 hover:bg-gray-100 rounded-md" title="Select vendors"><Pencil className="w-4 h-4 text-gray-500" /></button>
+              <button type="button" title="Settings" onClick={() => setModal("settings")} className="p-1.5 hover:bg-gray-100 rounded-md"><Settings className="w-4 h-4 text-gray-500" /></button>
               <Dropdown align="right" trigger={<span className="p-1.5 hover:bg-gray-100 rounded-md inline-flex cursor-pointer"><MoreVertical className="w-4 h-4 text-gray-500" /></span>}>{(close) => (<><button onClick={() => { openListImport("contacts"); close(); }} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Import</button><button onClick={() => { openListExport("contacts"); close(); }} className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">Export</button></>)}</Dropdown>
             </div>
           </div>
@@ -1006,6 +973,7 @@ export const Vendors: React.FC = () => {
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-0.5">
               <button onClick={() => setEditMode(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Edit"><Pencil className="w-4 h-4" /></button>
+              <button onClick={() => setModal("settings")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Settings"><Settings className="w-4 h-4" /></button>
               <button onClick={() => setModal("payment")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Add Payment"><DollarSign className="w-4 h-4" /></button>
               <button onClick={() => setModal("statement")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="Statement"><FileText className="w-4 h-4" /></button>
               <Dropdown align="right" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600" title="More"><MoreVertical className="w-4 h-4" /></span>}>
@@ -1213,7 +1181,22 @@ export const Vendors: React.FC = () => {
           }}
         />
       )}
-      {modal === "statement" && <StatementModal onClose={() => setModal(null)} onGo={() => setModal("preview")} />}
+      {modal === "statement" && (
+        <PartyStatementModal
+          party="vendor"
+          onClose={() => setModal(null)}
+          onExport={(config) => {
+            setStatementConfig(config);
+            if (config.exportFormat !== "PDF") {
+              showToast(`${config.exportFormat} export coming soon — opening PDF preview`, "info");
+            }
+            setModal("preview");
+          }}
+        />
+      )}
+      {modal === "settings" && (
+        <AppSettingsModal initialTab="Vendor" onClose={() => setModal(null)} />
+      )}
       {modal === "preview" && selected && (
         <StatementPreview
           onClose={() => setModal(null)}
@@ -1226,9 +1209,20 @@ export const Vendors: React.FC = () => {
             docTitle: "STATEMENT",
             partyLabel: "Statement To",
             partyLines: [selected.name, doc?.email, doc?.phone].filter(Boolean) as string[],
-            meta: [["Amount", stmtSummary.amount], ["Paid", stmtSummary.paid], ["Balance", stmtSummary.balance], ["From", "Apr 27, 2026"], ["To", "Jun 22, 2026"]],
+            meta: [
+              ["Amount", stmtSummary.amount],
+              ["Paid", stmtSummary.paid],
+              ["Balance", stmtSummary.balance],
+              ...(statementConfig?.dateFrom ? [["From", statementConfig.dateFrom] as [string, string]] : []),
+              ...(statementConfig?.dateTo ? [["To", statementConfig.dateTo] as [string, string]] : []),
+              ...(statementConfig?.dataType ? [["Type", statementConfig.dataType] as [string, string]] : []),
+              ...(statementConfig?.status ? [["Status", statementConfig.status] as [string, string]] : []),
+            ],
             itemHead: ["Date", "Details", "Amount", "Paid", "Balance"],
             itemRows: [["—", "Opening Balance", "$0.00", "$0.00", "$0.00"], ...stmtRows.map((r) => [r.date, r.details, r.amount, r.paid, r.balance]), ["", "Total", stmtSummary.amount, stmtSummary.paid, stmtSummary.balance]],
+            note: statementConfig?.message
+              ? { label: "Statement Message", value: statementConfig.message }
+              : undefined,
           })}
         />
       )}
