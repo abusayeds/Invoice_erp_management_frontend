@@ -137,6 +137,17 @@ export const AppDatePicker = React.forwardRef<HTMLInputElement, AppDatePickerPro
       setOpen(true);
     };
 
+    const closeCalendar = () => {
+      setOpen(false);
+      setMonthMenu(false);
+    };
+
+    const toggleCalendar = () => {
+      if (disabled || readOnly) return;
+      if (open) closeCalendar();
+      else openCalendar();
+    };
+
     useEffect(() => {
       if (!open) return;
       const onDoc = (e: MouseEvent) => {
@@ -359,9 +370,13 @@ export const AppDatePicker = React.forwardRef<HTMLInputElement, AppDatePickerPro
             onFocus={(e) => {
               onFocus?.(e);
             }}
+            onClick={() => {
+              toggleCalendar();
+            }}
             onChange={(e) => {
               const v = e.target.value;
               setText(v);
+              if (open) closeCalendar();
               // Live-commit only when already a valid ISO so API state stays clean
               if (v === "" || isIsoDate(v)) {
                 if (!controlled) setInner(v);
@@ -379,13 +394,23 @@ export const AppDatePicker = React.forwardRef<HTMLInputElement, AppDatePickerPro
               onBlur?.(e);
             }}
             onKeyDown={(e) => {
+              // Typing closes the calendar if open
+              if (
+                open &&
+                e.key.length === 1 &&
+                !e.ctrlKey &&
+                !e.metaKey &&
+                !e.altKey
+              ) {
+                closeCalendar();
+              }
               if (e.key === "ArrowDown" && !open) {
                 e.preventDefault();
                 openCalendar();
               }
               if (e.key === "Escape" && open) {
                 e.preventDefault();
-                setOpen(false);
+                closeCalendar();
               }
               onKeyDown?.(e);
             }}
@@ -396,7 +421,11 @@ export const AppDatePicker = React.forwardRef<HTMLInputElement, AppDatePickerPro
               tabIndex={-1}
               disabled={disabled || readOnly}
               aria-label="Open calendar"
-              onClick={() => (open ? setOpen(false) : openCalendar())}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCalendar();
+              }}
               className={[
                 "absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                 iconActive ? "text-gray-700" : "text-gray-400 hover:text-gray-600",
