@@ -15,6 +15,7 @@ import { api } from "@/lib/api/client";
 import { getToken } from "@/lib/api/tokenStore";
 import { toArray } from "@/services/_http";
 import { db, type CollectionName } from "./db";
+import { isTimelogInvoiced } from "@/lib/timelogInvoiced";
 
 /** Stable positive 32-bit hash of a Mongo id → the UI's numeric primary key. */
 export function numericId(id: string): number {
@@ -665,20 +666,67 @@ const fmtMonth = (v: unknown): string => {
   return isNaN(d.getTime()) ? "" : format(d, "MMM yyyy");
 };
 
-const mapTimelog: MapFn = (d) => ({
-  project: str(d.project),
-  task: str(d.task),
-  hours: str(d.hours) || "00:00",
-  notes: str(d.notes ?? d.details),
-  date: fmtDate(d.date ?? d.created_at),
-  month: fmtMonth(d.date ?? d.created_at),
-  ts: d.date ? new Date(str(d.date)).getTime() : Date.now(),
-  dateLabel: "",
-  invoiced: false,
-  customerId: null,
-  projectId: null,
-  taskId: null,
-});
+/** UI stores "HH:MM"; backend stores hours + minutes as separate numbers. */
+const fmtTimelogHours = (d: any): string => {
+  const raw = str(d.hours);
+  if (raw.includes(":")) return raw;
+  const h = Math.max(0, Math.floor(num(d.hours)));
+  const m = Math.max(0, Math.floor(num(d.minutes)));
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+const reverseTimelog = async (r: any) => {
+  const raw = str(r.hours || "00:00");
+  let hours = 0;
+  let minutes = 0;
+  if (raw.includes(":")) {
+    const [hh, mm] = raw.split(":");
+    hours = parseInt(hh, 10) || 0;
+    minutes = parseInt(mm, 10) || 0;
+  } else {
+    hours = Math.floor(num(r.hours));
+    minutes = Math.floor(num(r.minutes));
+  }
+  const projectName = str(r.project);
+  let project_id: string | undefined;
+  if (projectName) {
+    const rows = await db.projects.toArray();
+    const match = rows.find((p: any) => str(p.name).trim() === projectName.trim() && oid(p._id));
+    if (match) project_id = oid(match._id);
+  } else if (oid(r.projectId) || oid(r.project_id)) {
+    project_id = oid(r.projectId) || oid(r.project_id);
+  }
+  return {
+    type: "manual" as const,
+    project_name: projectName || undefined,
+    ...(project_id ? { project_id } : {}),
+    task_name: str(r.task) || undefined,
+    notes: str(r.notes),
+    hours,
+    minutes,
+    date: toIso(r.date) || todayIso(),
+    is_active: true,
+  };
+};
+
+const mapTimelog: MapFn = (d) => {
+  const dateSrc = d.date ?? d.created_at;
+  const backendId = str(d._id ?? d.id);
+  return {
+    project: str(d.project ?? d.project_name),
+    task: str(d.task ?? d.task_name),
+    hours: fmtTimelogHours(d),
+    notes: str(d.notes ?? d.details),
+    date: fmtDate(dateSrc),
+    month: fmtMonth(dateSrc),
+    ts: dateSrc ? new Date(str(dateSrc)).getTime() : Date.now(),
+    dateLabel: fmtDate(dateSrc),
+    invoiced: isTimelogInvoiced(backendId) || !!d.invoiced,
+    customerId: null,
+    projectId: oid(refId(d.project_id)) || null,
+    taskId: null,
+  };
+};
 
 const mapPaymentMade: MapFn = (d) => ({
   number: str(d.payment_number) || str(d.invoice_number),
@@ -880,13 +928,7 @@ export const SYNC_SPECS: SyncSpec[] = [
       update: (id) => `/time-log/${id}`,
       updateMethod: "patch",
       remove: (id) => `/time-log/delete/${id}`,
-      reverse: (r) => ({
-        project: str(r.project),
-        task: str(r.task),
-        hours: str(r.hours),
-        notes: str(r.notes),
-        date: toIso(r.date) || todayIso(),
-      }),
+      reverse: reverseTimelog,
     },
   },
   {

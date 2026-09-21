@@ -43,6 +43,7 @@ import useAuth from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
 import { resolveMediaUrl } from "@/lib/env";
+import { useAppTimer, toggleAppTimer, formatAppTimer } from "@/lib/timerStore";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -119,9 +120,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [logoBroken, setLogoBroken] = useState(false);
   const [isOwner, setIsOwner] = useState(true);
   const [planBadge, setPlanBadge] = useState<{ name: string; trial: boolean; expired: boolean } | null>(null);
+  const appTimer = useAppTimer();
 
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [timerSeconds, setTimerSeconds] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -192,21 +192,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       window.removeEventListener("qayd:company-changed", onCompanyChanged);
     };
   }, [loadCompany, loadPlan]);
-
-  // Working stopwatch: ticks every second while running; pause holds the value,
-  // play resumes from where it stopped.
-  useEffect(() => {
-    if (!isTimerRunning) return;
-    const id = setInterval(() => setTimerSeconds((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [isTimerRunning]);
-
-  const formatTimer = (total: number) => {
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
-  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -353,17 +338,18 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         {/* Timer pill */}
         <div className="hidden sm:flex items-center gap-2 pl-2 pr-3 py-1 bg-gray-100 border border-gray-200 rounded-full py-1.5 px-3">
           <button
-            onClick={() => setIsTimerRunning((r) => !r)}
+            type="button"
+            onClick={() => toggleAppTimer()}
             className="w-7 h-7 flex items-center justify-center rounded-full bg-white hover:bg-gray-200 shadow-sm border border-gray-200 transition-colors"
-            title={isTimerRunning ? "Pause timer" : "Start timer"}
+            title={appTimer.running ? "Pause timer" : "Start timer"}
           >
-            {isTimerRunning ? (
+            {appTimer.running ? (
               <Pause className="w-4 h-4 text-gray-700" />
             ) : (
               <Play className="w-4 h-4 text-gray-700" />
             )}
           </button>
-          <span className="text-base font-mono text-gray-700 font-medium">{formatTimer(timerSeconds)}</span>
+          <span className="text-base font-mono text-gray-700 font-medium">{formatAppTimer(appTimer.seconds)}</span>
         </div>
 
         {/* Settings */}

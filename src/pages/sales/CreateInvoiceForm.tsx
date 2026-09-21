@@ -57,7 +57,13 @@ export const CreateInvoiceForm: React.FC<{
   onSaved: (id: number) => void;
   invoice?: any;
   mode?: "invoice" | "proforma" | "estimate";
-}> = ({ onClose, onSaved, invoice, mode = "invoice" }) => {
+  prefillCustomer?: {
+    localId?: number;
+    backendId?: string;
+    name?: string;
+    email?: string;
+  };
+}> = ({ onClose, onSaved, invoice, mode = "invoice", prefillCustomer }) => {
   const isEdit = !!invoice?.id;
   const isProforma = mode === "proforma";
   const isEstimate = mode === "estimate";
@@ -115,10 +121,10 @@ export const CreateInvoiceForm: React.FC<{
     [products, services],
   );
 
-  const [custQuery, setCustQuery] = useState("");
-  const [customerId, setCustomerId] = useState<number | "">(invoice?.customerId ?? "");
-  const [customerBackendId, setCustomerBackendId] = useState<string>("");
-  const [customerEmail, setCustomerEmail] = useState<string>("");
+  const [custQuery, setCustQuery] = useState(prefillCustomer?.name || "");
+  const [customerId, setCustomerId] = useState<number | "">(invoice?.customerId ?? prefillCustomer?.localId ?? "");
+  const [customerBackendId, setCustomerBackendId] = useState<string>(prefillCustomer?.backendId || "");
+  const [customerEmail, setCustomerEmail] = useState<string>(prefillCustomer?.email || "");
   const [custOpen, setCustOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addContact, setAddContact] = useState(false);
@@ -164,7 +170,15 @@ export const CreateInvoiceForm: React.FC<{
     setBilling({ street1: p.street1 || "", street2: p.street2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", country: p.country || "" });
     setShipping({ street1: p.shipStreet1 || "", street2: p.shipStreet2 || "", city: p.shipCity || "", state: p.shipState || "", zip: p.shipZip || "", country: p.shipCountry || "" });
     if (p.email) setCustomerEmail(String(p.email));
+    if (p.name && !custQuery) setCustQuery(String(p.name));
   }, [customerId, customers]);
+  useEffect(() => {
+    if (!prefillCustomer) return;
+    if (prefillCustomer.backendId) setCustomerBackendId(prefillCustomer.backendId);
+    if (prefillCustomer.name) setCustQuery(prefillCustomer.name);
+    if (prefillCustomer.email) setCustomerEmail(prefillCustomer.email);
+    if (prefillCustomer.localId != null) setCustomerId(prefillCustomer.localId);
+  }, [prefillCustomer]);
   useEffect(() => {
     if (!customerBackendId) return;
     let active = true;

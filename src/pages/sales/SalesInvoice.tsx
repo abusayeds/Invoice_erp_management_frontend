@@ -828,8 +828,17 @@ export const SalesInvoice: React.FC = () => {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  // Opened from an activity link / Header create menu.
-  const navState = (location.state as { selectedId?: number | string; openCreate?: boolean } | null) ?? null;
+  // Opened from an activity link / Header create menu / Time Logs.
+  const navState = (location.state as {
+    selectedId?: number | string;
+    openCreate?: boolean;
+    prefillCustomer?: {
+      localId?: number;
+      backendId?: string;
+      name?: string;
+      email?: string;
+    };
+  } | null) ?? null;
   const navSelectedId = navState?.selectedId;
   const [selectedId, setSelectedId] = useState<number | string>(navSelectedId ?? 0);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
@@ -847,13 +856,15 @@ export const SalesInvoice: React.FC = () => {
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<number | string>>(new Set());
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
+  const [createPrefillCustomer, setCreatePrefillCustomer] = useState(navState?.prefillCustomer);
   const [editOpen, setEditOpen] = useState(false);
   useEffect(() => {
     if (navState?.openCreate) {
       setCreateOpen(true);
+      setCreatePrefillCustomer(navState.prefillCustomer);
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [navState?.openCreate, location.pathname, navigate]);
+  }, [navState?.openCreate, navState?.prefillCustomer, location.pathname, navigate]);
   // reference features: expandable info panel, doc-type previews, activity log, trash alerts
   const [expanded, setExpanded] = useState(true);
   const [docPreview, setDocPreview] = useState<null | "packingSlip" | "deliveryNote">(null);
@@ -1498,7 +1509,12 @@ export const SalesInvoice: React.FC = () => {
 
       {/* ════════ RIGHT PANEL: create/edit form / selection summary / detail ════════ */}
       {createOpen || (!selected && hasActiveListFilters) ? (
-        <CreateInvoiceForm onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }} />
+        <CreateInvoiceForm
+          key={createPrefillCustomer?.backendId || createPrefillCustomer?.localId || "new"}
+          prefillCustomer={createPrefillCustomer}
+          onClose={() => { setCreateOpen(false); setCreatePrefillCustomer(undefined); }}
+          onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); setCreatePrefillCustomer(undefined); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }}
+        />
       ) : editOpen ? (
         <CreateInvoiceForm key={selectedId} invoice={dbInvoices.find((i) => i.id === selectedId)} onClose={() => setEditOpen(false)} onSaved={(id) => { setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }} />
       ) : selectMode ? (
