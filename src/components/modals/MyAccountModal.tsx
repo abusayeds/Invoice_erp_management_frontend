@@ -16,6 +16,8 @@ import {
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
 import useAuth from "@/hooks/useAuth";
+import { alertApiError, alertSuccess } from "@/utils/alert";
+import Swal from "@/utils/alert";
 import myAccountPromo from "@/assets/my-account-promo.png";
 
 type Props = { open: boolean; onClose: () => void };
@@ -24,16 +26,19 @@ type PlanRow = {
   id: string;
   name: string;
   detail: string;
-  status: "Active" | "Expired" | "None";
+  status: "Active" | "Expired" | "Cancelling" | "None";
   channel: string;
   actionLabel: string;
   actionPath: string;
+  canCancel: boolean;
+  endDate: string | null;
 };
 
 export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState(user?.name || "");
@@ -46,61 +51,80 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  const loadAccount = async () => {
+    let nextEmail = user?.email || "";
+    let nextPhone = "";
+    let nextName = user?.name || "";
+    let nextPlan: PlanRow | null = null;
+
+    try {
+      const res = await api.raw.get("/company-register/all");
+      const list = toArray<any>(res.data);
+      const owner = list.find((c) => c.is_owner) || list[0];
+      if (owner) {
+        nextName = String(owner.business_name || nextName).trim() || nextName;
+        nextEmail = String(owner.email || nextEmail).trim() || nextEmail;
+        nextPhone = String(owner.phone || owner.mobile || "").trim();
+      }
+    } catch {
+      /* keep auth defaults */
+    }
+
+    try {
+      const sub = await api.get<any>("/subscription/my-subscription");
+      if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
+        const expired = !!sub.expired;
+        const cancelAtPeriodEnd =
+          !!sub.cancel_at_period_end || sub.auto_renew === false || sub.status === "cancelled";
+        const users =
+          sub.number_of_users == null || Number(sub.number_of_users) < 0
+            ? "Unlimited users"
+            : `${sub.number_of_users} User${Number(sub.number_of_users) === 1 ? "" : "s"}`;
+        const endDate = sub.end_date ? String(sub.end_date) : null;
+        const endLabel = endDate
+          ? new Date(endDate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })
+          : null;
+        nextPlan = {
+          id: String(sub._id || sub.plan_id || "current"),
+          name: String(sub.plan_name || "Premium"),
+          detail:
+            cancelAtPeriodEnd && !expired && endLabel
+              ? `Access until ${endLabel}`
+              : `1 Business, ${users}`,
+          status: expired ? "Expired" : cancelAtPeriodEnd ? "Cancelling" : "Active",
+          channel: sub.is_trial ? "Trial" : String(sub.billing_cycle || "Web"),
+          actionLabel: expired ? "Renew" : "Upgrade Now",
+          actionPath: "/plan",
+          canCancel: !expired && !cancelAtPeriodEnd,
+          endDate,
+        };
+      }
+    } catch {
+      /* no plan */
+    }
+
+    setEmail(nextEmail);
+    setPhone(nextPhone);
+    setCompanyName(nextName);
+    setPlan(nextPlan);
+  };
+
   useEffect(() => {
     if (!open) return;
     let alive = true;
     setLoading(true);
     void (async () => {
-      let nextEmail = user?.email || "";
-      let nextPhone = "";
-      let nextName = user?.name || "";
-      let nextPlan: PlanRow | null = null;
-
-      try {
-        const res = await api.raw.get("/company-register/all");
-        const list = toArray<any>(res.data);
-        const owner = list.find((c) => c.is_owner) || list[0];
-        if (owner) {
-          nextName = String(owner.business_name || nextName).trim() || nextName;
-          nextEmail = String(owner.email || nextEmail).trim() || nextEmail;
-          nextPhone = String(owner.phone || owner.mobile || "").trim();
-        }
-      } catch {
-        /* keep auth defaults */
-      }
-
-      try {
-        const sub = await api.get<any>("/subscription/my-subscription");
-        if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
-          const expired = !!sub.expired || sub.status === "expired" || sub.status === "cancelled";
-          const users =
-            sub.number_of_users == null || Number(sub.number_of_users) < 0
-              ? "Unlimited users"
-              : `${sub.number_of_users} User${Number(sub.number_of_users) === 1 ? "" : "s"}`;
-          nextPlan = {
-            id: String(sub._id || sub.plan_id || "current"),
-            name: String(sub.plan_name || "Premium"),
-            detail: `1 Business, ${users}`,
-            status: expired ? "Expired" : "Active",
-            channel: sub.is_trial ? "Trial" : String(sub.billing_cycle || "Web"),
-            actionLabel: expired ? "Renew" : "Upgrade Now",
-            actionPath: "/plan",
-          };
-        }
-      } catch {
-        /* no plan */
-      }
-
-      if (!alive) return;
-      setEmail(nextEmail);
-      setPhone(nextPhone);
-      setCompanyName(nextName);
-      setPlan(nextPlan);
-      setLoading(false);
+      await loadAccount();
+      if (alive) setLoading(false);
     })();
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, user?.email, user?.name]);
 
   if (!open) return null;
@@ -108,6 +132,38 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
   const goPlan = () => {
     onClose();
     navigate("/plan");
+  };
+
+  const handleCancel = async () => {
+    if (!plan?.canCancel) return;
+    const endLabel = plan.endDate
+      ? new Date(plan.endDate).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "the end of the current period";
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Cancel subscription?",
+      html: `Auto-renew will stop. You'll keep access to <b>${plan.name}</b> until <b>${endLabel}</b>.`,
+      showCancelButton: true,
+      confirmButtonText: "Yes, cancel renew",
+      cancelButtonText: "Keep plan",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!result.isConfirmed) return;
+    setCancelling(true);
+    try {
+      await api.post("/subscription/cancel");
+      await alertSuccess("Subscription cancelled. You keep access until the current period ends.");
+      window.dispatchEvent(new Event("qayd:subscription-changed"));
+      await loadAccount();
+    } catch (err) {
+      alertApiError(err, "Couldn't cancel subscription.");
+    } finally {
+      setCancelling(false);
+    }
   };
 
   return createPortal(
@@ -119,7 +175,6 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
         onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-[560px] my-8 rounded-xl overflow-hidden shadow-2xl border border-gray-200 bg-white text-gray-900"
       >
-        {/* Header */}
         <div className="relative flex items-center justify-center h-12 px-3 border-b border-gray-200 bg-gray-50">
           <h2 className="text-[15px] font-semibold tracking-wide text-gray-900">My Account</h2>
           <button
@@ -163,15 +218,32 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
             <div className="px-5 pt-3 pb-4">
               <h3 className="text-sm font-semibold mb-3 text-gray-900">My Plan</h3>
               {plan ? (
-                <PlanCard
-                  icon={plan.status === "Expired" ? ShoppingBag : FileText}
-                  name={plan.name}
-                  detail={plan.detail}
-                  status={plan.status}
-                  channel={plan.channel}
-                  actionLabel={plan.actionLabel}
-                  onAction={goPlan}
-                />
+                <>
+                  <PlanCard
+                    icon={plan.status === "Expired" ? ShoppingBag : FileText}
+                    name={plan.name}
+                    detail={plan.detail}
+                    status={plan.status}
+                    channel={plan.channel}
+                    actionLabel={plan.actionLabel}
+                    onAction={goPlan}
+                  />
+                  {plan.canCancel && (
+                    <button
+                      type="button"
+                      disabled={cancelling}
+                      onClick={() => void handleCancel()}
+                      className="mt-3 w-full px-3 py-2 text-sm font-medium rounded-md border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {cancelling ? "Cancelling…" : "Cancel subscription (stop auto-renew)"}
+                    </button>
+                  )}
+                  {plan.status === "Cancelling" && (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Auto-renew is off. Your plan stays active until the period ends.
+                    </p>
+                  )}
+                </>
               ) : (
                 <PlanCard
                   icon={FileText}
@@ -237,7 +309,7 @@ const PlanCard: React.FC<{
   icon: React.ElementType;
   name: string;
   detail: string;
-  status: "Active" | "Expired" | "None";
+  status: "Active" | "Expired" | "Cancelling" | "None";
   channel: string;
   actionLabel: string;
   onAction: () => void;
@@ -253,7 +325,13 @@ const PlanCard: React.FC<{
     <div className="text-right flex-shrink-0 mr-2">
       <p
         className={`text-sm font-semibold ${
-          status === "Active" ? "text-emerald-600" : status === "Expired" ? "text-red-600" : "text-gray-400"
+          status === "Active"
+            ? "text-emerald-600"
+            : status === "Expired"
+              ? "text-red-600"
+              : status === "Cancelling"
+                ? "text-amber-600"
+                : "text-gray-400"
         }`}
       >
         {status === "None" ? "—" : status}

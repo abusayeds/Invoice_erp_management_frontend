@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api/client";
 import { alertApiError, alertSuccess } from "../../utils/alert";
+import Swal from "../../utils/alert";
 
 /* ---------- Types ---------- */
 interface PlanFeature {
@@ -133,6 +134,8 @@ export const Plan: React.FC = () => {
     name: string;
     trial: boolean;
     expired: boolean;
+    cancelAtPeriodEnd: boolean;
+    endDate: string | null;
   } | null>(null);
 
   // Load one page of plans. Uses api.raw so we can read the pagination envelope
@@ -159,12 +162,16 @@ export const Plan: React.FC = () => {
     try {
       const sub = await api.get<any>("/subscription/my-subscription");
       if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
-        const expired = !!sub.expired || sub.status === "expired" || sub.status === "cancelled";
+        const expired = !!sub.expired;
+        const cancelAtPeriodEnd =
+          !!sub.cancel_at_period_end || sub.auto_renew === false || sub.status === "cancelled";
         setCurrentPlan({
           id: String(sub.plan_id || sub._id || ""),
           name: String(sub.plan_name || "Premium").trim() || "Premium",
           trial: !!sub.is_trial,
           expired,
+          cancelAtPeriodEnd: cancelAtPeriodEnd && !expired,
+          endDate: sub.end_date ? String(sub.end_date) : null,
         });
       } else {
         setCurrentPlan(null);
@@ -235,6 +242,38 @@ export const Plan: React.FC = () => {
     }
   };
 
+  const handleCancelSubscription = async () => {
+    if (!currentPlan || currentPlan.expired || currentPlan.cancelAtPeriodEnd) return;
+    const endLabel = currentPlan.endDate
+      ? new Date(currentPlan.endDate).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "the end of the current period";
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Cancel subscription?",
+      html: `Auto-renew will stop. You'll keep access to <b>${currentPlan.name}</b> until <b>${endLabel}</b>.`,
+      showCancelButton: true,
+      confirmButtonText: "Yes, cancel renew",
+      cancelButtonText: "Keep plan",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!result.isConfirmed) return;
+    setActionPlan("__cancel__");
+    try {
+      await api.post("/subscription/cancel");
+      await alertSuccess("Subscription cancelled. You keep access until the current period ends.");
+      await loadCurrentPlan();
+      window.dispatchEvent(new Event("qayd:subscription-changed"));
+    } catch (err) {
+      alertApiError(err, "Couldn't cancel subscription.");
+    } finally {
+      setActionPlan(null);
+    }
+  };
+
   const isCurrentPlan = (plan: Plan) => {
     if (!currentPlan) return false;
     if (currentPlan.id && (currentPlan.id === plan.id || currentPlan.id === plan.name)) return true;
@@ -271,31 +310,60 @@ export const Plan: React.FC = () => {
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
                   currentPlan.expired
                     ? "bg-red-100 text-red-700"
-                    : currentPlan.trial
+                    : currentPlan.cancelAtPeriodEnd
                       ? "bg-amber-100 text-amber-800"
-                      : "bg-blue-100 text-blue-700"
+                      : currentPlan.trial
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-blue-100 text-blue-700"
                 }`}
                 title={
                   currentPlan.expired
                     ? "Your plan has expired"
-                    : currentPlan.trial
-                      ? "You are on a trial plan"
-                      : "Your active purchased plan"
+                    : currentPlan.cancelAtPeriodEnd
+                      ? "Auto-renew cancelled — access until period end"
+                      : currentPlan.trial
+                        ? "You are on a trial plan"
+                        : "Your active purchased plan"
                 }
               >
                 {currentPlan.name}
                 {currentPlan.trial && !currentPlan.expired ? " · Trial" : ""}
-                {currentPlan.expired ? " · Expired" : " · Current"}
+                {currentPlan.expired
+                  ? " · Expired"
+                  : currentPlan.cancelAtPeriodEnd
+                    ? " · Cancelling"
+                    : " · Current"}
               </span>
             )}
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
             {currentPlan && !currentPlan.expired
-              ? `You're on ${currentPlan.name}${currentPlan.trial ? " (trial)" : ""}. Upgrade or switch anytime.`
+              ? currentPlan.cancelAtPeriodEnd
+                ? `Auto-renew is off. Access until ${
+                    currentPlan.endDate
+                      ? new Date(currentPlan.endDate).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "period end"
+                  }.`
+                : `You're on ${currentPlan.name}${currentPlan.trial ? " (trial)" : ""}. Upgrade or switch anytime.`
               : "Choose the plan that fits your team"}
           </p>
         </div>
-        <div className="inline-flex p-1 bg-white border border-gray-300 rounded-lg self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          {currentPlan && !currentPlan.expired && !currentPlan.cancelAtPeriodEnd && (
+            <button
+              type="button"
+              onClick={() => void handleCancelSubscription()}
+              disabled={actionPlan === "__cancel__"}
+              className="px-3 py-1.5 text-sm rounded-md border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
+            >
+              {actionPlan === "__cancel__" ? "Cancelling…" : "Cancel subscription"}
+            </button>
+          )}
+          <div className="inline-flex p-1 bg-white border border-gray-300 rounded-lg">
           <button
             type="button"
             onClick={() => setPeriod("monthly")}
@@ -318,6 +386,7 @@ export const Plan: React.FC = () => {
           >
             Yearly
           </button>
+          </div>
         </div>
       </div>
 

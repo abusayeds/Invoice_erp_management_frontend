@@ -159,7 +159,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     try {
       const sub = await api.get<any>("/subscription/my-subscription");
       if (sub && sub.exists !== false && (sub.plan_name || sub.plan_id)) {
-        const expired = !!sub.expired || sub.status === "expired" || sub.status === "cancelled";
+        const expired = !!sub.expired;
         setPlanBadge({
           name: String(sub.plan_name || "Premium").trim() || "Premium",
           trial: !!sub.is_trial,
@@ -185,11 +185,14 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       void loadPlan();
     };
     const onCompanyChanged = () => void loadCompany();
+    const onSubChanged = () => void loadPlan();
     window.addEventListener("focus", onFocus);
     window.addEventListener("qayd:company-changed", onCompanyChanged);
+    window.addEventListener("qayd:subscription-changed", onSubChanged);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("qayd:company-changed", onCompanyChanged);
+      window.removeEventListener("qayd:subscription-changed", onSubChanged);
     };
   }, [loadCompany, loadPlan]);
 
