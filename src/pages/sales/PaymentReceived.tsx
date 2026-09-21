@@ -19,7 +19,7 @@ import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPrev
 import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, updatePaymentReceived, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
@@ -322,8 +322,8 @@ export const PaymentReceived: React.FC = () => {
   const [sortBy, setSortBy] = useState("Payment date");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
-  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [customerFilterLabels, setCustomerFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -348,7 +348,7 @@ export const PaymentReceived: React.FC = () => {
       searchTerm: search || undefined,
       sort: buildListSortParam(paySortField(sortBy), sortDir),
       isDeleted: statusFilter === "Trash" || undefined,
-      customer_id: customerFilter || undefined,
+      customer_id: partyFilterParam(customerFilter),
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,
       dateField: "date",
@@ -413,7 +413,7 @@ export const PaymentReceived: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!customerFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || customerFilter.length > 0 || dateFilter !== "All";
   if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No payments received yet" onCreate={() => setCreateOpen(true)} createLabel="New Payment" />;
 
   return (
@@ -474,11 +474,11 @@ export const PaymentReceived: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="customer"
-            applied={customerFilter}
-            appliedLabel={customerFilterLabel}
-            onApply={(id, label) => {
-              setCustomerFilter(id);
-              setCustomerFilterLabel(label);
+            appliedIds={customerFilter}
+            appliedLabels={customerFilterLabels}
+            onApply={(ids, labels) => {
+              setCustomerFilter(ids);
+              setCustomerFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Payment date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>

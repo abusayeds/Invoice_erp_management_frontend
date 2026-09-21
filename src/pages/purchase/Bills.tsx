@@ -13,7 +13,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
@@ -35,6 +35,7 @@ import { BillPaymentsModal, type BillPaymentDoc } from "@/components/modals/Bill
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
+import { api } from "@/lib/api/client";
 import {
   Search,
   Plus,
@@ -102,6 +103,12 @@ const STATUS_BADGE: Record<Status, string> = {
   Paid: "bg-green-500 text-white",
   "Partially Paid": "bg-orange-500 text-white",
   Overdue: "bg-red-500 text-white",
+};
+
+const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/png" });
 };
 
 /* ── Modal shell ───────────────────────────────────────────────── */
@@ -297,8 +304,8 @@ export const Bills: React.FC = () => {
   const [sortBy, setSortBy] = useState("Bill date");
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [vendorFilter, setVendorFilter] = useState<string | null>(null);
-  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [vendorFilterLabels, setVendorFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -333,7 +340,7 @@ export const Bills: React.FC = () => {
       sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
-      vendor_id: vendorFilter || undefined,
+      vendor_id: partyFilterParam(vendorFilter),
       dateField: "date",
       ...billDateRange,
     }),
@@ -496,9 +503,35 @@ export const Bills: React.FC = () => {
     exitSelect();
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
-    await repo.update("bills", selectedDb.id, { signature: data.image, signatureName: data.name, signatureTitle: data.title, signatureDate: data.date });
-    await logActivity("status", `Vendor signature added to Bill ${selectedDb.number}.`);
-    showToast("Signature saved", "success");
+    const backendId = selectedDb?._id || selected?.backendId;
+    let signaturePath = data.image;
+    try {
+      if (backendId && data.image.startsWith("data:")) {
+        const formData = new FormData();
+        formData.append("files", await dataUrlToFile(data.image, `bill-signature-${backendId}.png`));
+        const uploadRes = await api.raw.post("/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        signaturePath =
+          uploadRes.data?.data?.file_path ||
+          uploadRes.data?.data?.path ||
+          uploadRes.data?.data?.[0]?.path ||
+          data.image;
+        await updateBill(String(backendId), { signature: signaturePath });
+      }
+      if (selectedDb?.id) {
+        await repo.update("bills", selectedDb.id, {
+          signature: signaturePath,
+          signatureName: data.name,
+          signatureTitle: data.title,
+          signatureDate: data.date,
+        });
+      }
+      await logActivity("status", `Vendor signature added to Bill ${selectedDb.number}.`);
+      showToast("Signature saved", "success");
+    } catch {
+      showToast("Could not save signature", "error");
+    }
   };
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -527,7 +560,7 @@ export const Bills: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || vendorFilter.length > 0 || dateFilter !== "All";
   if (!selected && !createMode && !hasActiveFilters) return <ListEmptyState title="No bills yet" onCreate={() => setCreateMode(true)} createLabel="New Bill" />;
 
   return (
@@ -587,11 +620,11 @@ export const Bills: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="vendor"
-            applied={vendorFilter}
-            appliedLabel={vendorFilterLabel}
-            onApply={(id, label) => {
-              setVendorFilter(id);
-              setVendorFilterLabel(label);
+            appliedIds={vendorFilter}
+            appliedLabels={vendorFilterLabels}
+            onApply={(ids, labels) => {
+              setVendorFilter(ids);
+              setVendorFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Bill date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>

@@ -13,7 +13,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor, DATE_FILTER_OPTIONS } from "@/lib/listDateRange";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
@@ -488,8 +488,8 @@ export const Expenses: React.FC = () => {
   const [sortBy, setSortBy] = useState("Expense Date");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [vendorFilter, setVendorFilter] = useState<string | null>(null);
-  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [vendorFilterLabels, setVendorFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -512,7 +512,7 @@ export const Expenses: React.FC = () => {
       sort: buildListSortParam(expSortField(sortBy), sortDir),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
-      vendor_id: vendorFilter || undefined,
+      vendor_id: partyFilterParam(vendorFilter),
       dateField: "date",
       ...expenseDateRange,
     }),
@@ -639,7 +639,7 @@ export const Expenses: React.FC = () => {
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || vendorFilter.length > 0 || dateFilter !== "All";
   if (!selected && mode !== "create" && !hasActiveFilters) return <ListEmptyState title="No expenses yet" onCreate={() => setMode("create")} createLabel="New Expense" />;
 
   return (
@@ -696,11 +696,11 @@ export const Expenses: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="vendor"
-            applied={vendorFilter}
-            appliedLabel={vendorFilterLabel}
-            onApply={(id, label) => {
-              setVendorFilter(id);
-              setVendorFilterLabel(label);
+            appliedIds={vendorFilter}
+            appliedLabels={vendorFilterLabels}
+            onApply={(ids, labels) => {
+              setVendorFilter(ids);
+              setVendorFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Expense date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>

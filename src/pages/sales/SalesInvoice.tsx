@@ -39,7 +39,7 @@ import {
 } from "@/components/modals/PartyDetailModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { todayIso } from "@/lib/dateIso";
 import {
@@ -845,8 +845,8 @@ export const SalesInvoice: React.FC = () => {
   const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
-  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [customerFilterLabels, setCustomerFilterLabels] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -899,7 +899,7 @@ export const SalesInvoice: React.FC = () => {
         sort: buildListSortParam(invoiceSortToBackend(sortBy), sortDir),
         status: statusFilter === "Trash" ? undefined : statusFilter,
         isDeleted: statusFilter === "Trash" || undefined,
-        customer_id: customerFilter || undefined,
+        customer_id: partyFilterParam(customerFilter),
       }),
     placeholderData: (prev) => prev,
     staleTime: 15_000,
@@ -1281,7 +1281,7 @@ export const SalesInvoice: React.FC = () => {
   const hasActiveListFilters =
     !!search.trim() ||
     statusFilter !== "All" ||
-    !!customerFilter;
+    customerFilter.length > 0;
 
   // Match Delivery Challan: only full-page empty when nothing selected and create is closed.
   // Create always opens inside the normal list + right-panel shell.
@@ -1445,11 +1445,11 @@ export const SalesInvoice: React.FC = () => {
 
           <PartyFilterPopover
             kind="customer"
-            applied={customerFilter}
-            appliedLabel={customerFilterLabel}
-            onApply={(id, label) => {
-              setCustomerFilter(id);
-              setCustomerFilterLabel(label);
+            appliedIds={customerFilter}
+            appliedLabels={customerFilterLabels}
+            onApply={(ids, labels) => {
+              setCustomerFilter(ids);
+              setCustomerFilterLabels(labels);
             }}
           />
         </div>

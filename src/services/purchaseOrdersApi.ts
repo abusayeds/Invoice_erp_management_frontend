@@ -1,4 +1,5 @@
 /** Purchase Orders list — backend pagination via /purchase/invoices/all */
+import { api } from "@/lib/api/client";
 import { fetchPaginatedList } from "@/services/paginatedList";
 import type { TPartyPagination } from "@/services/customerTypes";
 
@@ -80,4 +81,12 @@ export async function fetchPurchaseOrders(params: {
     rows: rows.map(mapRow),
     pagination,
   };
+}
+
+export async function updatePurchaseOrder(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  const res = await api.raw.patch(`/purchase/invoices/edit/${id}`, payload);
+  return res.data?.data ?? res.data;
 }

@@ -174,6 +174,14 @@ export async function fetchCreditNote(id: string): Promise<BackendCreditNoteDoc 
   }
 }
 
+export async function updateCreditNote(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  const res = await api.raw.post(`/account/credit-notes/edit/${id}`, payload);
+  return res.data?.data ?? res.data;
+}
+
 export async function deleteCreditNote(id: string): Promise<void> {
   await api.raw.delete(`/account/credit-notes/delete/${id}`);
 }

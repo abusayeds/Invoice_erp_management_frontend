@@ -377,7 +377,11 @@ const reverseInvoice = async (r: Record<string, any>) => {
 
 // ── Purchase documents (bill / purchase order / debit note) — vendor-keyed ───
 
-/** Backend PO/bill statuses are lowercase (`draft`, `onhold`); UI badges use Title Case. */
+/**
+ * Backend → UI status labels.
+ * PO / purchase-return enums are lowercase (`draft`, `onhold`);
+ * bill / debit-note enums are Title Case (`Draft`, `Partial`) — same as invoices.
+ */
 const purchaseStatusIn = (s: unknown): string => {
   const raw = str(s).trim();
   if (!raw) return "Draft";
@@ -405,11 +409,17 @@ const purchaseStatusIn = (s: unknown): string => {
     "partially used": "Partially Used",
     open: "Open",
     returned: "Returned",
+    applied: "Applied",
+    void: "Void",
+    recurring: "Recurring",
+    creditnotesapplied: "Credit Notes Applied",
+    "credit notes applied": "Credit Notes Applied",
   };
   return map[key] || map[compact] || raw.replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
-const purchaseStatusOut = (s: unknown): string => {
+/** PO / purchase-return write: lowercase enums. */
+const purchaseStatusOutLower = (s: unknown): string => {
   const key = str(s).trim().toLowerCase();
   const map: Record<string, string> = {
     draft: "draft",
@@ -431,6 +441,28 @@ const purchaseStatusOut = (s: unknown): string => {
   return map[key] || "draft";
 };
 
+/** Bill / debit-note write: Title Case enums (`Draft`, `Partial`, …). */
+const purchaseStatusOutTitle = (s: unknown): string => {
+  const v = str(s).trim();
+  if (!v) return "Draft";
+  if (v === "Partially Paid") return "Partial";
+  const compact = v.toLowerCase().replace(/[\s_]+/g, "");
+  const map: Record<string, string> = {
+    draft: "Draft",
+    partial: "Partial",
+    partiallypaid: "Partial",
+    paid: "Paid",
+    overdue: "Overdue",
+    recurring: "Recurring",
+    void: "Void",
+    open: "Open",
+    creditnotesapplied: "CreditNotesApplied",
+    approved: "Approved",
+    applied: "Applied",
+  };
+  return map[compact] || "Draft";
+};
+
 /** Backend purchase doc → the UI bill/PO/debit-note row shape (vendor-keyed). */
 const mapPurchase: MapFn = (d) => ({
   number: str(d.invoice_number),
@@ -449,43 +481,52 @@ const mapPurchase: MapFn = (d) => ({
   amountDue: num(d.balance_amount),
   terms: str(d.terms_and_conditions),
   notes: str(d.notes),
+  signature: str(d.signature),
 });
 
 /** UI purchase row → backend body (resolves vendor ref + lines). */
-const reversePurchase = async (r: Record<string, any>) => {
-  const vendor_id = await backendIdOf("vendors", r.vendorId);
-  const product = (r.items ?? [])
-    .filter((it: any) => str(it.name))
-    .map((it: any) => {
-      const base = num(it.qty) * num(it.rate);
-      const discPct = base > 0 ? (num(it.discount) / base) * 100 : 0;
-      return {
-        product_name: str(it.name),
-        description: str(it.description),
-        quantity: num(it.qty),
-        rate: num(it.rate),
-        tax: 0,
-        discount: +discPct.toFixed(6),
-        amount: +(base - (base * discPct) / 100).toFixed(2),
-      };
-    });
-  return {
-    invoice_number: str(r.number).replace(/^#/, ""),
-    ...(vendor_id ? { vendor_id } : { vendor_name: str(r.vendorName) }),
-    date: toIso(r.date) || todayIso(),
-    due_date: toIso(r.due) || toIso(r.date) || todayIso(),
-    product,
-    service: [],
-    sub_total: num(r.subTotal),
-    shipping_cost: num(r.shipping),
-    total: num(r.total),
-    paid_amount: num(r.amountPaid),
-    balance_amount: num(r.amountDue),
-    terms_and_conditions: str(r.terms),
-    notes: str(r.notes),
-    status: purchaseStatusOut(r.status),
+const reversePurchaseWith =
+  (statusOut: (s: unknown) => string) =>
+  async (r: Record<string, any>) => {
+    const vendor_id = await backendIdOf("vendors", r.vendorId);
+    const product = (r.items ?? [])
+      .filter((it: any) => str(it.name))
+      .map((it: any) => {
+        const base = num(it.qty) * num(it.rate);
+        const discPct = base > 0 ? (num(it.discount) / base) * 100 : 0;
+        return {
+          product_name: str(it.name),
+          description: str(it.description),
+          quantity: num(it.qty),
+          rate: num(it.rate),
+          tax: 0,
+          discount: +discPct.toFixed(6),
+          amount: +(base - (base * discPct) / 100).toFixed(2),
+        };
+      });
+    return {
+      invoice_number: str(r.number).replace(/^#/, ""),
+      ...(vendor_id ? { vendor_id } : { vendor_name: str(r.vendorName) }),
+      date: toIso(r.date) || todayIso(),
+      due_date: toIso(r.due) || toIso(r.date) || todayIso(),
+      product,
+      service: [],
+      sub_total: num(r.subTotal),
+      shipping_cost: num(r.shipping),
+      total: num(r.total),
+      paid_amount: num(r.amountPaid),
+      balance_amount: num(r.amountDue),
+      terms_and_conditions: str(r.terms),
+      notes: str(r.notes),
+      signature: str(r.signature) || undefined,
+      status: statusOut(r.status),
+    };
   };
-};
+
+/** Bills + debit notes (Title Case status enums). */
+const reversePurchaseTitle = reversePurchaseWith(purchaseStatusOutTitle);
+/** Purchase orders + returns (lowercase status enums). */
+const reversePurchaseLower = reversePurchaseWith(purchaseStatusOutLower);
 
 // ── Expense (vendor + category + amount) ─────────────────────────────────────
 
@@ -940,7 +981,7 @@ export const SYNC_SPECS: SyncSpec[] = [
       update: (id) => `/bill/edit/${id}`,
       updateMethod: "post",
       remove: (id) => `/bill/delete/${id}`,
-      reverse: reversePurchase,
+      reverse: reversePurchaseTitle,
     },
   },
   {
@@ -952,7 +993,7 @@ export const SYNC_SPECS: SyncSpec[] = [
       update: (id) => `/purchase/invoices/edit/${id}`,
       updateMethod: "patch",
       remove: (id) => `/purchase/invoices/delete/${id}`,
-      reverse: reversePurchase,
+      reverse: reversePurchaseLower,
     },
   },
   {
@@ -964,7 +1005,7 @@ export const SYNC_SPECS: SyncSpec[] = [
       update: (id) => `/purchase/returns/edit/${id}`,
       updateMethod: "post",
       remove: (id) => `/purchase/returns/delete/${id}`,
-      reverse: reversePurchase,
+      reverse: reversePurchaseLower,
     },
   },
   {
@@ -975,7 +1016,7 @@ export const SYNC_SPECS: SyncSpec[] = [
       create: "/account/debit-notes/create",
       update: (id) => `/account/debit-notes/update/${id}`,
       remove: (id) => `/account/debit-notes/delete/${id}`,
-      reverse: reversePurchase,
+      reverse: reversePurchaseTitle,
     },
   },
   {

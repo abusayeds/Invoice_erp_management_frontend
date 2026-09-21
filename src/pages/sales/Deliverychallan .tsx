@@ -15,7 +15,7 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { api } from "@/lib/api/client";
-import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
@@ -130,63 +130,6 @@ const EmailModal: React.FC<{ onClose: () => void; row: ChallanRow }> = ({ onClos
   </Overlay>
 );
 
-/* ── Component ──────────────────────────────────────────────────── */
-const CustomerFilter: React.FC<{ applied: string | null; onApply: (customerId: string | null) => void }> = ({ applied, onApply }) => {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
-  const customerQuery = useQuery({
-    queryKey: ["delivery-challan-customer-filter", q],
-    queryFn: async () => fetchCustomers({ page: 1, limit: 100, searchTerm: q.trim() || undefined }),
-    staleTime: 30_000,
-  });
-  const customers = customerQuery.data?.rows ?? [];
-  const updatePosition = () => {
-    if (!ref.current) return;
-    const bounds = ref.current.getBoundingClientRect();
-    setRect({ top: bounds.bottom + 8, left: bounds.left, width: Math.max(bounds.width, 256) });
-  };
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    updatePosition();
-    const sync = () => updatePosition();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, true);
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync, true);
-    };
-  }, [open]);
-  const selectedLabel = applied === null ? "All" : customers.find((item) => item._id === applied)?.name || "Selected";
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400">
-        <Plus className="w-3 h-3" />Customer | {selectedLabel}<ChevronDown className="w-3 h-3" />
-      </button>
-      {open && rect && (
-        <div ref={panelRef} className="fixed z-50 flex max-h-[70vh] w-64 flex-col rounded-md border border-gray-200 bg-white shadow-xl" style={{ top: rect.top, left: rect.left, width: rect.width }}>
-          <div className="p-2 border-b border-gray-300"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Customer" className="w-full px-2.5 py-1.5 text-sm bg-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600" /></div>
-          <div className="hover-scrollbar flex-1 overflow-y-auto py-1">
-            <button onClick={() => { onApply(null); setOpen(false); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">All Customers{applied === null && <Check className="w-4 h-4 text-blue-600" />}</button>
-            {customers.map((customer: TCustomerRow) => <button key={customer._id} onClick={() => { onApply(customer._id); setOpen(false); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><span className="truncate">{customer.name}</span>{applied === customer._id && <Check className="w-4 h-4 text-blue-600" />}</button>)}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 export const DeliveryChallan: React.FC = () => {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -198,7 +141,8 @@ export const DeliveryChallan: React.FC = () => {
   const [sortBy, setSortBy] = useState("Created On");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [customerFilterLabels, setCustomerFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
@@ -238,7 +182,7 @@ export const DeliveryChallan: React.FC = () => {
       sort: buildListSortParam(challanSortToBackend(sortBy), sortDir),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
-      customer_id: customerFilter || undefined,
+      customer_id: partyFilterParam(customerFilter),
       dateField: "date",
       ...range,
     }),
@@ -406,7 +350,7 @@ export const DeliveryChallan: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  if (!selected && !createOpen && !search && statusFilter === "All" && !customerFilter) return <ListEmptyState title="No delivery challans yet" onCreate={() => setCreateOpen(true)} createLabel="New Delivery Challan" />;
+  if (!selected && !createOpen && !search && statusFilter === "All" && !customerFilter.length) return <ListEmptyState title="No delivery challans yet" onCreate={() => setCreateOpen(true)} createLabel="New Delivery Challan" />;
 
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
@@ -465,7 +409,15 @@ export const DeliveryChallan: React.FC = () => {
               <button key={s} onClick={() => { setStatusFilter(s); close(); }} className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 ${s === "Trash" ? "text-red-500 border-t border-gray-200" : "text-gray-700"}`}>{s} {s === statusFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
             ))}
           </Dropdown>
-          <CustomerFilter applied={customerFilter} onApply={setCustomerFilter} />
+          <PartyFilterPopover
+            kind="customer"
+            appliedIds={customerFilter}
+            appliedLabels={customerFilterLabels}
+            onApply={(ids, labels) => {
+              setCustomerFilter(ids);
+              setCustomerFilterLabels(labels);
+            }}
+          />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Delivery Challan date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
             {(close) => dateRanges.map((d) => (
               <button key={d} onClick={() => { setDateFilter(d); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">{d} {d === dateFilter && <Check className="w-4 h-4 text-blue-600" />}</button>
@@ -512,7 +464,7 @@ export const DeliveryChallan: React.FC = () => {
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
-      {createOpen || (!selected && (search || statusFilter !== "All" || customerFilter)) ? (
+      {createOpen || (!selected && (search || statusFilter !== "All" || customerFilter.length > 0)) ? (
         <CreateDocForm collection="deliveryChallans" title="New Delivery Challan" party="customers" onClose={() => setCreateOpen(false)} onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["delivery-challans"] }); }} />
       ) : editOpen ? (
         <CreateDocForm key={selectedId} collection="deliveryChallans" title="Edit Delivery Challan" party="customers" record={selectedDb} onClose={() => setEditOpen(false)} onSaved={(id) => { setEditOpen(false); setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["delivery-challans"] }); }} />

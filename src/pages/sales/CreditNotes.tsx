@@ -24,7 +24,7 @@ import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
@@ -39,8 +39,10 @@ import {
   deleteCreditNote,
   hardDeleteCreditNotes,
   creditNoteCustomerId,
+  updateCreditNote,
 } from "@/services/creditNotesApi";
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
+import { api } from "@/lib/api/client";
 import {
   Search,
   Plus,
@@ -128,6 +130,12 @@ const STATUS_BADGE: Record<Status, string> = {
   Unused: "bg-gray-900 text-white",
   "Partially Used": "bg-orange-500 text-white",
   Used: "bg-green-500 text-white",
+};
+
+const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/png" });
 };
 const RIBBON_BG: Record<Status, string> = {
   Unused: "bg-green-500 text-white",
@@ -340,8 +348,8 @@ export const CreditNotes: React.FC = () => {
   const [sortBy, setSortBy] = useState("Credit note date");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
-  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [customerFilterLabels, setCustomerFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -382,7 +390,7 @@ export const CreditNotes: React.FC = () => {
       sort: buildListSortParam(cnSortField(sortBy), sortDir),
       status: statusFilter === "Trash" ? undefined : statusFilter,
       isDeleted: statusFilter === "Trash" || undefined,
-      customer_id: customerFilter || undefined,
+      customer_id: partyFilterParam(customerFilter),
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,
       dateField: "date",
@@ -492,13 +500,39 @@ export const CreditNotes: React.FC = () => {
     void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
-    if (typeof selectedDb.id !== "number") {
-      showToast("Signature save requires a local draft record", "info");
-      return;
+    const backendId = selectedDb?._id || selected?.backendId;
+    let signaturePath = data.image;
+    try {
+      if (backendId && data.image.startsWith("data:")) {
+        const formData = new FormData();
+        formData.append("files", await dataUrlToFile(data.image, `credit-note-signature-${backendId}.png`));
+        const uploadRes = await api.raw.post("/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        signaturePath =
+          uploadRes.data?.data?.file_path ||
+          uploadRes.data?.data?.path ||
+          uploadRes.data?.data?.[0]?.path ||
+          data.image;
+        await updateCreditNote(String(backendId), { signature: signaturePath });
+      }
+      if (typeof selectedDb.id === "number") {
+        await repo.update("creditNotes", selectedDb.id, {
+          signature: signaturePath,
+          signatureName: data.name,
+          signatureTitle: data.title,
+          signatureDate: data.date,
+        });
+      }
+      if (backendId) {
+        await queryClient.invalidateQueries({ queryKey: ["credit-note", String(backendId)] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
+      }
+      await logActivity("status", `Customer signature added to Credit Note ${selectedDb.number}.`);
+      showToast("Signature saved", "success");
+    } catch {
+      showToast("Could not save signature", "error");
     }
-    await repo.update("creditNotes", selectedDb.id, { signature: data.image, signatureName: data.name, signatureTitle: data.title, signatureDate: data.date });
-    await logActivity("status", `Customer signature added to Credit Note ${selectedDb.number}.`);
-    showToast("Signature saved", "success");
   };
 
   const listUnusedTotal = filtered.reduce((s, i) => s + unusedFor(i), 0);
@@ -546,7 +580,7 @@ export const CreditNotes: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!customerFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || customerFilter.length > 0 || dateFilter !== "All";
   if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No credit notes yet" onCreate={() => setCreateOpen(true)} createLabel="New Credit Note" />;
 
   return (
@@ -605,11 +639,11 @@ export const CreditNotes: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="customer"
-            applied={customerFilter}
-            appliedLabel={customerFilterLabel}
-            onApply={(id, label) => {
-              setCustomerFilter(id);
-              setCustomerFilterLabel(label);
+            appliedIds={customerFilter}
+            appliedLabels={customerFilterLabels}
+            onApply={(ids, labels) => {
+              setCustomerFilter(ids);
+              setCustomerFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Credit note date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
@@ -820,7 +854,10 @@ export const CreditNotes: React.FC = () => {
             </div>
 
             {/* saved signature (shows after Add Signature) */}
-            <SignatureBlock record={selectedDb} label="Customer Signature" />
+            <SignatureBlock
+              record={{ ...selectedDb, signature: selectedBackend?.signature || selectedDb.signature }}
+              label="Customer Signature"
+            />
 
             {/* status corner ribbon */}
             <div className="absolute bottom-0 left-0 w-24 h-24 overflow-hidden pointer-events-none">

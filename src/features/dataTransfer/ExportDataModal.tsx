@@ -3,7 +3,7 @@ import { Loader2, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
 import { ApiError } from "@/lib/api/ApiError";
 import { exportModuleById, type ExportModuleId } from "./modules";
-import { runExportDownload } from "./exportRunner";
+import { runExportDownload, type ExportDownloadFormat } from "./exportRunner";
 
 type Step = "fields" | "format";
 
@@ -11,6 +11,14 @@ type Props = {
   moduleId: ExportModuleId;
   onClose: () => void;
 };
+
+const FORMAT_OPTIONS: { id: ExportDownloadFormat; label: string }[] = [
+  { id: "pdf", label: "PDF" },
+  { id: "csv", label: "CSV" },
+  { id: "xlsx", label: "XLSX" },
+  { id: "xls", label: "XLS" },
+  { id: "excel", label: "Excel" },
+];
 
 const errMsg = (err: unknown, fallback: string) =>
   err instanceof ApiError && err.message ? err.message : fallback;
@@ -21,12 +29,13 @@ export const ExportDataModal: React.FC<Props> = ({ moduleId, onClose }) => {
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(mod.fields.map((f) => f.key)),
   );
-  const [format, setFormat] = useState<"csv" | "xlsx">("xlsx");
+  const [format, setFormat] = useState<ExportDownloadFormat>("xlsx");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setStep("fields");
     setSelected(new Set(mod.fields.map((f) => f.key)));
+    setFormat("xlsx");
   }, [mod]);
 
   useEffect(() => {
@@ -66,7 +75,8 @@ export const ExportDataModal: React.FC<Props> = ({ moduleId, onClose }) => {
     setBusy(true);
     try {
       const count = await runExportDownload(moduleId, [...selected], format);
-      showToast(`Exported ${count} row${count === 1 ? "" : "s"}`, "success");
+      const label = FORMAT_OPTIONS.find((o) => o.id === format)?.label || format.toUpperCase();
+      showToast(`Exported ${count} row${count === 1 ? "" : "s"} as ${label}`, "success");
       onClose();
     } catch (err) {
       showToast(errMsg(err, "Export failed"), "error");
@@ -141,12 +151,7 @@ export const ExportDataModal: React.FC<Props> = ({ moduleId, onClose }) => {
               {selected.size} field{selected.size === 1 ? "" : "s"} selected. Choose download format:
             </p>
             <div className="space-y-2">
-              {(
-                [
-                  { id: "xlsx" as const, label: "Excel (XLSX)" },
-                  { id: "csv" as const, label: "CSV" },
-                ] as const
-              ).map((opt) => (
+              {FORMAT_OPTIONS.map((opt) => (
                 <label
                   key={opt.id}
                   className={`flex items-center gap-3 px-4 py-3 rounded-md border cursor-pointer ${

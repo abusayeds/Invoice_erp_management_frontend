@@ -17,6 +17,7 @@ import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { downloadDocPdf } from "@/lib/db";
+import { exportReportCsv, exportReportXlsx } from "@/lib/reportExport";
 import { useAppSettings, isCustomerFieldVisible } from "@/lib/db/appSettings";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -708,8 +709,8 @@ export const Customers: React.FC = () => {
   }, [navSelectedId]);
 
   /* ── Fetch single (full detail doc) when selected ── */
-  const { data: selectedDoc } = useQuery<TBackendParty | null>({
-    queryKey: ["customer", selectedId],
+  const { data: selectedDoc, isFetching: detailLoading } = useQuery<TBackendParty | null>({
+    queryKey: ["customer", selectedId, statusFilter],
     queryFn: () => (selectedId ? fetchCustomer(selectedId) : null),
     enabled: !!selectedId,
     staleTime: 60_000,
@@ -1052,7 +1053,21 @@ export const Customers: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-6 border-b border-gray-300 bg-gray-100">
             <h1 className="text-base font-semibold text-gray-900 tracking-tight truncate">{selected.name}</h1>
             <div className="flex items-center gap-0.5">
-              <button onClick={() => setEditMode(true)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Edit"><Pencil className="w-4 h-4" /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!doc) {
+                    if (detailLoading) showToast("Loading customer…", "info");
+                    else showToast("Customer details unavailable", "warning");
+                    return;
+                  }
+                  setEditMode(true);
+                }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"
+                title="Edit"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
               <button onClick={() => setModal("settings")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Settings"><Settings className="w-4 h-4" /></button>
               <button onClick={() => setModal("payment")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Add Payment"><DollarSign className="w-4 h-4" /></button>
               <button onClick={() => setModal("statement")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500" title="Statement"><FileText className="w-4 h-4" /></button>
@@ -1250,16 +1265,44 @@ export const Customers: React.FC = () => {
           }}
         />
       )}
-      {modal === "statement" && (
+      {modal === "statement" && selected && (
         <PartyStatementModal
           party="customer"
           onClose={() => setModal(null)}
-          onExport={(config) => {
+          onExport={async (config) => {
             setStatementConfig(config);
-            if (config.exportFormat !== "PDF") {
-              showToast(`${config.exportFormat} export coming soon — opening PDF preview`, "info");
+            const grid = {
+              name: `${selected.name} Statement`,
+              cols: ["Date", "Details", "Amount", "Paid", "Balance"],
+              rows: [
+                ["—", "Opening Balance", "$0.00", "$0.00", "$0.00"],
+              ],
+            };
+            const fmt = config.exportFormat;
+            try {
+              if (fmt === "CSV") {
+                exportReportCsv(grid);
+                showToast("Statement exported as CSV", "success");
+                setModal(null);
+                return;
+              }
+              if (fmt === "XLS") {
+                exportReportXlsx(grid, "xls");
+                showToast("Statement exported as XLS", "success");
+                setModal(null);
+                return;
+              }
+              if (fmt === "XLSX" || fmt === "Excel") {
+                exportReportXlsx(grid, "xlsx");
+                showToast(`Statement exported as ${fmt}`, "success");
+                setModal(null);
+                return;
+              }
+              // PDF → preview
+              setModal("preview");
+            } catch {
+              showToast("Export failed", "error");
             }
-            setModal("preview");
           }}
         />
       )}

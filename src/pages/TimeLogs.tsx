@@ -573,8 +573,8 @@ export const TimeLogs: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState("Date");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
-  const [customerFilterLabel, setCustomerFilterLabel] = useState<string | undefined>();
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [customerFilterLabels, setCustomerFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [selectMode, setSelectMode] = useState(false);
@@ -597,15 +597,16 @@ export const TimeLogs: React.FC = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filteredCustomerLocalId = customerFilter
-      ? dbCustomers.find((c) => String(c._id) === customerFilter)?.id
-      : null;
+    const selectedKeys = new Set(customerFilter.map(String));
+    const selectedLocalIds = new Set(
+      dbCustomers.filter((c) => selectedKeys.has(String(c._id))).map((c) => c.id),
+    );
     let list = logs.filter((l) => {
       if (statusFilter === "Invoiced" && !l.invoiced) return false;
       if (statusFilter === "Not Invoiced" && l.invoiced) return false;
-      if (customerFilter) {
-        const matchLocal = filteredCustomerLocalId != null && l.customerId === filteredCustomerLocalId;
-        const matchDirect = String(l.customerId || "") === customerFilter;
+      if (customerFilter.length) {
+        const matchLocal = selectedLocalIds.has(l.customerId as any);
+        const matchDirect = selectedKeys.has(String(l.customerId || ""));
         if (!matchLocal && !matchDirect) return false;
       }
       if (dateRange.dateFrom || dateRange.dateTo) {
@@ -784,7 +785,7 @@ export const TimeLogs: React.FC = () => {
 
   const ctrlBtn = "w-7 h-7 flex items-center justify-center rounded-full text-white";
 
-  const hasActiveFilters = statusFilter !== "All" || !!customerFilter || dateFilter !== "All" || !!search.trim();
+  const hasActiveFilters = statusFilter !== "All" || customerFilter.length > 0 || dateFilter !== "All" || !!search.trim();
   if (!selected && mode !== "create" && !hasActiveFilters && !selectMode) return <ListEmptyState title="No time logs yet" onCreate={() => setMode("create")} createLabel="New Time Log" />;
 
   return (
@@ -839,11 +840,11 @@ export const TimeLogs: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="customer"
-            applied={customerFilter}
-            appliedLabel={customerFilterLabel}
-            onApply={(id, label) => {
-              setCustomerFilter(id);
-              setCustomerFilterLabel(label);
+            appliedIds={customerFilter}
+            appliedLabels={customerFilterLabels}
+            onApply={(ids, labels) => {
+              setCustomerFilter(ids);
+              setCustomerFilterLabels(labels);
             }}
           />
           <Dropdown trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Date{dateFilter !== "All" ? ` | ${dateFilter}` : ""}</span>}>

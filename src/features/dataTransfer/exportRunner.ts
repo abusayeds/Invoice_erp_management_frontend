@@ -4,7 +4,7 @@
  */
 import * as XLSX from "xlsx";
 import { api } from "@/lib/api/client";
-import { exportReportCsv, exportReportXlsx, type ExportGrid } from "@/lib/reportExport";
+import { exportReportCsv, exportReportXlsx, exportReportPdf, type ExportGrid } from "@/lib/reportExport";
 import type { ExportModuleId } from "./modules";
 import { exportModuleById } from "./modules";
 
@@ -385,14 +385,18 @@ export async function buildExportGrid(
   return { name: mod.title, cols, rows };
 }
 
+export type ExportDownloadFormat = "pdf" | "csv" | "xlsx" | "xls" | "excel";
+
 export async function runExportDownload(
   moduleId: ExportModuleId,
   selectedKeys: string[],
-  format: "csv" | "xlsx",
+  format: ExportDownloadFormat,
 ): Promise<number> {
   const grid = await buildExportGrid(moduleId, selectedKeys);
   if (format === "csv") exportReportCsv(grid);
-  else exportReportXlsx(grid, "xlsx");
+  else if (format === "pdf") await exportReportPdf(grid);
+  else if (format === "xls") exportReportXlsx(grid, "xls");
+  else exportReportXlsx(grid, "xlsx"); // xlsx + excel
   return grid.rows.length;
 }
 

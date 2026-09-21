@@ -17,6 +17,7 @@ import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCollection, downloadDocPdf } from "@/lib/db";
+import { exportReportCsv, exportReportXlsx } from "@/lib/reportExport";
 import {
   fetchVendors,
   fetchVendor,
@@ -592,7 +593,7 @@ export const Vendors: React.FC = () => {
   }, [vendors, selectedId]);
 
   const { data: selectedDoc } = useQuery<TBackendParty | null>({
-    queryKey: ["vendor", selectedId],
+    queryKey: ["vendor", selectedId, statusFilter],
     queryFn: () => (selectedId ? fetchVendor(selectedId) : null),
     enabled: !!selectedId,
     staleTime: 60_000,
@@ -1181,16 +1182,45 @@ export const Vendors: React.FC = () => {
           }}
         />
       )}
-      {modal === "statement" && (
+      {modal === "statement" && selected && (
         <PartyStatementModal
           party="vendor"
           onClose={() => setModal(null)}
           onExport={(config) => {
             setStatementConfig(config);
-            if (config.exportFormat !== "PDF") {
-              showToast(`${config.exportFormat} export coming soon — opening PDF preview`, "info");
+            const grid = {
+              name: `${selected.name} Statement`,
+              cols: ["Date", "Details", "Amount", "Paid", "Balance"],
+              rows: [
+                ["—", "Opening Balance", "$0.00", "$0.00", "$0.00"],
+                ...stmtRows.map((r) => [r.date, r.details, r.amount, r.paid, r.balance]),
+                ["", "Total", stmtSummary.amount, stmtSummary.paid, stmtSummary.balance],
+              ],
+            };
+            const fmt = config.exportFormat;
+            try {
+              if (fmt === "CSV") {
+                exportReportCsv(grid);
+                showToast("Statement exported as CSV", "success");
+                setModal(null);
+                return;
+              }
+              if (fmt === "XLS") {
+                exportReportXlsx(grid, "xls");
+                showToast("Statement exported as XLS", "success");
+                setModal(null);
+                return;
+              }
+              if (fmt === "XLSX" || fmt === "Excel") {
+                exportReportXlsx(grid, "xlsx");
+                showToast(`Statement exported as ${fmt}`, "success");
+                setModal(null);
+                return;
+              }
+              setModal("preview");
+            } catch {
+              showToast("Export failed", "error");
             }
-            setModal("preview");
           }}
         />
       )}

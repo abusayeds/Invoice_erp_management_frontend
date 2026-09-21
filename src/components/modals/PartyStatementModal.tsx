@@ -19,7 +19,7 @@ export const STATEMENT_DATE_RANGES = [
 
 export const STATEMENT_DATA_TYPES = ["All Transactions", "Outstanding"] as const;
 
-export const STATEMENT_EXPORT_FORMATS = ["PDF", "CSV", "Excel"] as const;
+export const STATEMENT_EXPORT_FORMATS = ["PDF", "CSV", "XLSX", "XLS", "Excel"] as const;
 
 export type StatementPartyKind = "customer" | "vendor";
 

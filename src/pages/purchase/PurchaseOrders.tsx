@@ -30,6 +30,8 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
+import { updatePurchaseOrder } from "@/services/purchaseOrdersApi";
+import { api } from "@/lib/api/client";
 import {
   Search,
   Plus,
@@ -117,6 +119,12 @@ const normalizePoStatus = (raw: unknown): Status => {
 
 const poBadge = (status: unknown) => STATUS_BADGE[normalizePoStatus(status)];
 
+const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/png" });
+};
+
 const rowDateIso = (value: string): string | null => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
@@ -188,8 +196,8 @@ export const PurchaseOrder: React.FC = () => {
   const [sortBy, setSortBy] = useState("Purchase orders date");
   const [sortDir, setSortDir] = useState("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [vendorFilter, setVendorFilter] = useState<string | null>(null);
-  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [vendorFilterLabels, setVendorFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "pdfSettings">(null);
@@ -215,10 +223,12 @@ export const PurchaseOrder: React.FC = () => {
   const dbOrders = useCollection<any>("purchaseOrders");
   const dbVendors = useCollection<any>("vendors", "name");
   const poDateRange = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
-  const filteredVendorLocalId = useMemo(() => {
-    if (!vendorFilter) return null;
-    const ven = dbVendors.find((v) => String(v._id) === vendorFilter);
-    return ven?.id ?? null;
+  const filteredVendorLocalIds = useMemo(() => {
+    if (!vendorFilter.length) return null;
+    const keys = new Set(vendorFilter.map(String));
+    return new Set(
+      dbVendors.filter((v) => keys.has(String(v._id))).map((v) => v.id),
+    );
   }, [dbVendors, vendorFilter]);
   const orders: PurchaseOrder[] = useMemo(
     () => dbOrders.slice().sort((a, b) => b.id - a.id).map((d) => {
@@ -234,7 +244,7 @@ export const PurchaseOrder: React.FC = () => {
     let list = orders.filter(
       (i) =>
         (statusFilter === "All" || i.status === statusFilter) &&
-        (filteredVendorLocalId == null || dbOrders.find((d) => d.id === i.id)?.vendorId === filteredVendorLocalId) &&
+        (filteredVendorLocalIds == null || filteredVendorLocalIds.has(dbOrders.find((d) => d.id === i.id)?.vendorId)) &&
         matchesDateRange(i.date, poDateRange) &&
         (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
     );
@@ -248,7 +258,7 @@ export const PurchaseOrder: React.FC = () => {
       return sortDir === "Ascending" ? r : -r;
     });
     return list;
-  }, [orders, sortBy, sortDir, statusFilter, filteredVendorLocalId, poDateRange, search, dbOrders]);
+  }, [orders, sortBy, sortDir, statusFilter, filteredVendorLocalIds, poDateRange, search, dbOrders]);
 
   const selected = orders.find((i) => i.id === selectedId) || orders[0];
   const selectedDb: any = dbOrders.find((d) => d.id === (selected?.id ?? selectedId)) || {};
@@ -333,9 +343,35 @@ export const PurchaseOrder: React.FC = () => {
     exitSelect();
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
-    await repo.update("purchaseOrders", selectedDb.id, { signature: data.image, signatureName: data.name, signatureTitle: data.title, signatureDate: data.date });
-    await logActivity("status", `Vendor signature added to Purchase Order ${selectedDb.number}.`);
-    showToast("Signature saved", "success");
+    const backendId = selectedDb?._id;
+    let signaturePath = data.image;
+    try {
+      if (backendId && data.image.startsWith("data:")) {
+        const formData = new FormData();
+        formData.append("files", await dataUrlToFile(data.image, `po-signature-${backendId}.png`));
+        const uploadRes = await api.raw.post("/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        signaturePath =
+          uploadRes.data?.data?.file_path ||
+          uploadRes.data?.data?.path ||
+          uploadRes.data?.data?.[0]?.path ||
+          data.image;
+        await updatePurchaseOrder(String(backendId), { signature: signaturePath });
+      }
+      if (selectedDb?.id) {
+        await repo.update("purchaseOrders", selectedDb.id, {
+          signature: signaturePath,
+          signatureName: data.name,
+          signatureTitle: data.title,
+          signatureDate: data.date,
+        });
+      }
+      await logActivity("status", `Vendor signature added to Purchase Order ${selectedDb.number}.`);
+      showToast("Signature saved", "success");
+    } catch {
+      showToast("Could not save signature", "error");
+    }
   };
 
   const num = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -363,7 +399,7 @@ export const PurchaseOrder: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || vendorFilter.length > 0 || dateFilter !== "All";
   if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No purchase orders yet" onCreate={() => setCreateOpen(true)} createLabel="New Purchase Order" />;
 
   return (
@@ -422,11 +458,11 @@ export const PurchaseOrder: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="vendor"
-            applied={vendorFilter}
-            appliedLabel={vendorFilterLabel}
-            onApply={(id, label) => {
-              setVendorFilter(id);
-              setVendorFilterLabel(label);
+            appliedIds={vendorFilter}
+            appliedLabels={vendorFilterLabels}
+            onApply={(ids, labels) => {
+              setVendorFilter(ids);
+              setVendorFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Purchase orders date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>

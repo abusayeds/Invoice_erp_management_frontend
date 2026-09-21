@@ -14,7 +14,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
@@ -461,8 +461,8 @@ export const PurchaseReturns: React.FC = () => {
   const [sortBy, setSortBy] = useState("Return date");
   const [sortDir, setSortDir] = useState<"Ascending" | "Descending">("Descending");
   const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [vendorFilter, setVendorFilter] = useState<string | null>(null);
-  const [vendorFilterLabel, setVendorFilterLabel] = useState<string | undefined>();
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [vendorFilterLabels, setVendorFilterLabels] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -492,7 +492,7 @@ export const PurchaseReturns: React.FC = () => {
       sort: buildListSortParam(prSortField(sortBy), sortDir),
       status: apiStatusFilter(statusFilter),
       isDeleted: statusFilter === "Trash" || undefined,
-      vendor_id: vendorFilter || undefined,
+      vendor_id: partyFilterParam(vendorFilter),
       dateField: "return_date",
       ...returnDateRange,
     }),
@@ -550,7 +550,7 @@ export const PurchaseReturns: React.FC = () => {
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
-  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || !!vendorFilter || dateFilter !== "All";
+  const hasActiveFilters = statusFilter !== "All" || !!search.trim() || vendorFilter.length > 0 || dateFilter !== "All";
   if (!selected && !createMode && !hasActiveFilters) return <ListEmptyState title="No purchase returns yet" onCreate={() => setCreateMode(true)} createLabel="New Purchase Return" />;
 
   return (
@@ -605,11 +605,11 @@ export const PurchaseReturns: React.FC = () => {
           </Dropdown>
           <PartyFilterPopover
             kind="vendor"
-            applied={vendorFilter}
-            appliedLabel={vendorFilterLabel}
-            onApply={(id, label) => {
-              setVendorFilter(id);
-              setVendorFilterLabel(label);
+            appliedIds={vendorFilter}
+            appliedLabels={vendorFilterLabels}
+            onApply={(ids, labels) => {
+              setVendorFilter(ids);
+              setVendorFilterLabels(labels);
             }}
           />
           <Dropdown align="right" trigger={<span className="inline-flex items-center gap-1 text-xs text-gray-600 border border-dashed border-gray-300 rounded-full px-2.5 py-1 whitespace-nowrap hover:border-gray-400"><Plus className="w-3 h-3" />Return date | {dateFilter}<ChevronDown className="w-3 h-3" /></span>}>
