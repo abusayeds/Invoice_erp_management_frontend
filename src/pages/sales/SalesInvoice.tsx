@@ -184,7 +184,8 @@ const statusLabel = (status: Status | string): string =>
 const normalizeInvoiceStatus = (raw?: string): Status => {
   const s = String(raw || "").trim();
   if (s === "Credit Notes Applied" || s === "CreditNotesApplied") return "CreditNotesApplied";
-  if ((["Draft", "Paid", "Partial", "Overdue", "Void", "Open", "Recurring"] as const).includes(s as Status)) {
+  const known = ["Draft", "Paid", "Partial", "Overdue", "Void", "Open", "Recurring"] as const;
+  if ((known as readonly string[]).includes(s)) {
     return s as Status;
   }
   return "Draft";

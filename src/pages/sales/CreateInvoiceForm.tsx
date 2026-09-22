@@ -450,7 +450,7 @@ export const CreateInvoiceForm: React.FC<{
           ...common,
           id: localId,
           _id: backendId,
-          number: numStr || common.number,
+          number: numStr,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

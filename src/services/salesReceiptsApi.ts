@@ -50,6 +50,7 @@ export interface BackendSalesReceiptDoc {
   sub_total?: number;
   tax?: number;
   total?: number;
+  status?: string;
   createdAt?: string;
   signature?: string;
 }
