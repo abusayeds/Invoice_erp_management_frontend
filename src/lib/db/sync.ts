@@ -11,7 +11,7 @@
  */
 
 import { format } from "date-fns";
-import { api } from "@/lib/api/client";
+import { api, type ApiRequestConfig } from "@/lib/api/client";
 import { getToken } from "@/lib/api/tokenStore";
 import { toArray } from "@/services/_http";
 import { db, type CollectionName } from "./db";
@@ -1100,10 +1100,10 @@ export function specFor(name: CollectionName): SyncSpec | undefined {
 
 // ── Read sync ────────────────────────────────────────────────────────────────
 
-const SYNC_HTTP = {
+const SYNC_HTTP: ApiRequestConfig = {
   skipGlobalLoading: true,
   skipUnauthorized: true,
-} as const;
+};
 
 async function fetchAllPaginatedDocs(url: string, pageSize = 1000): Promise<any[]> {
   const out: any[] = [];

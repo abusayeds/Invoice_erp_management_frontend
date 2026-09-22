@@ -21,12 +21,17 @@ import { API_BASE_URL } from "../env";
 import { getToken, clearToken } from "./tokenStore";
 import { toApiError } from "./ApiError";
 
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    /** Opt out of the global top loading bar. */
+    skipGlobalLoading?: boolean;
+    /** Background sync / soft probes — don't force logout on 401. */
+    skipUnauthorized?: boolean;
+  }
+}
+
 /** Opt out of the global top loading bar (detail panel fetches, background sync). */
-export type ApiRequestConfig = AxiosRequestConfig & {
-  skipGlobalLoading?: boolean;
-  /** Background sync / soft probes — don't force logout on 401. */
-  skipUnauthorized?: boolean;
-};
+export type ApiRequestConfig = AxiosRequestConfig;
 
 /** Called when a 401 is received, so the app can react (e.g. redirect to login). */
 let unauthorizedHandler: (() => void) | null = null;
