@@ -1100,11 +1100,16 @@ export function specFor(name: CollectionName): SyncSpec | undefined {
 
 // ── Read sync ────────────────────────────────────────────────────────────────
 
+const SYNC_HTTP = {
+  skipGlobalLoading: true,
+  skipUnauthorized: true,
+} as const;
+
 async function fetchAllPaginatedDocs(url: string, pageSize = 1000): Promise<any[]> {
   const out: any[] = [];
   let page = 1;
   for (;;) {
-    const res = await api.raw.get(url, { params: { page, limit: pageSize } });
+    const res = await api.raw.get(url, { params: { page, limit: pageSize }, ...SYNC_HTTP });
     const body = res.data ?? {};
     const batch = Array.isArray(body.data) ? body.data : toArray<any>(body);
     out.push(...batch);
@@ -1121,15 +1126,18 @@ async function syncSpec(spec: SyncSpec): Promise<void> {
     const docs =
       spec.collection === "products"
         ? await fetchAllPaginatedDocs(spec.url)
-        : toArray<any>((await api.raw.get(spec.url)).data);
+        : toArray<any>((await api.raw.get(spec.url, { ...SYNC_HTTP })).data);
     const rows = docs.map((d) => {
       const _id = str(d._id ?? d.id);
       return { ...spec.map(d), _id, id: numericId(_id) };
     });
-    // Touch the table only after a successful fetch, so an offline/401 request
-    // leaves the current data intact.
-    await (db as any)[spec.collection].clear();
-    if (rows.length) await (db as any)[spec.collection].bulkPut(rows);
+    // Replace in one Dexie transaction so liveQuery never sees an empty table
+    // (clear-then-put without a txn flashes blank UI and feels like a page reload).
+    const table = (db as any)[spec.collection];
+    await db.transaction("rw", table, async () => {
+      await table.clear();
+      if (rows.length) await table.bulkPut(rows);
+    });
   } catch (e) {
     console.warn(`[sync] ${spec.collection} skipped:`, e);
   }

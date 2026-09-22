@@ -20,6 +20,22 @@ export default defineConfig({
 
     host: true,
     cors: true ,
+    // Avoid noisy full-page reloads from watcher noise outside src.
+    watch: {
+      ignored: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.git/**",
+        "**/coverage/**",
+        "**/*.log",
+        "**/AgentStores/**",
+        "**/agent-transcripts/**",
+      ],
+    },
+    hmr: {
+      // Prefer hot update over full browser reload when possible.
+      overlay: true,
+    },
     proxy: {
       "/api": {
         target: "https://sabbir2000.ssh.bd",

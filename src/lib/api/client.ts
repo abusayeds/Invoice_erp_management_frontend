@@ -22,7 +22,11 @@ import { getToken, clearToken } from "./tokenStore";
 import { toApiError } from "./ApiError";
 
 /** Opt out of the global top loading bar (detail panel fetches, background sync). */
-export type ApiRequestConfig = AxiosRequestConfig & { skipGlobalLoading?: boolean };
+export type ApiRequestConfig = AxiosRequestConfig & {
+  skipGlobalLoading?: boolean;
+  /** Background sync / soft probes — don't force logout on 401. */
+  skipUnauthorized?: boolean;
+};
 
 /** Called when a 401 is received, so the app can react (e.g. redirect to login). */
 let unauthorizedHandler: (() => void) | null = null;
@@ -89,7 +93,8 @@ axiosInstance.interceptors.response.use(
   (error) => {
     if (shouldTrackLoading(error?.config)) endLoading();
     const apiError = toApiError(error);
-    if (apiError.status === 401) {
+    const cfg = error?.config as { skipUnauthorized?: boolean } | undefined;
+    if (apiError.status === 401 && !cfg?.skipUnauthorized) {
       clearToken();
       unauthorizedHandler?.();
     }
