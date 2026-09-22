@@ -235,6 +235,7 @@ const linesIn = (d: any): any[] => {
       qty: num(p.quantity),
       rate: num(p.rate),
       taxId: 0,
+      taxRate: num(p.tax),
       discount: num(p.discount),
       amount: num(p.amount),
     });
@@ -246,6 +247,7 @@ const linesIn = (d: any): any[] => {
       qty: num(s.quantity),
       rate: num(s.rate),
       taxId: 0,
+      taxRate: num(s.tax),
       discount: num(s.discount),
       amount: num(s.amount),
     });
@@ -327,7 +329,7 @@ const reverseInvoice = async (r: Record<string, any>) => {
         description: str(it.description),
         quantity: num(it.qty),
         rate: num(it.rate),
-        tax: 0,
+        tax: num(it.taxRate ?? it.tax),
         discount: +discPct.toFixed(6),
         amount: +(base - (base * discPct) / 100).toFixed(2),
       };
@@ -514,7 +516,7 @@ const reversePurchaseWith =
           description: str(it.description),
           quantity: num(it.qty),
           rate: num(it.rate),
-          tax: 0,
+          tax: num(it.taxRate ?? it.tax),
           discount: +discPct.toFixed(6),
           amount: +(base - (base * discPct) / 100).toFixed(2),
         };

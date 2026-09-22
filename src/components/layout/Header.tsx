@@ -90,8 +90,8 @@ const createGroups: {
     items: [
       { label: "Project", icon: FolderOpen, path: "/project/projects" },
       { label: "Time Log", icon: Clock, path: "/time-logs" },
-      { label: "My Documents", icon: StickyNote, path: "/documents/my-documents" },
-      { label: "Quick Scan", icon: Scan, path: "/documents/quick-scan" },
+      // { label: "My Documents", icon: StickyNote, path: "/documents/my-documents" },
+      // { label: "Quick Scan", icon: Scan, path: "/documents/quick-scan" },
     ],
   },
 ];

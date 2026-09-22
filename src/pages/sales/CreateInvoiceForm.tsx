@@ -26,11 +26,21 @@ import { printServerPdf } from "@/lib/db/serverPdf";
 import { toIsoDate, todayIso } from "@/lib/dateIso";
 import { fetchCustomer, fetchCustomers } from "@/services/customersApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
+import { LineTaxSelect } from "@/components/forms/LineTaxSelect";
 import type { EmailNavKey } from "@/services/emailTemplatesApi";
 
-const TAX_RATE: Record<number, number> = { 1: 58, 2: 72, 3: 15, 4: 5 };
-const TAX_NAME: Record<number, string> = { 1: "new test tax", 2: "Test Tax", 3: "VAT", 4: "GST" };
-type DraftRow = { key: string; kind: "product" | "service"; name: string; description: string; qty: number; rate: number; mrp: number; taxId: number; discount: number };
+type DraftRow = {
+  key: string;
+  kind: "product" | "service";
+  name: string;
+  description: string;
+  qty: number;
+  rate: number;
+  mrp: number;
+  taxId: number;
+  taxRate: number;
+  discount: number;
+};
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "");
 const formatCurrencyValue = (amount: number, currencyCode: string) => {
@@ -118,7 +128,8 @@ export const CreateInvoiceForm: React.FC<{
         kind: "product" as const,
         name: p.name,
         rate: p.price || 0,
-        taxId: p.taxId || 1,
+        taxId: p.taxId || 0,
+        taxRate: Number(p.taxRate) || 0,
         stock: p.stock ?? null,
         description: p.note || p.description || "",
       })),
@@ -127,7 +138,8 @@ export const CreateInvoiceForm: React.FC<{
         kind: "service" as const,
         name: s.name,
         rate: s.price || 0,
-        taxId: s.taxId || 1,
+        taxId: s.taxId || 0,
+        taxRate: Number(s.taxRate) || 0,
         stock: null as number | null,
         description: s.note || s.description || "",
       })),
@@ -290,10 +302,21 @@ export const CreateInvoiceForm: React.FC<{
 
   const [rows, setRows] = useState<DraftRow[]>(
     invoice?.items?.length
-      ? invoice.items.map((it: any) => ({ key: "", kind: "product" as const, name: it.name || "", description: it.description || "", qty: it.qty ?? 1, rate: it.rate ?? 0, mrp: it.mrp ?? 0, taxId: it.taxId || 1, discount: it.discount || 0 }))
+      ? invoice.items.map((it: any) => ({
+          key: "",
+          kind: "product" as const,
+          name: it.name || "",
+          description: it.description || "",
+          qty: it.qty ?? 1,
+          rate: it.rate ?? 0,
+          mrp: it.mrp ?? 0,
+          taxId: it.taxId || 0,
+          taxRate: Number(it.taxRate ?? it.tax) || 0,
+          discount: it.discount || 0,
+        }))
       : [
-          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 0, taxRate: 0, discount: 0 },
+          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 0, taxRate: 0, discount: 0 },
         ],
   );
   const [sugRow, setSugRow] = useState<number | null>(null);
@@ -336,6 +359,7 @@ export const CreateInvoiceForm: React.FC<{
     const h = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (t?.closest?.("[data-line-item-suggest]")) return;
+      if (t?.closest?.("[data-line-tax-select]")) return;
       if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null);
     };
     document.addEventListener("mousedown", h);
@@ -343,7 +367,7 @@ export const CreateInvoiceForm: React.FC<{
   }, []);
 
   const addRow = (kind: "product" | "service") => {
-    setRows((r) => [...r, { key: "", kind, name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 }]);
+    setRows((r) => [...r, { key: "", kind, name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 0, taxRate: 0, discount: 0 }]);
     setSugRow(rows.length);
   };
   const setRowName = (i: number, name: string) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, name, key: "" } : row)));
@@ -351,7 +375,13 @@ export const CreateInvoiceForm: React.FC<{
   const pickSuggestion = (i: number, key: string) => {
     const it = catalog.find((c) => c.key === key);
     if (!it) return;
-    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, key, name: it.name, rate: it.rate, taxId: it.taxId } : row)));
+    setRows((r) =>
+      r.map((row, idx) =>
+        idx === i
+          ? { ...row, key, name: it.name, rate: it.rate, taxId: it.taxId || 0, taxRate: it.taxRate || 0 }
+          : row,
+      ),
+    );
     setRecent((p) => [key, ...p.filter((k) => k !== key)]);
     setSugRow(null);
   };
@@ -367,14 +397,15 @@ export const CreateInvoiceForm: React.FC<{
   const setQty = (i: number, qty: number) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, qty } : row)));
   const setRate = (i: number, rate: number) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, rate } : row)));
   const setMrp = (i: number, mrp: number) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, mrp } : row)));
-  const setTaxId = (i: number, taxId: number) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, taxId } : row)));
+  const setTax = (i: number, taxId: number, taxRate: number) =>
+    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, taxId, taxRate } : row)));
   const setDiscount = (i: number, discount: number) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, discount: Math.min(100, Math.max(0, discount)) } : row)));
   const lineAmount = (r: DraftRow) => r.qty * r.rate * (1 - (r.discount || 0) / 100);
   const removeRow = (i: number) => setRows((r) => (r.length > 1 ? r.filter((_, idx) => idx !== i) : r));
 
   const subTotal = rows.reduce((s, r) => s + lineAmount(r), 0);
   const inlineDiscount = rows.reduce((s, r) => s + r.qty * r.rate * ((r.discount || 0) / 100), 0);
-  const taxTotal = rows.reduce((s, r) => s + lineAmount(r) * ((TAX_RATE[r.taxId] || 0) / 100), 0);
+  const taxTotal = rows.reduce((s, r) => s + lineAmount(r) * ((r.taxRate || 0) / 100), 0);
   const shippingNum = show("Shipping Cost And Method") ? (parseFloat(shippingCost) || 0) : 0;
   const shippingTaxNum = show("Shipping Tax") ? (parseFloat(shippingTax) || 0) : 0;
   const customChargesNum = showSum("Custom Charges") ? (parseFloat(customCharges) || 0) : 0;
@@ -392,7 +423,7 @@ export const CreateInvoiceForm: React.FC<{
   const lineDisplayAmount = (r: DraftRow) => {
     const base = lineAmount(r);
     if (!showLineTax) return base;
-    return base * (1 + (TAX_RATE[r.taxId] || 0) / 100);
+    return base * (1 + (r.taxRate || 0) / 100);
   };
   const custDisabled = customerId === "" && !custQuery.trim();
 
@@ -404,7 +435,7 @@ export const CreateInvoiceForm: React.FC<{
     if (cid === "") return null;
     const items = rows.filter((r) => r.name).map((r, i) => ({
       id: i + 1, name: r.name, description: r.description, qty: r.qty, rate: r.rate, mrp: r.mrp,
-      taxId: r.taxId, discount: r.discount || 0, amount: +lineAmount(r).toFixed(2),
+      taxId: r.taxId, taxRate: r.taxRate || 0, discount: r.discount || 0, amount: +lineAmount(r).toFixed(2),
     }));
     const common = {
       customerId: cid, date, due, status: "Draft" as const,
@@ -534,8 +565,8 @@ export const CreateInvoiceForm: React.FC<{
         setCustQuery("");
         setCustomerEmail("");
         setRows([
-          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
-          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 1, discount: 0 },
+          { key: "", kind: "product", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 0, taxRate: 0, discount: 0 },
+          { key: "", kind: "service", name: "", description: "", qty: 1, rate: 0, mrp: 0, taxId: 0, taxRate: 0, discount: 0 },
         ]);
       }
     } catch {
@@ -763,9 +794,12 @@ export const CreateInvoiceForm: React.FC<{
                   <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.rate} onChange={(e) => setRate(i, Number(e.target.value))} className="w-20 bg-transparent text-sm text-right outline-none" /></td>
                   {cols.tax && (
                     <td className="px-2 py-3">
-                      <select value={r.taxId} onChange={(e) => setTaxId(i, Number(e.target.value))} className="text-xs bg-transparent border-0 outline-none text-gray-600 max-w-[120px]">
-                        {Object.entries(TAX_NAME).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                      </select>
+                      <LineTaxSelect
+                        valueId={r.taxId}
+                        valueRate={r.taxRate}
+                        kind={r.kind}
+                        onChange={(next) => setTax(i, next?.taxId || 0, next?.taxRate || 0)}
+                      />
                     </td>
                   )}
                   {cols.discount && (
