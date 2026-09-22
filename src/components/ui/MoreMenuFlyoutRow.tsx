@@ -36,7 +36,16 @@ export const MoreMenuFlyoutRow: React.FC<Props> = ({ label, children, className 
       onMouseEnter={openSub}
       onMouseLeave={scheduleClose}
     >
-      <button type="button" className={item}>
+      <button
+        type="button"
+        className={item}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (closeTimer.current) window.clearTimeout(closeTimer.current);
+          setOpen((v) => !v);
+        }}
+      >
         {label}
         <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
       </button>

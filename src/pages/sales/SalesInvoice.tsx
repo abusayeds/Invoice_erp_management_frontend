@@ -39,9 +39,12 @@ import {
 } from "@/components/modals/PartyDetailModal";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MenuSideFlyout } from "@/components/ui/MenuSideFlyout";
+import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
 import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { todayIso } from "@/lib/dateIso";
+import { numericId } from "@/lib/db/sync";
+import { createInvoicePayment } from "@/services/paymentReceivedApi";
 import {
   Search,
   Plus,
@@ -80,7 +83,7 @@ import { focusNavbarSearch, openListImport, openListExport } from "@/lib/listToo
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 
 /* ── Types & data ──────────────────────────────────────────────── */
-type Status = "Draft" | "Paid" | "Partial" | "Overdue";
+type Status = "Draft" | "Paid" | "Partial" | "Overdue" | "Void" | "Open" | "Recurring" | "CreditNotesApplied";
 
 interface LineItem {
   no: number;
@@ -169,6 +172,22 @@ const STATUS_BADGE: Record<Status, string> = {
   Paid: "bg-green-500 text-white",
   Partial: "bg-orange-500 text-white",
   Overdue: "bg-red-500 text-white",
+  Void: "bg-slate-700 text-white",
+  Open: "bg-blue-500 text-white",
+  Recurring: "bg-indigo-500 text-white",
+  CreditNotesApplied: "bg-purple-500 text-white",
+};
+
+const statusLabel = (status: Status | string): string =>
+  status === "CreditNotesApplied" ? "Credit Notes Applied" : String(status || "");
+
+const normalizeInvoiceStatus = (raw?: string): Status => {
+  const s = String(raw || "").trim();
+  if (s === "Credit Notes Applied" || s === "CreditNotesApplied") return "CreditNotesApplied";
+  if ((["Draft", "Paid", "Partial", "Overdue", "Void", "Open", "Recurring"] as const).includes(s as Status)) {
+    return s as Status;
+  }
+  return "Draft";
 };
 
 const invoiceSortToBackend = (value: string) => {
@@ -475,89 +494,58 @@ const EmailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
   </Overlay>
 );
 
-/* ── "Mark as Paid" payment methods (reference submenu) ────────── */
-const PAY_METHOD_NAMES = [
-  "Paypal", "Stripe", "Venmo", "Paypal Checkout", "Braintree", "Custom", "UPI",
-  "Google Pay", "Apple Pay", "Square", "Razor Pay", "Pine Labs", "Cheque",
-  "Master Card", "Others", "Money Order", "iZettle",
-];
-
 /* ── $ menu: Add Payment / Mark as Paid ▸ payment methods ──────── */
-const PaidMenu: React.FC<{ close: () => void; onAddPayment: () => void; onMarkPaid: (method: string) => void }> = ({ close, onAddPayment, onMarkPaid }) => {
-  const [sub, setSub] = useState(false);
+const PaidMenu: React.FC<{
+  close: () => void;
+  onAddPayment: () => void;
+  onMarkPaid: (method: string) => void;
+  methods: string[];
+}> = ({ close, onAddPayment, onMarkPaid, methods }) => {
   const item = "w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap";
+  const names = methods.length ? methods : ["Cash", "Cheque", "Bank Transfer", "Others"];
   return (
     <div className="py-1 min-w-[170px]">
-      <button onClick={() => { onAddPayment(); close(); }} className={item}>Add Payment</button>
-      <div className="relative" onMouseEnter={() => setSub(true)} onMouseLeave={() => setSub(false)}>
-        <button className={item}>Mark as Paid <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-        {sub && (
-          <div className="absolute left-full top-0 ml-0.5 min-w-[170px] max-h-[60vh] overflow-y-auto custom-scrollbar bg-white border border-gray-200 rounded-md shadow-xl py-1 z-40">
-            {PAY_METHOD_NAMES.map((m) => (
-              <button key={m} onClick={() => { onMarkPaid(m); close(); }} className={item}>{m}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <button type="button" onClick={() => { onAddPayment(); close(); }} className={item}>Add Payment</button>
+      <MoreMenuFlyoutRow label="Mark as Paid">
+        {names.map((m) => (
+          <button key={m} type="button" onClick={() => { onMarkPaid(m); close(); }} className={item}>{m}</button>
+        ))}
+      </MoreMenuFlyoutRow>
     </div>
   );
 };
 
-/* ── ⋮ menu (reference: WhatsApp / Packing Slip / Delivery Note /
-      Duplicate ▸ / Credit Notes ▸ / Signature Request / Activity Log / Trash) ── */
+/* ── ⋮ menu (WhatsApp / Packing Slip / Delivery Note /
+      Duplicate ▸ / Credit Notes ▸ / Mark as Draft|Void|Paid ▸ / Signature Request / Activity / Trash) ── */
 const DUP_TARGETS = ["As Invoice", "As Estimate", "As Proforma Invoice", "As Credit Note", "As Purchase Order", "As Delivery Challan"];
-const InvoiceMoreMenu: React.FC<{ close: () => void; onAction: (a: string) => void }> = ({ close, onAction }) => {
-  const [sub, setSub] = useState<null | "dup" | "credit">(null);
-  const dupRef = useRef<HTMLDivElement>(null);
-  const creditRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<number | null>(null);
+const InvoiceMoreMenu: React.FC<{
+  close: () => void;
+  onAction: (a: string) => void;
+  paymentMethods: string[];
+}> = ({ close, onAction, paymentMethods }) => {
   const item = "w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap";
   const run = (a: string) => { onAction(a); close(); };
-  const openSub = (s: "dup" | "credit") => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current);
-    setSub(s);
-  };
-  const scheduleClose = () => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setSub(null), 160);
-  };
+  const payNames = paymentMethods.length ? paymentMethods : ["Cash", "Cheque", "Bank Transfer", "Others"];
   return (
     <div className="py-1 min-w-[190px]">
       <button type="button" onClick={() => run("whatsapp")} className={item}>WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>
       <button type="button" onClick={() => run("packingSlip")} className={item}>Packing Slip</button>
       <button type="button" onClick={() => run("deliveryNote")} className={item}>Delivery Note</button>
-      <div
-        ref={dupRef}
-        className="relative"
-        onMouseEnter={() => openSub("dup")}
-        onMouseLeave={scheduleClose}
-      >
-        <button type="button" className={item}>Duplicate <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-        <MenuSideFlyout
-          open={sub === "dup"}
-          anchorRef={dupRef}
-          onHoverChange={(h) => (h ? openSub("dup") : scheduleClose())}
-        >
-          {DUP_TARGETS.map((t) => (
-            <button key={t} type="button" onClick={() => run("dup:" + t)} className={item}>{t}</button>
-          ))}
-        </MenuSideFlyout>
-      </div>
-      <div
-        ref={creditRef}
-        className="relative"
-        onMouseEnter={() => openSub("credit")}
-        onMouseLeave={scheduleClose}
-      >
-        <button type="button" className={item}>Credit Notes <ChevronRight className="w-4 h-4 text-gray-400" /></button>
-        <MenuSideFlyout
-          open={sub === "credit"}
-          anchorRef={creditRef}
-          onHoverChange={(h) => (h ? openSub("credit") : scheduleClose())}
-        >
-          <button type="button" onClick={() => run("dup:As Credit Note")} className={item}>Create New</button>
-        </MenuSideFlyout>
-      </div>
+      <MoreMenuFlyoutRow label="Duplicate">
+        {DUP_TARGETS.map((t) => (
+          <button key={t} type="button" onClick={() => run("dup:" + t)} className={item}>{t}</button>
+        ))}
+      </MoreMenuFlyoutRow>
+      <MoreMenuFlyoutRow label="Credit Notes">
+        <button type="button" onClick={() => run("dup:As Credit Note")} className={item}>Create New</button>
+      </MoreMenuFlyoutRow>
+      <button type="button" onClick={() => run("mark:Draft")} className={item}>Mark as Draft</button>
+      <button type="button" onClick={() => run("mark:Void")} className={item}>Mark as Void</button>
+      <MoreMenuFlyoutRow label="Mark as Paid">
+        {payNames.map((m) => (
+          <button key={m} type="button" onClick={() => run("paid:" + m)} className={item}>{m}</button>
+        ))}
+      </MoreMenuFlyoutRow>
       <button type="button" onClick={() => run("signature")} className={`${item} border-t border-gray-200`}>Signature Request</button>
       <button type="button" onClick={() => run("activity")} className={item}>Activity Log</button>
       <button type="button" onClick={() => run("trash")} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
@@ -858,6 +846,7 @@ export const SalesInvoice: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [createPrefillCustomer, setCreatePrefillCustomer] = useState(navState?.prefillCustomer);
   const [editOpen, setEditOpen] = useState(false);
+  const [editInvoice, setEditInvoice] = useState<any>(null);
   useEffect(() => {
     if (navState?.openCreate) {
       setCreateOpen(true);
@@ -924,7 +913,7 @@ export const SalesInvoice: React.FC = () => {
           due: row.dateLabel,
           amount: apiMoney(row.amount, row.currency),
           currency: row.currency,
-          status: (["Draft", "Paid", "Partial", "Overdue"].includes(row.status) ? row.status : "Draft") as Status,
+          status: normalizeInvoiceStatus(row.status),
         } satisfies Invoice;
       });
   }, [backendInvoiceList?.rows, dbInvoices]);
@@ -939,10 +928,11 @@ export const SalesInvoice: React.FC = () => {
     filtered.find((i) => i.backendId === selectedId) ||
     filtered[0];
   const selectedDb: any =
-    dbInvoices.find((i) => i.id === selected?.id) ||
+    (typeof selected?.id === "number" ? dbInvoices.find((i) => i.id === selected.id) : undefined) ||
     dbInvoices.find((i) => i._id === selected?.backendId) ||
+    (selected?.backendId ? dbInvoices.find((i) => i.id === numericId(String(selected.backendId))) : undefined) ||
     {};
-  const selectedCustomer: any = dbCustomers.find((c) => c.id === selectedDb.customerId) || {};
+  const selectedCustomerLocal: any = dbCustomers.find((c) => c.id === selectedDb.customerId) || {};
 
   useEffect(() => {
     if (
@@ -967,8 +957,21 @@ export const SalesInvoice: React.FC = () => {
 
   const partyBackendId =
     invoiceCustomerId(selectedInvoiceDoc) ||
-    partyIdFromRef(selectedCustomer._id) ||
+    partyIdFromRef(selectedCustomerLocal._id) ||
     "";
+
+  const selectedCustomer: any =
+    selectedCustomerLocal?.id
+      ? selectedCustomerLocal
+      : dbCustomers.find((c) => partyBackendId && String(c._id) === partyBackendId) ||
+        (selectedInvoiceDoc?.customer_id && typeof selectedInvoiceDoc.customer_id === "object"
+          ? {
+              name: selectedInvoiceDoc.customer_id.name || selectedInvoiceDoc.customer_name,
+              email: (selectedInvoiceDoc.customer_id as any).email,
+              contact: selectedInvoiceDoc.customer_id.name,
+              _id: (selectedInvoiceDoc.customer_id as any)._id,
+            }
+          : { name: selectedInvoiceDoc?.customer_name || selected?.name || "" });
 
   const detailLines = useMemo<DetailLine[]>(() => {
     const products = (selectedInvoiceDoc?.product ?? []).map((item, index) => ({
@@ -1016,24 +1019,364 @@ export const SalesInvoice: React.FC = () => {
   const dbPaymentsReceived = useCollection<any>("paymentsReceived");
   const invoicePayments = dbPaymentsReceived.filter((p) => p.invoiceId === selectedDb.id);
 
+  /** Build a Dexie-shaped invoice for CreateInvoiceForm (edit), including backend-only rows. */
+  const buildEditInvoiceFromBackend = (doc: BackendInvoiceDoc, local?: any) => {
+    const backendId = String(doc._id);
+    const localId =
+      (typeof local?.id === "number" && local.id) ||
+      numericId(backendId);
+    const customerMongo = invoiceCustomerId(doc);
+    const localCustomer =
+      dbCustomers.find((c) => customerMongo && String(c._id) === customerMongo) ||
+      (typeof local?.customerId === "number" ? dbCustomers.find((c) => c.id === local.customerId) : undefined);
+    const items =
+      (local?.items?.length ? local.items : null) ||
+      [
+        ...(doc.product ?? []).map((item, index) => ({
+          id: index + 1,
+          name: apiText(item.product_name || (typeof item.product_id === "object" ? item.product_id?.productName : "")) || "Product",
+          description: apiText(item.description),
+          qty: numberValue(item.quantity ?? 1),
+          rate: numberValue(item.rate),
+          taxId: 1,
+          discount: numberValue(item.discount),
+          amount: numberValue(item.amount),
+        })),
+        ...(doc.service ?? []).map((item, index) => ({
+          id: 1000 + index,
+          name: apiText(item.service_name || (typeof item.service_id === "object" ? item.service_id?.serviceName : "")) || "Service",
+          description: apiText(item.description),
+          qty: numberValue(item.quantity ?? 1),
+          rate: numberValue(item.rate),
+          taxId: 1,
+          discount: numberValue(item.discount),
+          amount: numberValue(item.amount),
+        })),
+      ];
+    return {
+      ...(local || {}),
+      id: localId,
+      _id: backendId,
+      number: local?.number || (doc.invoice_number ? `#${doc.invoice_number}` : selected?.number || ""),
+      customerId: localCustomer?.id ?? local?.customerId ?? (customerMongo ? numericId(customerMongo) : ""),
+      customerName: localCustomer?.name || selected?.name || doc.customer_name || "",
+      customerBackendId: customerMongo || "",
+      customerEmail: localCustomer?.email || (typeof doc.customer_id === "object" ? (doc.customer_id as any)?.email : "") || "",
+      date: local?.date || (doc.date ? new Date(doc.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""),
+      due: local?.due || (doc.due_date ? new Date(doc.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""),
+      status: normalizeInvoiceStatus(doc.status || local?.status),
+      items,
+      subTotal: numberValue(doc.sub_total ?? local?.subTotal),
+      tax: numberValue(doc.tax ?? local?.tax),
+      shipping: numberValue(doc.shipping_cost ?? local?.shipping),
+      total: numberValue(doc.total ?? local?.total),
+      amountPaid: numberValue(doc.paid_amount ?? local?.amountPaid),
+      amountDue: numberValue(doc.balance_amount ?? local?.amountDue),
+      notes: apiText(doc.notes) || local?.notes || "",
+      terms: apiText(doc.terms_and_conditions) || local?.terms || "",
+      currency: doc.currency || local?.currency || "USD",
+      paymentMethod: doc.payment_method || local?.paymentMethod || [],
+      payment_method: doc.payment_method || local?.payment_method || [],
+      subTitle: apiText(doc.sub_title) || local?.subTitle || "",
+      shippingMethod: apiText(doc.shipping_method) || local?.shippingMethod || "",
+      Attachment: doc.Attachment || local?.Attachment || "",
+      street1: doc.billing_address?.street || local?.street1 || "",
+      street2: doc.billing_address?.street2 || local?.street2 || "",
+      city: doc.billing_address?.city || local?.city || "",
+      state: doc.billing_address?.state || local?.state || "",
+      zip: doc.billing_address?.zip || local?.zip || "",
+      country: doc.billing_address?.country || local?.country || "",
+      shipStreet1: doc.shipping_address?.street || local?.shipStreet1 || "",
+      shipStreet2: doc.shipping_address?.street2 || local?.shipStreet2 || "",
+      shipCity: doc.shipping_address?.city || local?.shipCity || "",
+      shipState: doc.shipping_address?.state || local?.shipState || "",
+      shipZip: doc.shipping_address?.zip || local?.shipZip || "",
+      shipCountry: doc.shipping_address?.country || local?.shipCountry || "",
+    };
+  };
+
+  const openEditInvoice = async () => {
+    try {
+      let local =
+        (typeof selectedDb?.id === "number" ? selectedDb : null) ||
+        (selected?.backendId
+          ? dbInvoices.find((i) => i._id === selected.backendId) ||
+            dbInvoices.find((i) => i.id === numericId(String(selected.backendId)))
+          : null);
+
+      if (local?.id && !selected?.backendId) {
+        setEditInvoice(local);
+        setEditOpen(true);
+        return;
+      }
+
+      const backendId = String(selectedInvoiceDoc?._id || selected?.backendId || local?._id || "");
+      if (!backendId) {
+        if (local?.id) {
+          setEditInvoice(local);
+          setEditOpen(true);
+          return;
+        }
+        showToast("Invoice not ready to edit yet", "warning");
+        return;
+      }
+
+      const doc = selectedInvoiceDoc?._id === backendId
+        ? selectedInvoiceDoc
+        : await fetchInvoice(backendId);
+      if (!doc?._id) {
+        showToast("Could not load invoice for editing", "error");
+        return;
+      }
+
+      const shaped = buildEditInvoiceFromBackend(doc, local || undefined);
+      await repo.put("invoices", {
+        ...shaped,
+        updatedAt: new Date().toISOString(),
+        createdAt: local?.createdAt || new Date().toISOString(),
+      });
+      setEditInvoice(shaped);
+      setEditOpen(true);
+    } catch (err: any) {
+      showToast(err?.message || "Could not open invoice editor", "error");
+    }
+  };
+
   /* ── reference actions: mark-as-paid / duplicate / trash ──────── */
-  const markAsPaid = async (method: string) => {
-    const ids = [...checked].filter((id): id is number => typeof id === "number");
+  const paymentMethodNames = useMemo(
+    () => paymentMethodOptions.map((m) => m.name).filter(Boolean),
+    [paymentMethodOptions],
+  );
+
+  const markInvoiceStatus = async (status: string) => {
+    const backendId = selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id;
+    try {
+      if (backendId) await updateInvoice(String(backendId), { status });
+      if (typeof selectedDb?.id === "number") await repo.update("invoices", selectedDb.id, { status });
+      await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+      if (backendId) await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", String(backendId)] });
+      showToast(`Invoice marked as ${status}`, "success");
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || err?.message || "Could not update status", "error");
+    }
+  };
+
+  const markAsPaid = async (method: string, invoiceIds?: Array<number | string>) => {
+    const ids = (invoiceIds ?? [...checked]).filter((id) => id != null && id !== "");
+    if (!ids.length) {
+      // Single-invoice Mark as Paid from ⋮ menu
+      const backendId = String(selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || "");
+      const customerId = invoiceCustomerId(selectedInvoiceDoc) || partyBackendId;
+      const due = detailDue > 0 ? detailDue : detailTotal;
+      try {
+        if (backendId && customerId && due > 0) {
+          await createInvoicePayment({
+            customer_id: customerId,
+            invoice_id: backendId,
+            payment_date: todayIso(),
+            payment_type: method,
+            amount: due,
+            type: "invoice",
+            notes: `Marked as paid via ${method}`,
+          });
+        } else if (backendId) {
+          await updateInvoice(backendId, {
+            status: "Paid",
+            paid_amount: detailTotal,
+            balance_amount: 0,
+            payment_method: [method],
+          });
+        }
+        if (typeof selectedDb?.id === "number") {
+          await repo.update("invoices", selectedDb.id, {
+            status: "Paid",
+            amountPaid: selectedDb.total || detailTotal,
+            amountDue: 0,
+          });
+        }
+        await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+        if (backendId) await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", backendId] });
+        showToast(`Invoice marked as paid (${method})`, "success");
+      } catch (err: any) {
+        showToast(err?.response?.data?.message || err?.message || "Could not mark as paid", "error");
+      }
+      return;
+    }
+
+    let done = 0;
     for (const id of ids) {
-      const inv = dbInvoices.find((i) => i.id === id);
-      if (!inv || inv.status === "Paid") continue;
-      const open = inv.amountDue ?? inv.total ?? 0;
-      await repo.update("invoices", id, { status: "Paid", amountPaid: inv.total || 0, amountDue: 0 });
-      if (open > 0) {
-        const n = await nextNumber("paymentsReceived");
-        await repo.add("paymentsReceived", {
-          number: "#" + n, customerId: inv.customerId, invoiceId: id,
-          date: fmtToday(), ts: Date.now(), amount: open, method, notes: "", internalNotes: "",
-        });
+      const row = filtered.find((i) => i.id === id || i.backendId === id);
+      const local = dbInvoices.find((i) => i.id === id || i._id === row?.backendId);
+      const backendId = String(row?.backendId || local?._id || "");
+      const customerMongo =
+        (local?.customerId != null
+          ? (await (async () => {
+              const c = dbCustomers.find((x) => x.id === local.customerId);
+              return c?._id ? String(c._id) : "";
+            })())
+          : "") || "";
+      const total = Number(local?.total ?? row?.amount?.replace?.(/[^0-9.-]/g, "") ?? 0) || 0;
+      const due = Number(local?.amountDue ?? total) || 0;
+      try {
+        if (backendId && customerMongo && due > 0) {
+          await createInvoicePayment({
+            customer_id: String(customerMongo),
+            invoice_id: backendId,
+            payment_date: todayIso(),
+            payment_type: method,
+            amount: due,
+            type: "invoice",
+            notes: `Marked as paid via ${method}`,
+          });
+        } else if (backendId) {
+          await updateInvoice(backendId, { status: "Paid", paid_amount: total, balance_amount: 0, payment_method: [method] });
+        }
+        if (typeof local?.id === "number") {
+          await repo.update("invoices", local.id, { status: "Paid", amountPaid: total, amountDue: 0 });
+        }
+        done += 1;
+      } catch {
+        /* continue other rows */
       }
     }
-    showToast(`${ids.length} ${ids.length === 1 ? "invoice" : "invoices"} marked as paid (${method})`, "success");
+    await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+    showToast(`${done} ${done === 1 ? "invoice" : "invoices"} marked as paid (${method})`, "success");
     exitSelect();
+  };
+
+  /** Duplicate the selected invoice into another document collection. */
+  const duplicateAs = async (label: string) => {
+    const doc = selectedInvoiceDoc;
+    const inv = selectedDb;
+    const customerMongo = invoiceCustomerId(doc) || partyBackendId;
+    const localCustomer =
+      dbCustomers.find((c) => c.id === inv?.customerId) ||
+      dbCustomers.find((c) => String(c._id) === customerMongo);
+    const customerId =
+      localCustomer?.id ??
+      (typeof inv?.customerId === "number" ? inv.customerId : customerMongo ? numericId(customerMongo) : undefined);
+    const customerName =
+      localCustomer?.name ||
+      selected?.name ||
+      (doc?.customer_id && typeof doc.customer_id === "object" ? doc.customer_id.name : "") ||
+      doc?.customer_name ||
+      "";
+
+    const items =
+      (inv?.items?.length ? inv.items : null) ||
+      detailLines.map((line, i) => ({
+        id: i + 1,
+        name: line.name,
+        description: line.description,
+        qty: line.qty,
+        rate: line.rate,
+        taxId: 1,
+        discount: line.discount,
+        amount: line.amount,
+      }));
+
+    const total = Number(inv?.total ?? detailTotal) || 0;
+    const subTotal = Number(inv?.subTotal ?? detailSubTotal) || total;
+    const tax = Number(inv?.tax ?? 0) || 0;
+    const date =
+      inv?.date ||
+      (doc?.date ? new Date(doc.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : fmtToday());
+    const due = inv?.due || date;
+
+    if (!customerId && label !== "As Purchase Order") {
+      showToast("Customer missing — cannot duplicate", "warning");
+      return;
+    }
+
+    const base = {
+      customerId,
+      customerName,
+      date,
+      due,
+      ts: Date.now(),
+      items,
+      subTotal,
+      tax,
+      total,
+      notes: inv?.notes || detailNotes || "",
+      terms: inv?.terms || detailTerms || "",
+      currency: inv?.currency || doc?.currency || "USD",
+    };
+
+    try {
+      const create = async (col: any, extra: Record<string, any>) => {
+        const n = await nextNumber(col);
+        return repo.add(col, { ...base, number: "#" + n, ...extra });
+      };
+      switch (label) {
+        case "As Invoice": {
+          const id = await create("invoices", { status: "Draft", amountPaid: 0, amountDue: total });
+          setSelectedId(id);
+          await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+          showToast("Invoice duplicated", "success");
+          break;
+        }
+        case "As Estimate": {
+          const id = await create("estimates", { status: "Draft" });
+          showToast("Estimate created", "success");
+          navigate("/sales/estimates", { state: { selectedId: id } });
+          break;
+        }
+        case "As Proforma Invoice": {
+          const id = await create("proformas", { status: "Draft", amountPaid: 0, amountDue: total });
+          showToast("Proforma invoice created", "success");
+          navigate("/sales/proforma-invoices", { state: { selectedId: id } });
+          break;
+        }
+        case "As Credit Note": {
+          const id = await create("creditNotes", { status: "Unused", amountPaid: 0, amountDue: total, amountUsed: 0 });
+          showToast("Credit note created", "success");
+          navigate("/sales/credit-notes", { state: { selectedId: id } });
+          break;
+        }
+        case "As Purchase Order": {
+          const vendors = await repo.getAll("vendors");
+          const id = await create("purchaseOrders", {
+            vendorId: vendors[0]?.id ?? 1,
+            status: "Draft",
+            billStatus: "Not Billed",
+            amountPaid: 0,
+            amountDue: total,
+          });
+          showToast("Purchase order created", "success");
+          navigate("/purchase/purchase-orders", { state: { selectedId: id } });
+          break;
+        }
+        case "As Delivery Challan": {
+          const id = await create("deliveryChallans", {
+            status: "Draft",
+            invoiceNo: inv?.number || selected?.number,
+            invoiceStatus: "Invoiced",
+            amountPaid: 0,
+            amountDue: total,
+          });
+          showToast("Delivery challan created", "success");
+          navigate("/sales/delivery-challan", { state: { selectedId: id } });
+          break;
+        }
+        default:
+          showToast(`Unknown duplicate target: ${label}`, "warning");
+      }
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || err?.message || "Duplicate failed", "error");
+    }
+  };
+
+  const handleMoreAction = (a: string) => {
+    if (a === "whatsapp") showToast("Opening WhatsApp…", "info");
+    else if (a === "packingSlip") setDocPreview("packingSlip");
+    else if (a === "deliveryNote") setDocPreview("deliveryNote");
+    else if (a.startsWith("dup:")) void duplicateAs(a.slice(4));
+    else if (a.startsWith("mark:")) void markInvoiceStatus(a.slice(5));
+    else if (a.startsWith("paid:")) void markAsPaid(a.slice(5), []);
+    else if (a === "signature") setSigRequestOpen(true);
+    else if (a === "activity") setActivityOpen(true);
+    else if (a === "trash") setConfirmAction("trashOne");
   };
 
   const trashSelectedInvoices = async () => {
@@ -1067,11 +1410,15 @@ export const SalesInvoice: React.FC = () => {
     await queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
     showToast(
       statusFilter === "Trash"
-        ? `Invoice ${selectedDb.number} permanently deleted`
-        : `Invoice ${selectedDb.number} moved to trash`,
+        ? `Invoice ${selected?.number || selectedDb.number} permanently deleted`
+        : `Invoice ${selected?.number || selectedDb.number} moved to trash`,
       "success",
     );
-    setSelectedId(filtered.find((i) => i.id !== selectedDb.id)?.id ?? 0);
+    setSelectedId(
+      filtered.find((i) => i.id !== selected?.id && i.backendId !== selected?.backendId)?.id ??
+        filtered.find((i) => i.backendId !== selected?.backendId)?.backendId ??
+        0,
+    );
     setConfirmAction(null);
   };
   const restoreSelectedInvoices = async () => {
@@ -1085,69 +1432,6 @@ export const SalesInvoice: React.FC = () => {
     exitSelect();
   };
 
-  /** Duplicate the selected invoice into another document collection. */
-  const duplicateAs = async (label: string) => {
-    const inv = selectedDb;
-    if (!inv?.id) return;
-    const base = {
-      customerId: inv.customerId, date: inv.date, due: inv.due, ts: Date.now(),
-      items: inv.items || [], subTotal: inv.subTotal || 0, tax: inv.tax || 0,
-      total: inv.total || 0, notes: inv.notes || "", terms: inv.terms || "",
-    };
-    const create = async (col: any, extra: Record<string, any>) => {
-      const n = await nextNumber(col);
-      return repo.add(col, { ...base, number: "#" + n, ...extra });
-    };
-    switch (label) {
-      case "As Invoice": {
-        const id = await create("invoices", { status: "Draft", amountPaid: 0, amountDue: inv.total || 0 });
-        setSelectedId(id);
-        showToast("Invoice duplicated", "success");
-        break;
-      }
-      case "As Estimate": {
-        const id = await create("estimates", { status: "Draft" });
-        showToast("Estimate created", "success");
-        navigate("/sales/estimates", { state: { selectedId: id } });
-        break;
-      }
-      case "As Proforma Invoice": {
-        const id = await create("proformas", { status: "Draft", amountPaid: 0, amountDue: inv.total || 0 });
-        showToast("Proforma invoice created", "success");
-        navigate("/sales/proforma-invoices", { state: { selectedId: id } });
-        break;
-      }
-      case "As Credit Note": {
-        const id = await create("creditNotes", { status: "Unused", amountPaid: 0, amountDue: inv.total || 0 });
-        showToast("Credit note created", "success");
-        navigate("/sales/credit-notes", { state: { selectedId: id } });
-        break;
-      }
-      case "As Purchase Order": {
-        const vendors = await repo.getAll("vendors");
-        const id = await create("purchaseOrders", { vendorId: vendors[0]?.id ?? 1, status: "Draft", billStatus: "Not Billed", amountPaid: 0, amountDue: inv.total || 0 });
-        showToast("Purchase order created", "success");
-        navigate("/purchase/purchase-orders", { state: { selectedId: id } });
-        break;
-      }
-      case "As Delivery Challan": {
-        const id = await create("deliveryChallans", { status: "Draft", invoiceNo: inv.number, invoiceStatus: "Invoiced", amountPaid: 0, amountDue: inv.total || 0 });
-        showToast("Delivery challan created", "success");
-        navigate("/sales/delivery-challan", { state: { selectedId: id } });
-        break;
-      }
-    }
-  };
-
-  const handleMoreAction = (a: string) => {
-    if (a === "whatsapp") showToast("Opening WhatsApp…", "info");
-    else if (a === "packingSlip") setDocPreview("packingSlip");
-    else if (a === "deliveryNote") setDocPreview("deliveryNote");
-    else if (a.startsWith("dup:")) duplicateAs(a.slice(4));
-    else if (a === "signature") setSigRequestOpen(true);
-    else if (a === "activity") setActivityOpen(true);
-    else if (a === "trash") setConfirmAction("trashOne");
-  };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
     const backendId = selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id;
     let signaturePath = data.image;
@@ -1270,7 +1554,7 @@ export const SalesInvoice: React.FC = () => {
     { icon: Settings, title: "Settings", onClick: () => setModal("settings") },
     { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) },
     { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") },
-    { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) },
+    { icon: Pencil, title: "Edit", onClick: () => void openEditInvoice() },
     { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) },
     { icon: DollarSign, title: "Add Payment", onClick: openAddPayment },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
@@ -1330,6 +1614,7 @@ export const SalesInvoice: React.FC = () => {
                 {(close) => (
                   <PaidMenu
                     close={close}
+                    methods={paymentMethodNames}
                     onAddPayment={openAddPayment}
                     onMarkPaid={(m) => (checked.size === 0 ? showToast("Select invoices to mark as paid", "warning") : markAsPaid(m))}
                   />
@@ -1466,7 +1751,7 @@ export const SalesInvoice: React.FC = () => {
                 <button
                   key={inv.backendId || inv.id}
                   type="button"
-                  onClick={() => (selectMode ? toggleRow(inv.id) : (setSelectedId(inv.backendId || inv.id), setCreateOpen(false), setEditOpen(false)))}
+                  onClick={() => (selectMode ? toggleRow(inv.id) : (setSelectedId(inv.backendId || inv.id), setCreateOpen(false), setEditOpen(false), setEditInvoice(null)))}
                   className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${
                     active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"
                   }`}
@@ -1489,7 +1774,7 @@ export const SalesInvoice: React.FC = () => {
                     <span className="text-xs text-gray-500">{inv.date}</span>
                     <span className="text-sm font-semibold text-gray-900 mt-0.5">{inv.amount}</span>
                     <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status]}`}>
-                      {inv.status}
+                      {statusLabel(inv.status)}
                     </span>
                   </div>
                 </button>
@@ -1515,8 +1800,21 @@ export const SalesInvoice: React.FC = () => {
           onClose={() => { setCreateOpen(false); setCreatePrefillCustomer(undefined); }}
           onSaved={(id) => { setSortBy("Created On"); setSortDir("Descending"); setSelectedId(id); setCreatePrefillCustomer(undefined); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }}
         />
-      ) : editOpen ? (
-        <CreateInvoiceForm key={selectedId} invoice={dbInvoices.find((i) => i.id === selectedId)} onClose={() => setEditOpen(false)} onSaved={(id) => { setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] }); }} />
+      ) : editOpen && editInvoice ? (
+        <CreateInvoiceForm
+          key={String(editInvoice._id || editInvoice.id || selectedId)}
+          invoice={editInvoice}
+          onClose={() => { setEditOpen(false); setEditInvoice(null); }}
+          onSaved={(id) => {
+            setSelectedId(editInvoice._id || id);
+            setEditOpen(false);
+            setEditInvoice(null);
+            void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+            if (editInvoice._id) {
+              void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", String(editInvoice._id)] });
+            }
+          }}
+        />
       ) : selectMode ? (
         <section className="flex-1 flex items-center justify-center m-2 bg-white border border-gray-300 shadow-sm">
           <div className="text-center">
@@ -1555,7 +1853,13 @@ export const SalesInvoice: React.FC = () => {
                 </button>
               ))}
               <Dropdown align="right" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors cursor-pointer"><MoreVertical className="w-4 h-4" /></span>}>
-                {(close) => <InvoiceMoreMenu close={close} onAction={handleMoreAction} />}
+                {(close) => (
+                  <InvoiceMoreMenu
+                    close={close}
+                    onAction={handleMoreAction}
+                    paymentMethods={paymentMethodNames}
+                  />
+                )}
               </Dropdown>
             </div>
           </div>
@@ -1586,7 +1890,7 @@ export const SalesInvoice: React.FC = () => {
               </div>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[selected.status]}`}>
-              {selected.status}
+              {statusLabel(selected.status)}
             </span>
           </div>
 
@@ -1878,10 +2182,45 @@ export const SalesInvoice: React.FC = () => {
       {sigRequestOpen && (
         <SignatureRequestModal
           docLabel="Invoice"
-          number={selectedDb.number || ""}
-          customer={selectedCustomer}
+          number={
+            selectedInvoiceDoc?.invoice_number
+              ? `#${selectedInvoiceDoc.invoice_number}`
+              : selectedDb.number || selected?.number || ""
+          }
+          customer={{
+            ...selectedCustomer,
+            name:
+              selectedCustomer.name ||
+              selected?.name ||
+              (selectedInvoiceDoc?.customer_id && typeof selectedInvoiceDoc.customer_id === "object"
+                ? selectedInvoiceDoc.customer_id.name
+                : "") ||
+              selectedInvoiceDoc?.customer_name ||
+              "",
+            email:
+              selectedCustomer.email ||
+              (selectedInvoiceDoc?.customer_id && typeof selectedInvoiceDoc.customer_id === "object"
+                ? (selectedInvoiceDoc.customer_id as any).email
+                : "") ||
+              "",
+          }}
+          documentId={String(selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="invoice"
+          emailNav="invoice"
+          pdfDocType="invoice"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedInvoiceDoc?.status && selectedInvoiceDoc.status !== "Draft"
+                ? selectedInvoiceDoc.status
+                : "Open",
+          }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => showToast("Signature request sent", "success")}
+          onSend={() => {
+            void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-list"] });
+            const bid = selectedInvoiceDoc?._id || selected?.backendId;
+            if (bid) void queryClient.invalidateQueries({ queryKey: ["sales-invoice-backend-detail", String(bid)] });
+          }}
         />
       )}
       {docPreview && (

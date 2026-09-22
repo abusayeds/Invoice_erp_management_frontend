@@ -8,11 +8,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Settings, Pencil, ChevronDown, X, Plus, Check, Info } from "lucide-react";
 import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
 import { db } from "@/lib/db/db";
+import { numericId } from "@/lib/db/sync";
+import { showToast } from "@/utils/toast";
 import { useAppSettings, isLayoutSettingOn, DOC_LAYOUTS, type DocLayoutId } from "@/lib/db/appSettings";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
+import { SalespersonField } from "@/components/forms/SalespersonField";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { LineItemSuggestFlyout } from "@/components/ui/LineItemSuggestFlyout";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { DocumentCreateHeader, type SendMenuAction } from "@/components/documents/DocumentCreateHeader";
 import { DocumentSendEmailModal } from "@/components/documents/DocumentSendEmailModal";
@@ -64,7 +68,7 @@ export const CreateInvoiceForm: React.FC<{
     email?: string;
   };
 }> = ({ onClose, onSaved, invoice, mode = "invoice", prefillCustomer }) => {
-  const isEdit = !!invoice?.id;
+  const isEdit = !!(invoice?.id || invoice?._id);
   const isProforma = mode === "proforma";
   const isEstimate = mode === "estimate";
   const isInvoice = mode === "invoice";
@@ -98,14 +102,8 @@ export const CreateInvoiceForm: React.FC<{
   const showItemName = (kind: "product" | "service") =>
     kind === "product" ? showCol("Product Name") : showCol("Service Name");
   const showDesc = showCol("Description");
-  const showBuyPriceSug = showCol("Buy Price in Suggestion List");
-  const showSugPrice = (layout.columnKeys as readonly string[]).includes("Buy Price in Suggestion List")
-    ? showBuyPriceSug
-    : true;
-  const showStockSug = showCol("Stock In Suggestion List");
   const showDescSug = showCol("Description In Suggestion List");
   const showItemCodeSug = showCol("Item Code in Suggestion List");
-  const autoFit = showCol("Auto Fit");
   const createPublicUrl = layout.showPublicUrl && docSettings?.general?.createPublicUrlInEmail !== false;
   const markSentOnPrint = isLayoutSettingOn(layout.printKeys, docSettings?.printEmail, "Mark as Sent on Print");
   const markSentOnEmail = isLayoutSettingOn(layout.printKeys, docSettings?.printEmail, "Mark as Sent on Email/WhatsApp");
@@ -115,16 +113,38 @@ export const CreateInvoiceForm: React.FC<{
   const services = useCollection<any>("services", "name");
   const catalog = useMemo(
     () => [
-      ...products.map((p) => ({ key: "p" + p.id, kind: "product" as const, name: p.name, rate: p.price || 0, taxId: p.taxId || 1 })),
-      ...services.map((s) => ({ key: "s" + s.id, kind: "service" as const, name: s.name, rate: s.price || 0, taxId: s.taxId || 1 })),
+      ...products.map((p) => ({
+        key: "p" + p.id,
+        kind: "product" as const,
+        name: p.name,
+        rate: p.price || 0,
+        taxId: p.taxId || 1,
+        stock: p.stock ?? null,
+        description: p.note || p.description || "",
+      })),
+      ...services.map((s) => ({
+        key: "s" + s.id,
+        kind: "service" as const,
+        name: s.name,
+        rate: s.price || 0,
+        taxId: s.taxId || 1,
+        stock: null as number | null,
+        description: s.note || s.description || "",
+      })),
     ],
     [products, services],
   );
 
-  const [custQuery, setCustQuery] = useState(prefillCustomer?.name || "");
+  const [custQuery, setCustQuery] = useState(
+    prefillCustomer?.name || invoice?.customerName || "",
+  );
   const [customerId, setCustomerId] = useState<number | "">(invoice?.customerId ?? prefillCustomer?.localId ?? "");
-  const [customerBackendId, setCustomerBackendId] = useState<string>(prefillCustomer?.backendId || "");
-  const [customerEmail, setCustomerEmail] = useState<string>(prefillCustomer?.email || "");
+  const [customerBackendId, setCustomerBackendId] = useState<string>(
+    prefillCustomer?.backendId || invoice?.customerBackendId || "",
+  );
+  const [customerEmail, setCustomerEmail] = useState<string>(
+    prefillCustomer?.email || invoice?.customerEmail || "",
+  );
   const [custOpen, setCustOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addContact, setAddContact] = useState(false);
@@ -152,8 +172,22 @@ export const CreateInvoiceForm: React.FC<{
 
   const emptyAddr = { street1: "", street2: "", city: "", state: "", zip: "", country: "" };
   const [addrOpen, setAddrOpen] = useState(false);
-  const [billing, setBilling] = useState({ ...emptyAddr });
-  const [shipping, setShipping] = useState({ ...emptyAddr });
+  const [billing, setBilling] = useState({
+    street1: invoice?.street1 || "",
+    street2: invoice?.street2 || "",
+    city: invoice?.city || "",
+    state: invoice?.state || "",
+    zip: invoice?.zip || "",
+    country: invoice?.country || "",
+  });
+  const [shipping, setShipping] = useState({
+    street1: invoice?.shipStreet1 || "",
+    street2: invoice?.shipStreet2 || "",
+    city: invoice?.shipCity || "",
+    state: invoice?.shipState || "",
+    zip: invoice?.shipZip || "",
+    country: invoice?.shipCountry || "",
+  });
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [updateToCustomer, setUpdateToCustomer] = useState(false);
   const { data: paymentMethodOptions = [] } = useQuery({
@@ -229,7 +263,18 @@ export const CreateInvoiceForm: React.FC<{
   const [poNumber, setPoNumber] = useState(invoice?.poNumber ?? "");
   const [poDate, setPoDate] = useState(toIsoDate(invoice?.poDate) || "");
   const [recipientName, setRecipientName] = useState(invoice?.recipientName ?? "");
-  const [salesperson, setSalesperson] = useState(invoice?.salesperson ?? "");
+  const [salesperson, setSalesperson] = useState(() => {
+    const sp = invoice?.salesperson;
+    if (sp && typeof sp === "object") return String(sp.name || "");
+    return typeof sp === "string" && !/^[a-f\d]{24}$/i.test(sp) ? sp : (invoice?.salespersonName ?? "");
+  });
+  const [salespersonId, setSalespersonId] = useState(() => {
+    const sp = invoice?.salesperson;
+    if (sp && typeof sp === "object") return String(sp._id || "");
+    if (invoice?.salespersonId) return String(invoice.salespersonId);
+    if (typeof sp === "string" && /^[a-f\d]{24}$/i.test(sp)) return sp;
+    return "";
+  });
   const [shippingMethod, setShippingMethod] = useState(invoice?.shippingMethod ?? "");
   const [shippingTax, setShippingTax] = useState(String(invoice?.shippingTax ?? ""));
   const [customCharges, setCustomCharges] = useState(String(invoice?.customCharges ?? ""));
@@ -279,15 +324,20 @@ export const CreateInvoiceForm: React.FC<{
     docSettings?.columns?.["Auto Fit"],
     docSettings?.columnsQuantity,
   ]);
-  const colMenuRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef<HTMLDivElement>(null);
+  const sugAnchorRefs = useRef<Record<number, HTMLElement | null>>({});
+  const colMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) setColMenuOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-line-item-suggest]")) return;
+      if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
@@ -361,7 +411,7 @@ export const CreateInvoiceForm: React.FC<{
       items, subTotal: +subTotal.toFixed(2), tax: +taxTotal.toFixed(2), shipping: shippingNum,
       total: +total.toFixed(2), amountPaid: 0, amountDue: +total.toFixed(2),
       notes, terms, internalNotes, currency,
-      subTitle, poNumber, poDate, recipientName, salesperson,
+      subTitle, poNumber, poDate, recipientName, salesperson, salespersonId,
       shippingMethod, shippingTax, discountBeforeTax, recurring,
       recurringUntil: isRecurringActive(recurring) ? recurringUntil : "",
       deposit, docDiscount, shippingCost, customCharges, roundOff, cashDenomination,
@@ -383,8 +433,30 @@ export const CreateInvoiceForm: React.FC<{
     let backendId = invoice?._id ? String(invoice._id) : "";
     if (isEdit) {
       numStr = invoice.number || "";
-      await repo.update(collection, invoice.id, common);
-      id = invoice.id;
+      const localId =
+        typeof invoice.id === "number"
+          ? invoice.id
+          : backendId
+            ? numericId(backendId)
+            : 0;
+      if (!localId) {
+        showToast("Cannot update invoice — missing id", "error");
+        return null;
+      }
+      // Ensure a local row exists so repo.update can resolve Mongo `_id`.
+      const existing = await (db as any)[collection].get(localId);
+      if (!existing && backendId) {
+        await (db as any)[collection].put({
+          ...common,
+          id: localId,
+          _id: backendId,
+          number: numStr || common.number,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      await repo.update(collection, localId, common);
+      id = localId;
     } else {
       const n = await nextNumber(collection);
       numStr = "#" + n;
@@ -583,7 +655,17 @@ export const CreateInvoiceForm: React.FC<{
             <AppDatePicker floatingLabel="P.O. Date" value={poDate} onValueChange={setPoDate} className={DOC_FIELD} />
           )}
           {show("Recipient name") && <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" className={DOC_FIELD} />}
-          {show("Salesperson") && <input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson" className={DOC_FIELD} />}
+          {show("Salesperson") && (
+            <SalespersonField
+              className="md:col-span-2"
+              valueId={salespersonId}
+              valueName={salesperson}
+              onChange={(next) => {
+                setSalespersonId(next?.id || "");
+                setSalesperson(next?.name || "");
+              }}
+            />
+          )}
           {show("Shipping Cost And Method") && (
             <div className="md:col-span-2">
               <input value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="Shipping Method" className={DOC_FIELD} />
@@ -626,42 +708,47 @@ export const CreateInvoiceForm: React.FC<{
           )}
         </div>
 
-        <div ref={itemsRef} className={`border border-gray-300 rounded-md ${autoFit ? "overflow-x-auto" : "overflow-x-auto"}`}>
-          <table className={`w-full text-sm ${autoFit ? "min-w-[760px]" : "min-w-[760px]"}`}>
+        <div ref={itemsRef} className="border border-gray-300 rounded-md overflow-visible">
+          <table className="w-full text-sm min-w-[760px]">
             <thead><tr className="bg-gray-100 text-gray-500 text-xs"><th className="text-left font-semibold px-4 py-2.5 w-14">Sr. No.</th><th className="text-left font-semibold px-2 py-2.5">Items</th>{cols.qty && <th className="text-right font-semibold px-2 py-2.5">Quantity</th>}{cols.mrp && <th className="text-right font-semibold px-2 py-2.5">MRP</th>}<th className="text-right font-semibold px-2 py-2.5">Rate</th>{cols.tax && <th className="text-left font-semibold px-2 py-2.5">Tax</th>}{cols.discount && <th className="text-right font-semibold px-2 py-2.5">Discount</th>}<th className="text-right font-semibold px-4 py-2.5">Amount</th><th className="w-8" /></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className="border-t border-gray-300 align-top">
                   <td className="px-4 py-3 text-gray-700">{i + 1}</td>
                   <td className={`px-2 py-2 relative ${descFullWidth ? "min-w-[280px]" : ""}`}>
-                    <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
-                    {showItemName(r.kind) && (
-                      <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
-                    )}
-                    {showDesc && (
-                      <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className={`w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5 ${descFullWidth ? "block" : ""}`} />
-                    )}
-                    {sugRow === i && (
-                      <div className="absolute left-2 right-0 top-full z-30 mt-1 max-w-xl bg-white border border-gray-300 rounded-md shadow-xl overflow-hidden">
-                        <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                          {suggestionsFor(r).map((c) => (
-                            <button key={c.key} type="button" onClick={() => pickSuggestion(i, c.key)} className="w-full flex items-center justify-between gap-6 px-4 py-2.5 text-sm hover:bg-gray-100 text-left">
-                              <span className="text-gray-900 truncate">
-                                {c.name}
-                                {showItemCodeSug && <span className="text-gray-400 text-xs ml-2">{c.key}</span>}
-                                {showDescSug && (c as any).description ? <span className="block text-xs text-gray-500 truncate">{(c as any).description}</span> : null}
-                                {showStockSug && (c as any).stock != null ? <span className="block text-xs text-gray-500">Stock: {(c as any).stock}</span> : null}
-                              </span>
-                              {showSugPrice && <span className="text-gray-600 flex-shrink-0">{moneyWithCurrency(c.rate)}</span>}
-                            </button>
-                          ))}
-                        </div>
-                        <label className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 border-t border-gray-300 cursor-pointer">
-                          <input type="checkbox" checked={sortRecent} onChange={() => setSortRecent((v) => !v)} className="accent-blue-600" />
-                          Sort by Recent Used
-                        </label>
-                      </div>
-                    )}
+                    <div
+                      ref={(el) => { sugAnchorRefs.current[i] = el; }}
+                      className="relative"
+                    >
+                      <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
+                      {showItemName(r.kind) && (
+                        <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
+                      )}
+                      {showDesc && (
+                        <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className={`w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5 ${descFullWidth ? "block" : ""}`} />
+                      )}
+                    </div>
+                    <LineItemSuggestFlyout
+                      open={sugRow === i}
+                      anchorRef={{ current: sugAnchorRefs.current[i] }}
+                      options={suggestionsFor(r).map((c) => ({
+                        key: c.key,
+                        name: c.name,
+                        rate: c.rate,
+                        description: c.description,
+                        stock: c.stock,
+                        code: showItemCodeSug ? c.key : undefined,
+                      }))}
+                      onPick={(key) => pickSuggestion(i, key)}
+                      sortRecent={sortRecent}
+                      onSortRecentChange={setSortRecent}
+                      emptyLabel={`No matching ${r.kind}s`}
+                      showPrice
+                      formatPrice={moneyWithCurrency}
+                      showCode={showItemCodeSug}
+                      showDescription={showDescSug}
+                      showStock
+                    />
                   </td>
                   {cols.qty && (
                     <td className="px-2 py-3 text-right">

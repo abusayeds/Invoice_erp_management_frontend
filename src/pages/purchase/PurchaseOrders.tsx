@@ -683,10 +683,18 @@ export const PurchaseOrder: React.FC = () => {
       {sigRequestOpen && (
         <SignatureRequestModal
           docLabel="Purchase Order"
-          number={selectedDb.number || ""}
+          number={selectedDb.number || selected?.number || ""}
           customer={selectedVendor}
+          documentId={String(selectedDb?._id || "") || undefined}
+          emailType="purchase_order"
+          emailNav="purchase_order"
+          pdfDocType="purchaseOrder"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{ updatedAt: new Date().toISOString() }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => { logActivity("sent", `Signature request for Purchase Order ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Purchase Order ${selectedDb.number} sent.`);
+          }}
         />
       )}
       {activityOpen && <ActivityLogModal docLabel="Purchase Order" record={selectedDb} onClose={() => setActivityOpen(false)} />}

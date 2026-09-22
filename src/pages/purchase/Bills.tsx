@@ -879,10 +879,19 @@ export const Bills: React.FC = () => {
       {sigRequestOpen && (
         <SignatureRequestModal
           docLabel="Bill"
-          number={selectedDb.number || ""}
+          number={selectedDb.number || selected?.number || ""}
           customer={selectedVendor}
+          documentId={String(selectedBillRow?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="bill"
+          emailNav="bill"
+          pdfDocType="bill"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{ updatedAt: new Date().toISOString() }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => { logActivity("sent", `Signature request for Bill ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Bill ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["bills-backend-list"] });
+          }}
         />
       )}
       {activityOpen && <ActivityLogModal docLabel="Bill" record={selectedDb} onClose={() => setActivityOpen(false)} />}

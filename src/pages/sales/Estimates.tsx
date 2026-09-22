@@ -585,7 +585,30 @@ export const Estimates: React.FC = () => {
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="estimate" />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
-      {sigRequestOpen && <SignatureRequestModal docLabel="Estimate" number={selectedDb.number || ""} customer={selectedCustomer} onClose={() => setSigRequestOpen(false)} onSend={() => { logActivity("sent", `Signature request for Estimate ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }} />}
+      {sigRequestOpen && (
+        <SignatureRequestModal
+          docLabel="Estimate"
+          number={selectedDb.number || selected?.number || ""}
+          customer={selectedCustomer}
+          documentId={String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="estimate"
+          emailNav="estimate"
+          pdfDocType="estimate"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedDoc?.status && selectedDoc.status !== "Draft"
+                ? selectedDoc.status
+                : "Sent",
+          }}
+          onClose={() => setSigRequestOpen(false)}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Estimate ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["estimate-list"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["estimate-detail", String(selected.backendId)] });
+          }}
+        />
+      )}
       {activityOpen && <ActivityLogModal docLabel="Estimate" record={selectedDb} onClose={() => setActivityOpen(false)} />}
       {confirmAction === "trashOne" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete this estimate? This cannot be undone." : "Are you sure want to trash this estimate?"} onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
       {confirmAction === "trashSelected" && <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these estimates? This cannot be undone." : "Are you sure want to delete these estimates?"} onNo={() => setConfirmAction(null)} onYes={trashSelectedEst} />}

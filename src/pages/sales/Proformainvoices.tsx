@@ -11,6 +11,7 @@ import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFo
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { SignatureModal } from "@/components/modals/SignatureModal";
+import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
@@ -218,6 +219,7 @@ export const ProformaInvoices: React.FC = () => {
   const [dupOpen, setDupOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [sigOpen, setSigOpen] = useState(false);
+  const [sigRequestOpen, setSigRequestOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashSelected">(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -703,7 +705,7 @@ export const ProformaInvoices: React.FC = () => {
                           <button key={item} type="button" onClick={() => { duplicateAs(item); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{item}</button>
                         ))}
                       </MoreMenuFlyoutRow>
-                      <button type="button" onClick={() => { showToast("Signature request sent", "success"); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left border-t border-gray-200">Signature Request</button>
+                      <button type="button" onClick={() => { setSigRequestOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left border-t border-gray-200">Signature Request</button>
                       <button type="button" onClick={() => { setActivityOpen(true); close(); }} className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">Activity Log</button>
                       <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full px-4 py-2.5 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200">Trash</button>
                     </div>
@@ -862,6 +864,29 @@ export const ProformaInvoices: React.FC = () => {
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="proformaInvoice" />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
+      {sigRequestOpen && (
+        <SignatureRequestModal
+          docLabel="Proforma Invoice"
+          number={selectedDb.number || selected?.number || ""}
+          customer={selectedCustomer}
+          documentId={String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="proforma_invoice"
+          emailNav="proforma_invoice"
+          pdfDocType="proformaInvoice"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedDoc?.status && selectedDoc.status !== "Draft"
+                ? selectedDoc.status
+                : "Sent",
+          }}
+          onClose={() => setSigRequestOpen(false)}
+          onSend={() => {
+            void queryClient.invalidateQueries({ queryKey: ["proforma-backend-list"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["proforma-backend-detail", String(selected.backendId)] });
+          }}
+        />
+      )}
       {activityOpen && (
         <Overlay onClose={() => setActivityOpen(false)}>
           <div className="w-full max-w-md my-16 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">

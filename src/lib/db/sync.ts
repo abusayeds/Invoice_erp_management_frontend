@@ -277,6 +277,18 @@ const mapInvoice: MapFn = (d) => ({
   paymentType: Array.isArray(d.payment_method) ? str(d.payment_method[0]) : str(d.payment_method),
   subTitle: str(d.sub_title),
   shippingMethod: str(d.shipping_method),
+  salespersonId:
+    d.salesperson && typeof d.salesperson === "object"
+      ? str(refId(d.salesperson))
+      : /^[a-f\d]{24}$/i.test(str(d.salesperson))
+        ? str(d.salesperson)
+        : "",
+  salesperson:
+    d.salesperson && typeof d.salesperson === "object"
+      ? str(d.salesperson.name)
+      : /^[a-f\d]{24}$/i.test(str(d.salesperson))
+        ? ""
+        : str(d.salesperson),
   street1: str(d.billing_address?.street),
   street2: str(d.billing_address?.street2),
   city: str(d.billing_address?.city),
@@ -338,6 +350,9 @@ const reverseInvoice = async (r: Record<string, any>) => {
       : undefined,
     sub_title: str(r.subTitle) || undefined,
     shipping_method: str(r.shippingMethod) || undefined,
+    ...(str(r.salespersonId) && /^[a-f\d]{24}$/i.test(str(r.salespersonId))
+      ? { salesperson: str(r.salespersonId) }
+      : {}),
     ...(hasBillingAddress
       ? {
           billing_address: {

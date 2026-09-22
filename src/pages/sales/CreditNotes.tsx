@@ -884,10 +884,25 @@ export const CreditNotes: React.FC = () => {
       {sigRequestOpen && (
         <SignatureRequestModal
           docLabel="Credit Note"
-          number={selectedDb.number || ""}
+          number={selectedDb.number || selected?.number || ""}
           customer={selectedCustomer}
+          documentId={String(selectedBackend?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="credit_note"
+          emailNav="credit_note"
+          pdfDocType="creditNote"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedBackend?.status && selectedBackend.status !== "Draft"
+                ? selectedBackend.status
+                : "Open",
+          }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => { logActivity("sent", `Signature request for Credit Note ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Credit Note ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["credit-notes-list"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["credit-note", selected.backendId] });
+          }}
         />
       )}
       {activityOpen && <ActivityLogModal docLabel="Credit Note" record={selectedDb} onClose={() => setActivityOpen(false)} />}

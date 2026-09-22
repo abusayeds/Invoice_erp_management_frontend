@@ -550,7 +550,30 @@ export const SalesReceipts: React.FC = () => {
       )}
       {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
-      {sigRequestOpen && <SignatureRequestModal docLabel="Sales Receipt" number={selectedDb.number || ""} customer={selectedCustomer} onClose={() => setSigRequestOpen(false)} onSend={() => { logActivity("sent", `Signature request for Sales Receipt ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }} />}
+      {sigRequestOpen && (
+        <SignatureRequestModal
+          docLabel="Sales Receipt"
+          number={selectedDb.number || selected?.number || ""}
+          customer={selectedCustomer}
+          documentId={String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="sales_receipt"
+          emailNav="sales_receipt"
+          pdfDocType="salesReceipt"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedDoc?.status && selectedDoc.status !== "Draft"
+                ? selectedDoc.status
+                : "Open",
+          }}
+          onClose={() => setSigRequestOpen(false)}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Sales Receipt ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-list"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["sales-receipt-backend-detail", String(selected.backendId)] });
+          }}
+        />
+      )}
       {paymentMethodsOpen && (
         <PaymentMethodsModal
           selectedNames={paymentType && paymentType !== "—" ? [paymentType] : []}

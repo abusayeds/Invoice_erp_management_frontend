@@ -664,8 +664,23 @@ export const DeliveryChallan: React.FC = () => {
           docLabel="Delivery Challan"
           number={selectedDb.number || selected?.number || ""}
           customer={selectedCustomer || selectedDoc?.customer_id}
+          documentId={String(selectedDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="delivery_challan"
+          emailNav="delivery_challan"
+          pdfDocType="deliveryChallan"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedDoc?.status && selectedDoc.status !== "Draft"
+                ? selectedDoc.status
+                : "Open",
+          }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => { logActivity("sent", `Signature request for Delivery Challan ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Delivery Challan ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["delivery-challan", selected.backendId] });
+          }}
         />
       )}
       {activityOpen && <ActivityLogModal docLabel="Delivery Challan" record={selectedDb} onClose={() => setActivityOpen(false)} />}

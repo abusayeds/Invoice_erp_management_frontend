@@ -5,6 +5,7 @@ import { useCollection, repo, nextNumber, CreateContactModal } from "@/lib/db";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { PaymentMethodsModal } from "@/components/modals/PaymentMethodsModal";
 import { CurrencyCombobox } from "@/components/forms/CurrencyCombobox";
+import { LineItemSuggestFlyout } from "@/components/ui/LineItemSuggestFlyout";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { toIsoDate, todayIso } from "@/lib/dateIso";
 import { fetchCustomer, fetchCustomers } from "@/services/customersApi";
@@ -44,8 +45,22 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
   const services = useCollection<any>("services", "name");
   const catalog = useMemo(
     () => [
-      ...products.map((p) => ({ key: "p" + p.id, kind: "product" as const, name: p.name, rate: p.price || 0, taxId: p.taxId || 1 })),
-      ...services.map((s) => ({ key: "s" + s.id, kind: "service" as const, name: s.name, rate: s.price || 0, taxId: s.taxId || 1 })),
+      ...products.map((p) => ({
+        key: "p" + p.id,
+        kind: "product" as const,
+        name: p.name,
+        rate: p.price || 0,
+        taxId: p.taxId || 1,
+        stock: p.stock ?? null,
+      })),
+      ...services.map((s) => ({
+        key: "s" + s.id,
+        kind: "service" as const,
+        name: s.name,
+        rate: s.price || 0,
+        taxId: s.taxId || 1,
+        stock: null as number | null,
+      })),
     ],
     [products, services],
   );
@@ -159,9 +174,14 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
   const [sortRecent, setSortRecent] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const itemsRef = useRef<HTMLDivElement>(null);
+  const sugAnchorRefs = useRef<Record<number, HTMLElement | null>>({});
 
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-line-item-suggest]")) return;
+      if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
@@ -355,7 +375,7 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" className="accent-blue-600" /> Discount before tax</label>
         </div>
 
-        <div ref={itemsRef} className="border border-gray-200 rounded-md">
+        <div ref={itemsRef} className="border border-gray-200 rounded-md overflow-visible">
           <table className="w-full text-sm min-w-[760px]">
             <thead><tr className="bg-gray-50 text-gray-500 text-xs"><th className="text-left font-semibold px-4 py-2.5 w-14">Sr. No.</th><th className="text-left font-semibold px-2 py-2.5">Items</th><th className="text-right font-semibold px-2 py-2.5">Quantity</th><th className="text-right font-semibold px-2 py-2.5">Rate</th><th className="text-left font-semibold px-2 py-2.5">Tax</th><th className="text-right font-semibold px-2 py-2.5">Discount</th><th className="text-right font-semibold px-4 py-2.5">Amount</th><th className="w-8" /></tr></thead>
             <tbody>
@@ -363,26 +383,31 @@ export const CreateSalesReceiptForm: React.FC<{ onClose: () => void; onSaved: (i
                 <tr key={i} className="border-t border-gray-200 align-top">
                   <td className="px-4 py-3 text-gray-700">{i + 1}</td>
                   <td className="px-2 py-2 relative">
-                    <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
-                    <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
-                    <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className="w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5" />
-                    {sugRow === i && (
-                      <div className="absolute left-2 right-0 top-full z-30 mt-1 max-w-xl bg-white border border-gray-200 rounded-md shadow-xl overflow-hidden">
-                        <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                          {suggestionsFor(r).map((c) => (
-                            <button key={c.key} onClick={() => pickSuggestion(i, c.key)} className="w-full flex items-center justify-between gap-6 px-4 py-2.5 text-sm hover:bg-gray-50 text-left">
-                              <span className="text-gray-900 truncate">{c.name}</span>
-                              <span className="text-gray-600 flex-shrink-0">{money(c.rate)}</span>
-                            </button>
-                          ))}
-                          {suggestionsFor(r).length === 0 && <div className="px-4 py-2.5 text-sm text-gray-400">No matching {r.kind}s — keep typing to add a custom one</div>}
-                        </div>
-                        <label className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 border-t border-gray-200 cursor-pointer">
-                          <input type="checkbox" checked={sortRecent} onChange={() => setSortRecent((v) => !v)} className="accent-blue-600" />
-                          Sort by Recent Used
-                        </label>
-                      </div>
-                    )}
+                    <div
+                      ref={(el) => { sugAnchorRefs.current[i] = el; }}
+                      className="relative"
+                    >
+                      <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
+                      <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
+                      <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className="w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5" />
+                    </div>
+                    <LineItemSuggestFlyout
+                      open={sugRow === i}
+                      anchorRef={{ current: sugAnchorRefs.current[i] }}
+                      options={suggestionsFor(r).map((c) => ({
+                        key: c.key,
+                        name: c.name,
+                        rate: c.rate,
+                        stock: c.stock,
+                      }))}
+                      onPick={(key) => pickSuggestion(i, key)}
+                      sortRecent={sortRecent}
+                      onSortRecentChange={setSortRecent}
+                      emptyLabel={`No matching ${r.kind}s — keep typing to add a custom one`}
+                      showPrice
+                      formatPrice={money}
+                      showStock
+                    />
                   </td>
                   <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.qty} onChange={(e) => setQty(i, Number(e.target.value))} className="w-14 bg-transparent text-sm text-right outline-none" /></td>
                   <td className="px-2 py-3 text-right"><input type="number" min={0} value={r.rate} onChange={(e) => setRate(i, Number(e.target.value))} className="w-20 bg-transparent text-sm text-right outline-none" /></td>

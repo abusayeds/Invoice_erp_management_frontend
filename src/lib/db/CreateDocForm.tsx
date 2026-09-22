@@ -6,6 +6,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Settings, Pencil, ChevronDown, X, Plus, Check, Info } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
+import { LineItemSuggestFlyout } from "@/components/ui/LineItemSuggestFlyout";
+import { SalespersonField } from "@/components/forms/SalespersonField";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { DocumentCreateHeader, type SendMenuAction } from "@/components/documents/DocumentCreateHeader";
 import { DocumentSendEmailModal } from "@/components/documents/DocumentSendEmailModal";
@@ -113,26 +115,32 @@ export const CreateDocForm: React.FC<{
   const showItemName = (kind: "product" | "service") =>
     kind === "product" ? showCol("Product Name") : showCol("Service Name");
   const showDesc = showCol("Description");
-  const layoutColKeys = (layout?.columnKeys ?? []) as readonly string[];
-  const showSugPrice = !layout
-    ? true
-    : layoutColKeys.includes("Buy Price in Suggestion List")
-      ? showCol("Buy Price in Suggestion List")
-      : layoutColKeys.includes("Sell Price in Suggestion List")
-        ? showCol("Sell Price in Suggestion List")
-        : true;
-  const showStockSug = showCol("Stock In Suggestion List");
   const showDescSug = showCol("Description In Suggestion List");
   const showItemCodeSug = showCol("Item Code in Suggestion List");
-  const autoFit = showCol("Auto Fit");
 
   const parties = useCollection<any>(party, "name");
   const products = useCollection<any>("products", "name");
   const services = useCollection<any>("services", "name");
   const catalog = useMemo(
     () => [
-      ...products.map((p) => ({ key: "p" + p.id, kind: "product" as const, name: p.name, rate: (buy ? p.buyPrice : p.price) || 0, taxId: p.taxId || 1 })),
-      ...services.map((s) => ({ key: "s" + s.id, kind: "service" as const, name: s.name, rate: s.price || 0, taxId: s.taxId || 1 })),
+      ...products.map((p) => ({
+        key: "p" + p.id,
+        kind: "product" as const,
+        name: p.name,
+        rate: (buy ? p.buyPrice : p.price) || 0,
+        taxId: p.taxId || 1,
+        stock: p.stock ?? null,
+        description: p.note || p.description || "",
+      })),
+      ...services.map((s) => ({
+        key: "s" + s.id,
+        kind: "service" as const,
+        name: s.name,
+        rate: s.price || 0,
+        taxId: s.taxId || 1,
+        stock: null as number | null,
+        description: s.note || s.description || "",
+      })),
     ],
     [products, services, buy],
   );
@@ -217,8 +225,13 @@ export const CreateDocForm: React.FC<{
   }, []);
   const [recent, setRecent] = useState<string[]>([]);
   const itemsRef = useRef<HTMLDivElement>(null);
+  const sugAnchorRefs = useRef<Record<number, HTMLElement | null>>({});
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-line-item-suggest]")) return;
+      if (itemsRef.current && !itemsRef.current.contains(e.target as Node)) setSugRow(null);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
@@ -226,7 +239,18 @@ export const CreateDocForm: React.FC<{
   const [poNumber, setPoNumber] = useState(record?.poNumber ?? "");
   const [poDate, setPoDate] = useState(toIsoDate(record?.poDate) || "");
   const [recipientName, setRecipientName] = useState(record?.recipientName ?? "");
-  const [salesperson, setSalesperson] = useState(record?.salesperson ?? "");
+  const [salesperson, setSalesperson] = useState(() => {
+    const sp = record?.salesperson;
+    if (sp && typeof sp === "object") return String(sp.name || "");
+    return typeof sp === "string" && !/^[a-f\d]{24}$/i.test(sp) ? sp : (record?.salespersonName ?? "");
+  });
+  const [salespersonId, setSalespersonId] = useState(() => {
+    const sp = record?.salesperson;
+    if (sp && typeof sp === "object") return String(sp._id || "");
+    if (record?.salespersonId) return String(record.salespersonId);
+    if (typeof sp === "string" && /^[a-f\d]{24}$/i.test(sp)) return sp;
+    return "";
+  });
   const [shippingMethod, setShippingMethod] = useState(record?.shippingMethod ?? "");
   const [shippingTax, setShippingTax] = useState(String(record?.shippingTax ?? ""));
   const [customCharges, setCustomCharges] = useState(String(record?.customCharges ?? ""));
@@ -325,7 +349,7 @@ export const CreateDocForm: React.FC<{
       [partyKey]: pid, date, due, status: "Draft" as const,
       items, subTotal: +subTotal.toFixed(2), tax: +taxTotal.toFixed(2),
       shipping: shippingNum, total: +total.toFixed(2), notes, terms, internalNotes,
-      subTitle, poNumber, poDate, recipientName, salesperson, shippingMethod, shippingTax,
+      subTitle, poNumber, poDate, recipientName, salesperson, salespersonId, shippingMethod, shippingTax,
       customCharges, roundOff, inlineDiscount: +inlineDiscount.toFixed(2),
       discountBeforeTax, recurring, recurringUntil: isRecurringActive(recurring) ? recurringUntil : "",
       deposit, docDiscount, shippingCost,
@@ -538,7 +562,17 @@ export const CreateDocForm: React.FC<{
             <AppDatePicker floatingLabel="P.O. Date" value={poDate} onValueChange={setPoDate} className={DOC_FIELD} />
           )}
           {show("Recipient name") && <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" className={DOC_FIELD} />}
-          {show("Salesperson") && <input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson" className={DOC_FIELD} />}
+          {show("Salesperson") && (
+            <SalespersonField
+              className="md:col-span-2"
+              valueId={salespersonId}
+              valueName={salesperson}
+              onChange={(next) => {
+                setSalespersonId(next?.id || "");
+                setSalesperson(next?.name || "");
+              }}
+            />
+          )}
           {show("Shipping Cost And Method") && (
             <div className={paymentType ? "md:col-span-1" : "md:col-span-2"}>
               <input value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="Shipping Method" className={DOC_FIELD} />
@@ -586,43 +620,47 @@ export const CreateDocForm: React.FC<{
           )}
         </div>
 
-        <div ref={itemsRef} className={`border border-gray-300 rounded-md ${autoFit ? "overflow-x-auto" : "overflow-x-auto"}`}>
-          <table className={`w-full text-sm ${autoFit ? "min-w-[760px]" : "min-w-[760px]"}`}>
+        <div ref={itemsRef} className="border border-gray-300 rounded-md overflow-visible">
+          <table className="w-full text-sm min-w-[760px]">
             <thead><tr className="bg-gray-100 text-gray-500 text-xs"><th className="text-left font-semibold px-4 py-2.5 w-14">Sr. No.</th><th className="text-left font-semibold px-2 py-2.5">Items</th>{cols.qty && <th className="text-right font-semibold px-2 py-2.5">Quantity</th>}{cols.mrp && <th className="text-right font-semibold px-2 py-2.5">MRP</th>}<th className="text-right font-semibold px-2 py-2.5">Rate</th>{cols.tax && <th className="text-left font-semibold px-2 py-2.5">Tax</th>}{cols.discount && <th className="text-right font-semibold px-2 py-2.5">Discount</th>}<th className="text-right font-semibold px-4 py-2.5">Amount</th><th className="w-8" /></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className="border-t border-gray-300 align-top">
                   <td className="px-4 py-3 text-gray-700">{i + 1}</td>
                   <td className={`px-2 py-2 relative ${descFullWidth ? "min-w-[280px]" : ""}`}>
-                    <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
-                    {showItemName(r.kind) && (
-                      <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
-                    )}
-                    {showDesc && (
-                      <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className={`w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5 ${descFullWidth ? "block" : ""}`} />
-                    )}
-                    {sugRow === i && (
-                      <div className="absolute left-2 right-0 top-full z-30 mt-1 max-w-xl bg-white border border-gray-300 rounded-md shadow-xl overflow-hidden">
-                        <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                          {suggestionsFor(r).map((c) => (
-                            <button key={c.key} type="button" onClick={() => pickSuggestion(i, c.key)} className="w-full flex items-center justify-between gap-6 px-4 py-2.5 text-sm hover:bg-gray-100 text-left">
-                              <span className="text-gray-900 truncate">
-                                {c.name}
-                                {showItemCodeSug && <span className="text-gray-400 text-xs ml-2">{c.key}</span>}
-                                {showDescSug && (c as any).description ? <span className="block text-xs text-gray-500 truncate">{(c as any).description}</span> : null}
-                                {showStockSug && (c as any).stock != null ? <span className="block text-xs text-gray-500">Stock: {(c as any).stock}</span> : null}
-                              </span>
-                              {showSugPrice && <span className="text-gray-600 flex-shrink-0">{moneyFmt(c.rate)}</span>}
-                            </button>
-                          ))}
-                          {suggestionsFor(r).length === 0 && <div className="px-4 py-2.5 text-sm text-gray-400">No matching {r.kind}s</div>}
-                        </div>
-                        <label className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 border-t border-gray-300 cursor-pointer">
-                          <input type="checkbox" checked={sortRecent} onChange={() => setSortRecent((v) => !v)} className="accent-blue-600" />
-                          Sort by Recent Used
-                        </label>
-                      </div>
-                    )}
+                    <div
+                      ref={(el) => { sugAnchorRefs.current[i] = el; }}
+                      className="relative"
+                    >
+                      <div className="text-[11px] text-gray-400 capitalize">{r.kind}</div>
+                      {showItemName(r.kind) && (
+                        <input value={r.name} onChange={(e) => { setRowName(i, e.target.value); setSugRow(i); }} onFocus={() => setSugRow(i)} placeholder={r.kind === "product" ? "Product" : "Service"} className="w-full bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400" />
+                      )}
+                      {showDesc && (
+                        <input value={r.description} onChange={(e) => setRowDesc(i, e.target.value)} placeholder="Description" className={`w-full bg-transparent text-xs text-gray-600 outline-none placeholder:text-gray-400 mt-0.5 ${descFullWidth ? "block" : ""}`} />
+                      )}
+                    </div>
+                    <LineItemSuggestFlyout
+                      open={sugRow === i}
+                      anchorRef={{ current: sugAnchorRefs.current[i] }}
+                      options={suggestionsFor(r).map((c) => ({
+                        key: c.key,
+                        name: c.name,
+                        rate: c.rate,
+                        description: c.description,
+                        stock: c.stock,
+                        code: showItemCodeSug ? c.key : undefined,
+                      }))}
+                      onPick={(key) => pickSuggestion(i, key)}
+                      sortRecent={sortRecent}
+                      onSortRecentChange={setSortRecent}
+                      emptyLabel={`No matching ${r.kind}s`}
+                      showPrice
+                      formatPrice={moneyFmt}
+                      showCode={showItemCodeSug}
+                      showDescription={showDescSug}
+                      showStock
+                    />
                   </td>
                   {cols.qty && (
                     <td className="px-2 py-3 text-right">

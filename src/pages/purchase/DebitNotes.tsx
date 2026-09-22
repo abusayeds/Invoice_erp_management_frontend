@@ -1056,8 +1056,23 @@ export const DebitNotes: React.FC = () => {
           docLabel="Debit Note"
           number={selectedDb.number || selected?.number || ""}
           customer={selectedVendor}
+          documentId={String(selectedBackend?._id || selected?.backendId || selectedDb?._id || "") || undefined}
+          emailType="debit_note"
+          emailNav="debit_note"
+          pdfDocType="debitNote"
+          recordId={typeof selectedDb?.id === "number" ? selectedDb.id : undefined}
+          documentUpdate={{
+            status:
+              selectedBackend?.status && selectedBackend.status !== "Draft"
+                ? selectedBackend.status
+                : "Open",
+          }}
           onClose={() => setSigRequestOpen(false)}
-          onSend={() => { void logActivity("sent", `Signature request for Debit Note ${selectedDb.number} sent.`); showToast("Signature request sent", "success"); }}
+          onSend={() => {
+            void logActivity("sent", `Signature request for Debit Note ${selectedDb.number} sent.`);
+            void queryClient.invalidateQueries({ queryKey: ["debit-notes-list"] });
+            if (selected?.backendId) void queryClient.invalidateQueries({ queryKey: ["debit-note", selected.backendId] });
+          }}
         />
       )}
       {activityOpen && <ActivityLogModal docLabel="Debit Note" record={selectedDb} onClose={() => setActivityOpen(false)} />}

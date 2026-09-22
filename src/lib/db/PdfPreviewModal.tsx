@@ -116,7 +116,7 @@ export const PdfPreviewModal: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/50 flex items-start justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-[95] bg-black/50 flex items-start justify-center p-4 overflow-y-auto"
       onMouseDown={onClose}
     >
       <div
