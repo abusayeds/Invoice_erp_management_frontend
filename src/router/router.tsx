@@ -16,6 +16,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { PrivateRoute } from "@/privateRoutes/PrivateRoute";
 import { RequireGuest } from "@/components/auth/RequireGuest";
 import { Dashboard } from "@/pages/Dashboard";
+import { Landing } from "@/pages/Landing";
 import { Customers } from "@/pages/sales/Customers";
 import { Invoices } from "@/pages/sales/Invoices";
 import { SalesReceipts } from "@/pages/sales/SalesReceipts";
@@ -175,6 +176,12 @@ import { CheckoutCancel } from "@/pages/plan/CheckoutCancel";
 // import { Dashboard } from "../pages/Dashboard";
 
 export const route = createBrowserRouter([
+  // Public marketing home
+  {
+    path: "/",
+    element: <Landing />,
+    errorElement: <ErrorPage />,
+  },
   // Authentication Routes
   {
     path: "/auth",
@@ -220,8 +227,7 @@ export const route = createBrowserRouter([
   // APP ROUTES (With MainLayout - Header + Sidebar + Outlet)
   // ============================================
   {
-    path: "/",
-    // 👇 PrivateRoute blocks the entire dashboard for unauthenticated users.
+    // Pathless layout so `/` stays the public Landing page.
     element: (
       <PrivateRoute>
         <MainLayout />
@@ -233,7 +239,7 @@ export const route = createBrowserRouter([
     children: [
       // Dashboard
       {
-        index: true, // Default route for "/"
+        path: "dashboard",
         element: <Dashboard />,
       },
       {

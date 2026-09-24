@@ -2,30 +2,60 @@
  * File: src/pages/auth/Login.tsx
  * Login page - Email/Password authentication with a "Login as …" role selector.
  *
- * The role buttons are a convenience for testing the six roles (superadmin,
- * company, hr, staff, vendor, customer): selecting one prefills the seed
- * credentials. The actual role/permissions always come from the backend in the
- * login response.
+ * Role chips are loaded from GET /user/login-presets so labels/emails stay in
+ * sync with real users (same role set as User Roles). Selecting a chip prefills
+ * email + demo password. Actual role/permissions always come from the login
+ * response.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { SocialLogin } from "../../components/auth/SocialLogin";
 import useAuth from "../../hooks/useAuth";
 import { alertApiError, alertToast } from "../../utils/alert";
-import { ROLE_LOGIN_PRESETS, type Role } from "../../auth/roles";
+import { api } from "../../lib/api/client";
+import { ROLE_LOGIN_PRESETS, type RolePreset } from "../../auth/roles";
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [presets, setPresets] = useState<RolePreset[]>(ROLE_LOGIN_PRESETS);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   });
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await api.get<RolePreset[]>("/user/login-presets", {
+          skipGlobalLoading: true,
+          skipUnauthorized: true,
+        });
+        if (!active) return;
+        if (Array.isArray(data) && data.length > 0) {
+          setPresets(
+            data.map((p) => ({
+              role: p.role as RolePreset["role"],
+              label: p.label,
+              email: p.email,
+              password: p.password || "1qazxsw2",
+            })),
+          );
+        }
+      } catch {
+        // Keep static ROLE_LOGIN_PRESETS fallback.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +63,7 @@ export const Login: React.FC = () => {
     try {
       const user = await login(formData.email, formData.password);
       alertToast(`Welcome back, ${user.name || "user"}!`, "success");
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       alertApiError(err, "Login failed. Check your credentials.");
     } finally {
@@ -49,10 +79,10 @@ export const Login: React.FC = () => {
     }));
   };
 
-  const handleSelectRole = (role: Role) => {
-    const preset = ROLE_LOGIN_PRESETS.find((p) => p.role === role);
+  const handleSelectRole = (roleKey: string) => {
+    const preset = presets.find((p) => p.role === roleKey);
     if (!preset) return;
-    setSelectedRole(role);
+    setSelectedRole(roleKey);
     setFormData((prev) => ({
       ...prev,
       email: preset.email,
@@ -63,30 +93,31 @@ export const Login: React.FC = () => {
   return (
     <AuthLayout title="Welcome!" subtitle="Login to your account">
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Role Selector */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             Login as
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {ROLE_LOGIN_PRESETS.map((preset) => (
+            {presets.map((preset) => (
               <button
                 key={preset.role}
                 type="button"
                 onClick={() => handleSelectRole(preset.role)}
-                className={`px-3 py-2 rounded-md border text-xs font-medium transition-all ${
+                className={`px-3 py-2 rounded-md border text-left transition-all ${
                   selectedRole === preset.role
                     ? "border-blue-600 bg-blue-50 text-blue-700"
                     : "border-gray-300 text-gray-600 hover:border-blue-400 hover:bg-gray-50"
                 }`}
               >
-                {preset.label}
+                <div className="text-xs font-medium">{preset.label}</div>
+                <div className="mt-0.5 truncate text-[10px] opacity-60">
+                  {preset.email}
+                </div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Email Field */}
         <div>
           <label
             htmlFor="email"
@@ -106,7 +137,6 @@ export const Login: React.FC = () => {
           />
         </div>
 
-        {/* Password Field */}
         <div>
           <label
             htmlFor="password"
@@ -126,7 +156,6 @@ export const Login: React.FC = () => {
           />
         </div>
 
-        {/* Remember Me Checkbox */}
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <input
@@ -149,7 +178,6 @@ export const Login: React.FC = () => {
           </Link>
         </div>
 
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={submitting}
@@ -158,7 +186,6 @@ export const Login: React.FC = () => {
           {submitting ? "Logging in..." : "Login"}
         </button>
 
-        {/* Social Login */}
         <SocialLogin />
       </form>
     </AuthLayout>

@@ -11,7 +11,8 @@
 export const ROLES = {
   SUPERADMIN: "superadmin",
   COMPANY: "company",
-  CLIENT: "client", // a.k.a. "customer" in the UI
+  /** Backend role value is `customer` (legacy `client` still accepted server-side). */
+  CUSTOMER: "customer",
   STAFF: "staff",
   VENDOR: "vendor",
   HR: "hr",
@@ -23,7 +24,7 @@ export type Role = (typeof ROLES)[keyof typeof ROLES];
 export const ROLE_LABELS: Record<Role, string> = {
   [ROLES.SUPERADMIN]: "Super Admin",
   [ROLES.COMPANY]: "Company",
-  [ROLES.CLIENT]: "Customer",
+  [ROLES.CUSTOMER]: "Customer",
   [ROLES.STAFF]: "Staff",
   [ROLES.VENDOR]: "Vendor",
   [ROLES.HR]: "HR",
@@ -32,7 +33,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 /**
  * Demo credentials used by the "Login as …" quick-select on the login page.
  * Selecting a role prefills the form so testers don't have to type. The seed
- * accounts all share the same password.
+ * accounts share the same password (`1qazxsw2`).
+ *
+ * Super Admin + Company are created by backend seed (DB/index.ts). Other roles
+ * use the same `<role>@gmail.com` convention when those users exist.
  *
  * Remove (or gate behind a dev flag) once real accounts are in use.
  */
@@ -46,16 +50,40 @@ export interface RolePreset {
 }
 
 export const ROLE_LOGIN_PRESETS: RolePreset[] = [
-  ROLES.SUPERADMIN,
-  ROLES.COMPANY,
-  ROLES.HR,
-  ROLES.STAFF,
-  ROLES.VENDOR,
-  ROLES.CLIENT,
-].map((role) => ({
-  role,
-  label: ROLE_LABELS[role],
-  // Seed emails follow the `<role>@gmail.com` convention.
-  email: `${role}@gmail.com`,
-  password: DEMO_PASSWORD,
-}));
+  {
+    role: ROLES.SUPERADMIN,
+    label: ROLE_LABELS[ROLES.SUPERADMIN],
+    email: "superadmin@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+  {
+    role: ROLES.COMPANY,
+    label: ROLE_LABELS[ROLES.COMPANY],
+    email: "company@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+  {
+    role: ROLES.HR,
+    label: ROLE_LABELS[ROLES.HR],
+    email: "hr@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+  {
+    role: ROLES.STAFF,
+    label: ROLE_LABELS[ROLES.STAFF],
+    email: "staff@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+  {
+    role: ROLES.VENDOR,
+    label: ROLE_LABELS[ROLES.VENDOR],
+    email: "vendor@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+  {
+    role: ROLES.CUSTOMER,
+    label: ROLE_LABELS[ROLES.CUSTOMER],
+    email: "customer@gmail.com",
+    password: DEMO_PASSWORD,
+  },
+];

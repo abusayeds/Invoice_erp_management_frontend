@@ -118,7 +118,7 @@ const navigationItems: NavItem[] = [
   {
     label: "Dashboard",
     icon: Home,
-    path: "/",
+    path: "/dashboard",
     children: [
       { label: "Project Dashboard", icon: ClipboardList, path: "/project-dashboard" },
       { label: "Account Dashboard", icon: User, path: "/account-dashboard" },
@@ -474,7 +474,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="h-16 flex-shrink-0 flex items-center justify-between px-4 bg-white border-b border-gray-200">
           {!collapsed && (
             <Link
-              to="/"
+              to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
               className="flex items-center gap-2.5"
             >

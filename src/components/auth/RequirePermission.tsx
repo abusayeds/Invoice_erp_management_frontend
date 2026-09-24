@@ -50,7 +50,7 @@ export const RequirePermission: React.FC<RequirePermissionProps> = ({
     return <>{children}</>;
   }
 
-  return <>{fallback ?? <Navigate to="/" replace />}</>;
+  return <>{fallback ?? <Navigate to="/dashboard" replace />}</>;
 };
 
 export default RequirePermission;

@@ -19,27 +19,26 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  MoreVertical,
   Eye,
   Edit,
-  Trash2,
   Users,
   Key,
-  Plus,
   Filter,
   Download,
   Clock,
   ArrowLeft,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { api } from "../../lib/api/client";
-import { alertApiError, alertSuccess } from "../../utils/alert";
+import { alertApiError, alertSuccess, alertToast } from "../../utils/alert";
 
 /* ---------- Types ---------- */
 /** A user belonging to a role, as returned by GET /user/all-role. */
 interface RoleUser {
   _id: string;
   name: string;
+  email?: string;
 }
 
 /** Shape of one entry in GET /user/all-role -> data[]. */
@@ -48,7 +47,11 @@ interface Role {
   label: string;
   permissions: number;
   users: RoleUser[];
+  isActive?: boolean;
+  testEmail?: string;
 }
+
+const DEMO_PASSWORD = "1qazxsw2";
 
 /** Shape returned by GET /permission/all-permissions (one entry per add-on). */
 interface ApiPermission {
@@ -90,14 +93,28 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // ── Roles from the backend ───────────────────────────────────────────────
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [togglingRole, setTogglingRole] = useState<string | null>(null);
+
+  const loadRoles = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await api.get<Role[]>("/user/all-role");
+      setRoles(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setLoadError("Couldn't load roles. Please try again.");
+      alertApiError(err, "Couldn't load roles.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
-    const load = async () => {
+    (async () => {
       setLoading(true);
       setLoadError(null);
       try {
@@ -111,8 +128,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
       } finally {
         if (active) setLoading(false);
       }
-    };
-    load();
+    })();
     return () => {
       active = false;
     };
@@ -136,6 +152,42 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
     setCurrentPage(1);
   };
 
+  const handleToggleActive = async (role: Role) => {
+    const next = !(role.isActive !== false);
+    setTogglingRole(role.name);
+    try {
+      await api.patch("/permission/role-active", {
+        role: role.name,
+        isActive: next,
+      });
+      setRoles((prev) =>
+        prev.map((r) =>
+          r.name === role.name ? { ...r, isActive: next } : r,
+        ),
+      );
+      alertSuccess(
+        next
+          ? `${role.label} activated — users can log in again.`
+          : `${role.label} deactivated — users with this role cannot log in.`,
+      );
+    } catch (err) {
+      alertApiError(err, "Couldn't update role status.");
+    } finally {
+      setTogglingRole(null);
+    }
+  };
+
+  const copyTestEmail = async (email: string) => {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      alertToast("Email copied — use it on the Login page to test.", "success");
+    } catch {
+      alertToast(email, "info");
+    }
+  };
+
+  const activeCount = roles.filter((r) => r.isActive !== false).length;
 
   return (
     <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
@@ -143,7 +195,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Manage Roles</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Manage user roles, permissions, and access levels
+            Same roles appear on Login. Deactivate a role to block its users from signing in.
           </p>
         </div>
       </div>
@@ -157,7 +209,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
               <div>
                 <div className="text-xs text-blue-600 font-medium">Total Roles</div>
                 <div className="text-2xl font-bold text-gray-900">{roles.length}</div>
-                <div className="text-xs text-gray-500 mt-1">Active roles</div>
+                <div className="text-xs text-gray-500 mt-1">{activeCount} active</div>
               </div>
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                 <Shield className="w-5 h-5 text-blue-600" />
@@ -225,11 +277,18 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
               />
             </div>
             <div className="flex gap-3">
-              <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              <button
+                type="button"
+                onClick={() => void loadRoles()}
+                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
                 <Filter className="w-4 h-4" />
-                Filter
+                Refresh
               </button>
-              <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
                 <Download className="w-4 h-4" />
                 Export
               </button>
@@ -250,6 +309,12 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                     Label
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Test login
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Permissions
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -263,7 +328,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-16">
+                    <td colSpan={7} className="px-6 py-16">
                       <div className="flex items-center justify-center gap-2 text-gray-500">
                         <Loader2 className="w-5 h-5 animate-spin" />
                         <span className="text-sm">Loading roles…</span>
@@ -272,7 +337,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                   </tr>
                 ) : loadError ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12">
+                    <td colSpan={7} className="px-6 py-12">
                       <div className="text-sm text-red-600 text-center">
                         {loadError}
                       </div>
@@ -280,94 +345,146 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                   </tr>
                 ) : paginatedRoles.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12">
+                    <td colSpan={7} className="px-6 py-12">
                       <div className="text-sm text-gray-500 text-center">
                         No roles found.
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  paginatedRoles.map((role) => (
-                    <tr
-                      key={role.name}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Shield className="w-4 h-4 text-blue-600" />
+                  paginatedRoles.map((role) => {
+                    const active = role.isActive !== false;
+                    const testEmail =
+                      role.testEmail ||
+                      role.users.find((u) => u.email)?.email ||
+                      "";
+                    return (
+                      <tr
+                        key={role.name}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                              <Shield className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <span className="font-medium text-gray-900">
+                              {role.name}
+                            </span>
                           </div>
-                          <span className="font-medium text-gray-900">
-                            {role.name}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            {role.label}
                           </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                          {role.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1">
-                          <Key className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-sm text-gray-700">
-                            {role.permissions}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1 text-sm text-gray-700">
-                            <Users className="w-3.5 h-3.5 text-gray-400" />
-                            <span>{role.users.length} users</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {role.users.slice(0, 3).map((user) => (
-                              <span
-                                key={user._id}
-                                className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full"
+                        </td>
+                        <td className="px-6 py-4 min-w-[220px]">
+                          {testEmail ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                readOnly
+                                value={testEmail}
+                                title={`Password: ${DEMO_PASSWORD}`}
+                                className="w-full max-w-[200px] px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-gray-50 text-gray-800"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void copyTestEmail(testEmail)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                                title="Copy email"
                               >
-                                {user.name.length > 15
-                                  ? user.name.substring(0, 12) + "..."
-                                  : user.name}
-                              </span>
-                            ))}
-                            {role.users.length > 3 && (
-                              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                                +{role.users.length - 3} more
-                              </span>
-                            )}
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              No user yet
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            type="button"
+                            disabled={togglingRole === role.name}
+                            onClick={() => void handleToggleActive(role)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+                              active ? "bg-blue-600" : "bg-gray-300"
+                            }`}
+                            title={
+                              active
+                                ? "Active — click to deactivate"
+                                : "Inactive — click to activate"
+                            }
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                active ? "translate-x-6" : "translate-x-1"
+                              }`}
+                            />
+                          </button>
+                          <div className="mt-1 text-[10px] text-gray-500">
+                            {togglingRole === role.name
+                              ? "Saving…"
+                              : active
+                                ? "Active"
+                                : "Inactive"}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                            title="View"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onEditRole(role)}
-                            className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg hover:bg-green-50 transition-colors"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1">
+                            <Key className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-sm text-gray-700">
+                              {role.permissions}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1 text-sm text-gray-700">
+                              <Users className="w-3.5 h-3.5 text-gray-400" />
+                              <span>{role.users.length} users</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {role.users.slice(0, 3).map((user) => (
+                                <span
+                                  key={user._id}
+                                  className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full"
+                                >
+                                  {user.name.length > 15
+                                    ? user.name.substring(0, 12) + "..."
+                                    : user.name}
+                                </span>
+                              ))}
+                              {role.users.length > 3 && (
+                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                  +{role.users.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                              title="View"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onEditRole(role)}
+                              className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                              title="Edit permissions"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

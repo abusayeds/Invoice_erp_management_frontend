@@ -239,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
 
   const appShortcuts = [
-    { label: "Dashboard", path: "/" },
+    { label: "Dashboard", path: "/dashboard" },
     { label: "Invoices", path: "/sales/sales-invoice" },
     { label: "Customers", path: "/accounting/customer" },
     { label: "Products", path: "/items/product" },
