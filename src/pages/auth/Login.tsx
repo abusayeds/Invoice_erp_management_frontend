@@ -1,69 +1,43 @@
 /**
  * File: src/pages/auth/Login.tsx
- * Login page - Email/Password authentication with a "Login as …" role selector.
+ * Login page - Email/Password authentication.
  *
- * Role chips are loaded from GET /user/login-presets so labels/emails stay in
- * sync with real users (same role set as User Roles). Selecting a chip prefills
- * email + demo password. Actual role/permissions always come from the login
- * response.
+ * Backend contract (see Postman "Common > auth"): POST /user/login.
+ * After login, the user is redirected based on role (see getPostLoginRedirect).
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { SocialLogin } from "../../components/auth/SocialLogin";
 import useAuth from "../../hooks/useAuth";
 import { alertApiError, alertToast } from "../../utils/alert";
-import { api } from "../../lib/api/client";
-import { ROLE_LOGIN_PRESETS, type RolePreset } from "../../auth/roles";
+import { getPostLoginRedirect } from "../../auth/roles";
+
+/** Dev quick-fill only — matches the seed accounts created by the backend. */
+const QUICK_LOGIN_PRESETS = [
+  { label: "Super Admin", email: "superadmin@gmail.com" },
+  { label: "Company", email: "company@gmail.com" },
+];
+const QUICK_LOGIN_PASSWORD = "1qazxsw2";
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
-  const [presets, setPresets] = useState<RolePreset[]>(ROLE_LOGIN_PRESETS);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   });
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const data = await api.get<RolePreset[]>("/user/login-presets", {
-          skipGlobalLoading: true,
-          skipUnauthorized: true,
-        });
-        if (!active) return;
-        if (Array.isArray(data) && data.length > 0) {
-          setPresets(
-            data.map((p) => ({
-              role: p.role as RolePreset["role"],
-              label: p.label,
-              email: p.email,
-              password: p.password || "1qazxsw2",
-            })),
-          );
-        }
-      } catch {
-        // Keep static ROLE_LOGIN_PRESETS fallback.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const user = await login(formData.email, formData.password);
+      const user = await login(formData.email, formData.password, formData.rememberMe);
       alertToast(`Welcome back, ${user.name || "user"}!`, "success");
-      navigate("/dashboard", { replace: true });
+      navigate(getPostLoginRedirect(user.role), { replace: true });
     } catch (err) {
       alertApiError(err, "Login failed. Check your credentials.");
     } finally {
@@ -79,52 +53,35 @@ export const Login: React.FC = () => {
     }));
   };
 
-  const handleSelectRole = (roleKey: string) => {
-    const preset = presets.find((p) => p.role === roleKey);
-    if (!preset) return;
-    setSelectedRole(roleKey);
-    setFormData((prev) => ({
-      ...prev,
-      email: preset.email,
-      password: preset.password,
-    }));
+  const quickFill = (email: string) => {
+    setFormData((prev) => ({ ...prev, email, password: QUICK_LOGIN_PASSWORD }));
   };
 
   return (
     <AuthLayout title="Welcome!" subtitle="Login to your account">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Login as
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset.role}
-                type="button"
-                onClick={() => handleSelectRole(preset.role)}
-                className={`px-3 py-2 rounded-md border text-left transition-all ${
-                  selectedRole === preset.role
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 text-gray-600 hover:border-blue-400 hover:bg-gray-50"
-                }`}
-              >
-                <div className="text-xs font-medium">{preset.label}</div>
-                <div className="mt-0.5 truncate text-[10px] opacity-60">
-                  {preset.email}
-                </div>
-              </button>
-            ))}
+          <div className="flex items-center justify-between mb-1.5">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Enter your email
+            </label>
+            <div className="flex items-center gap-1.5">
+              {QUICK_LOGIN_PRESETS.map((preset) => (
+                <button
+                  key={preset.email}
+                  type="button"
+                  onClick={() => quickFill(preset.email)}
+                  className="px-2 py-0.5 rounded border border-gray-300 text-[11px] text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                  title={preset.email}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-1.5"
-          >
-            Enter your email
-          </label>
           <input
             id="email"
             name="email"
@@ -187,6 +144,16 @@ export const Login: React.FC = () => {
         </button>
 
         <SocialLogin />
+
+        <div className="text-center text-sm">
+          <span className="text-gray-600">Don't have an account? </span>
+          <Link
+            to="/auth/signup"
+            className="text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Register
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   );

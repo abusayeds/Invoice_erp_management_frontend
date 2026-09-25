@@ -6,8 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Plus,
   Play,
@@ -19,7 +18,6 @@ import {
   Check,
   Megaphone,
   Building2,
-  Settings,
   Grid3x3,
   Users,
   FileText,
@@ -110,7 +108,7 @@ const sampleNotifications = [
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const displayName = user?.name || "Faisal Chowdhury";
   const displayEmail = user?.email || "chowdhuryfaisal66@gmail.com";
 
@@ -124,18 +122,15 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMyAccount, setShowMyAccount] = useState(false);
   const [showApps, setShowApps] = useState(false);
   const [notifications, setNotifications] = useState(sampleNotifications);
   const [announcements, setAnnouncements] = useState(sampleAnnouncements);
   const [notifTab, setNotifTab] = useState<"notifications" | "announcements">("notifications");
-  const [userMenuPos, setUserMenuPos] = useState<{ top: number; right: number } | null>(null);
 
   const createRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
   const appsRef = useRef<HTMLDivElement>(null);
 
   const loadCompany = React.useCallback(async () => {
@@ -201,39 +196,11 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       const t = e.target as Node;
       if (createRef.current && !createRef.current.contains(t)) setShowCreate(false);
       if (notifRef.current && !notifRef.current.contains(t)) setShowNotifications(false);
-      if (
-        userRef.current &&
-        !userRef.current.contains(t) &&
-        userMenuRef.current &&
-        !userMenuRef.current.contains(t)
-      ) {
-        setShowUserMenu(false);
-      } else if (userRef.current && !userRef.current.contains(t) && !userMenuRef.current) {
-        setShowUserMenu(false);
-      }
       if (appsRef.current && !appsRef.current.contains(t)) setShowApps(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
-
-  useEffect(() => {
-    if (!showUserMenu || !userRef.current) {
-      setUserMenuPos(null);
-      return;
-    }
-    const place = () => {
-      const r = userRef.current!.getBoundingClientRect();
-      setUserMenuPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
-    };
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [showUserMenu]);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -292,7 +259,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           onClick={() => {
             setShowCreate((s) => !s);
             setShowNotifications(false);
-            setShowUserMenu(false);
             setShowApps(false);
           }}
           className="w-9 h-9 flex-shrink-0 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center transition-colors shadow-sm"
@@ -366,7 +332,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             onClick={() => {
               setShowNotifications((s) => !s);
               setShowCreate(false);
-              setShowUserMenu(false);
               setShowApps(false);
             }}
             className="p-1.5 hover:bg-gray-100 rounded transition-colors relative"
@@ -438,127 +403,36 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           )}
         </div>
 
-        {/* Company / account menu */}
+        {/* Company / account — opens the My Account modal directly */}
         <div className="relative" ref={userRef}>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setShowUserMenu((s) => !s);
               setShowCreate(false);
               setShowNotifications(false);
               setShowApps(false);
+              setShowMyAccount(true);
             }}
             className="flex items-center gap-1.5 px-1.5 py-1 hover:bg-gray-100 rounded-full transition-colors"
             title={companyName || "Company"}
           >
             <CompanyAvatar />
-            <ChevronDown className={`hidden sm:block w-3.5 h-3.5 text-gray-500 transition-transform ${showUserMenu ? "rotate-180" : ""}`} />
+            <ChevronDown className="hidden sm:block w-3.5 h-3.5 text-gray-500" />
           </button>
-
-          {showUserMenu &&
-            userMenuPos &&
-            createPortal(
-              <div
-                ref={userMenuRef}
-                className="fixed w-[280px] z-[120]"
-                style={{ top: userMenuPos.top, right: userMenuPos.right }}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <div className="absolute -top-1.5 right-4 w-3 h-3 bg-white rotate-45 border-l border-t border-gray-200" />
-                <div className="relative rounded-md bg-white border border-gray-200 shadow-2xl overflow-hidden text-gray-900">
-                  <div className="flex items-center gap-3 px-4 py-3.5">
-                    <CompanyAvatar size="w-12 h-12" textSize="text-lg" />
-                    <div className="min-w-0">
-                      <p className="text-[15px] text-gray-900 truncate">{companyName}</p>
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {isOwner && (
-                          <span className="px-2 py-0.5 rounded bg-gray-100 text-[11px] text-gray-700">
-                            Owner
-                          </span>
-                        )}
-                        {planBadge && (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
-                              planBadge.expired
-                                ? "bg-red-100 text-red-700"
-                                : planBadge.trial
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-blue-100 text-blue-700"
-                            }`}
-                            title={planBadge.expired ? "Plan expired" : planBadge.trial ? "Trial plan" : "Active plan"}
-                          >
-                            {planBadge.name}
-                            {planBadge.trial && !planBadge.expired ? " · Trial" : ""}
-                            {planBadge.expired ? " · Expired" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate("/companies", { state: { openCreate: true } });
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-800 hover:bg-gray-50 text-left"
-                  >
-                    <Plus className="w-4 h-4" strokeWidth={2.2} />
-                    Add Company
-                  </button>
-
-                  <div className="border-t border-gray-100" />
-
-                  <div className="px-4 py-3 text-sm text-gray-600 truncate">{companyEmail}</div>
-
-                  <div className="border-t border-gray-100" />
-
-                  <Link
-                    to="/settings"
-                    onClick={() => setShowUserMenu(false)}
-                    className="flex items-center gap-2.5 px-4 py-3 text-sm text-gray-800 hover:bg-gray-50"
-                  >
-                    <Settings className="w-4 h-4 text-gray-500" />
-                    Settings
-                  </Link>
-
-                  <div className="border-t border-gray-100" />
-
-                  <div className="flex items-center justify-between gap-3 px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        setShowMyAccount(true);
-                      }}
-                      className="text-sm text-blue-600 hover:underline font-medium"
-                    >
-                      My Account
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        logout();
-                        navigate("/auth/login");
-                      }}
-                      className="px-3.5 py-1.5 text-sm text-gray-800 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200"
-                    >
-                      Log Out
-                    </button>
-                  </div>
-                </div>
-              </div>,
-              document.body,
-            )}
         </div>
       </div>
 
-      <MyAccountModal open={showMyAccount} onClose={() => setShowMyAccount(false)} />
+      <MyAccountModal
+        open={showMyAccount}
+        onClose={() => setShowMyAccount(false)}
+        companyName={companyName}
+        companyLogoUrl={showLogo ? companyLogoUrl : ""}
+        companyInitial={companyInitial}
+        isOwner={isOwner}
+        planBadge={planBadge}
+        onLogoBroken={() => setLogoBroken(true)}
+      />
     </div>
   );
 };

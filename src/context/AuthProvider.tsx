@@ -22,6 +22,7 @@ import { posOrderStore } from "../lib/db/pos";
 
 const PROFILE_ENDPOINT = "/user/my-profile";
 const LOGIN_ENDPOINT = "/user/login";
+const GOOGLE_LOGIN_ENDPOINT = "/user/google-login";
 
 /** Normalize the backend user (`_id`) into our AuthUser shape (`id`). */
 function normalizeUser(raw: AuthUser): AuthUser {
@@ -58,10 +59,25 @@ export default function AuthProvider({
   }, [logout]);
 
   const login = useCallback(
-    async (email: string, password: string): Promise<AuthUser> => {
+    async (email: string, password: string, remember = false): Promise<AuthUser> => {
       const res = await api.post<{ token: string; user: AuthUser }>(
         LOGIN_ENDPOINT,
         { email, password },
+      );
+      persistToken(res.token, remember);
+      setTokenState(res.token);
+      const profile = normalizeUser(res.user);
+      setUser(profile);
+      return profile;
+    },
+    [],
+  );
+
+  const loginWithGoogle = useCallback(
+    async (credential: string): Promise<AuthUser> => {
+      const res = await api.post<{ token: string; user: AuthUser }>(
+        GOOGLE_LOGIN_ENDPOINT,
+        { authProvider: "google", credential },
       );
       persistToken(res.token);
       setTokenState(res.token);
@@ -126,6 +142,7 @@ export default function AuthProvider({
       loading,
       isAuthenticated: !!user,
       login,
+      loginWithGoogle,
       logout,
       setUser,
       refreshProfile,
@@ -138,6 +155,7 @@ export default function AuthProvider({
       token,
       loading,
       login,
+      loginWithGoogle,
       logout,
       refreshProfile,
       hasPermission,

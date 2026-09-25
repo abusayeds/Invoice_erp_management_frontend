@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Eye,
   Edit,
+  Edit3,
+  Trash2,
   Users,
   Key,
   Filter,
@@ -32,6 +34,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api/client";
 import { alertApiError, alertSuccess, alertToast } from "../../utils/alert";
+import Swal from "../../utils/alert";
 
 /* ---------- Types ---------- */
 /** A user belonging to a role, as returned by GET /user/all-role. */
@@ -49,6 +52,8 @@ interface Role {
   users: RoleUser[];
   isActive?: boolean;
   testEmail?: string;
+  /** False for system roles (staff/hr/vendor/customer) — those can never be renamed/deleted. */
+  isCustom?: boolean;
 }
 
 const DEMO_PASSWORD = "1qazxsw2";
@@ -86,9 +91,10 @@ interface ApiRolePermissions {
 /* ===================================================================== */
 interface RolesListProps {
   onEditRole: (role: Role) => void;
+  onAddRole: () => void;
 }
 
-const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
+const RolesList: React.FC<RolesListProps> = ({ onEditRole, onAddRole }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -177,6 +183,52 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
     }
   };
 
+  const handleDeleteRole = async (role: Role) => {
+    if (role.users.length > 0) return; // guarded in the UI too; defensive no-op
+    const result = await Swal.fire({
+      icon: "warning",
+      title: `Delete "${role.label}"?`,
+      html: "This role has no users assigned. This cannot be undone.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await api.delete(`/permission/delete-role/${encodeURIComponent(role.name)}`);
+      setRoles((prev) => prev.filter((r) => r.name !== role.name));
+      alertSuccess(`"${role.label}" deleted.`);
+    } catch (err) {
+      alertApiError(err, "Couldn't delete this role.");
+    }
+  };
+
+  const handleRenameRole = async (role: Role) => {
+    if (role.users.length > 0) return; // guarded in the UI too; defensive no-op
+    const result = await Swal.fire({
+      title: `Rename "${role.label}"`,
+      input: "text",
+      inputLabel: "New role name",
+      inputValue: role.name,
+      showCancelButton: true,
+      confirmButtonText: "Rename",
+      inputValidator: (value) => (!value?.trim() ? "Role name is required" : undefined),
+    });
+    if (!result.isConfirmed || !result.value) return;
+    const newRole = String(result.value).trim();
+    if (newRole === role.name) return;
+    try {
+      await api.patch("/permission/rename-role", { role: role.name, newRole });
+      setRoles((prev) =>
+        prev.map((r) => (r.name === role.name ? { ...r, name: newRole } : r)),
+      );
+      alertSuccess(`Renamed to "${newRole}".`);
+    } catch (err) {
+      alertApiError(err, "Couldn't rename this role.");
+    }
+  };
+
   const copyTestEmail = async (email: string) => {
     if (!email) return;
     try {
@@ -198,6 +250,14 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
             Same roles appear on Login. Deactivate a role to block its users from signing in.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={onAddRole}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+        >
+          <Shield className="w-4 h-4" />
+          Add Role
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
@@ -308,9 +368,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Label
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Test login
-                  </th>
+                
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Status
                   </th>
@@ -378,30 +436,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                             {role.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 min-w-[220px]">
-                          {testEmail ? (
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                readOnly
-                                value={testEmail}
-                                title={`Password: ${DEMO_PASSWORD}`}
-                                className="w-full max-w-[200px] px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-gray-50 text-gray-800"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => void copyTestEmail(testEmail)}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
-                                title="Copy email"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-400">
-                              No user yet
-                            </span>
-                          )}
-                        </td>
+                      
                         <td className="px-6 py-4">
                           <button
                             type="button"
@@ -465,13 +500,7 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                              title="View"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
+                         
                             <button
                               type="button"
                               onClick={() => onEditRole(role)}
@@ -480,6 +509,36 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
                             >
                               <Edit className="w-4 h-4" />
                             </button>
+                            {role.isCustom && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={role.users.length > 0}
+                                  onClick={() => void handleRenameRole(role)}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                                  title={
+                                    role.users.length > 0
+                                      ? "Reassign this role's users before renaming"
+                                      : "Rename role"
+                                  }
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={role.users.length > 0}
+                                  onClick={() => void handleDeleteRole(role)}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                                  title={
+                                    role.users.length > 0
+                                      ? "Reassign this role's users before deleting"
+                                      : "Delete role"
+                                  }
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -561,8 +620,13 @@ const RolesList: React.FC<RolesListProps> = ({ onEditRole }) => {
 /* ===================================================================== */
 /*                          EDIT ROLE VIEW                               */
 /* ===================================================================== */
+/** Role names a company may not create/redefine (mirrors the backend's reserved-name check). */
+const RESERVED_ROLE_NAMES = new Set(["superadmin", "company"]);
+
 interface EditRoleProps {
-  role: Role;
+  /** "create" has no existing role yet — starts blank, POSTs /permission/create-role. */
+  mode?: "edit" | "create";
+  role: Role | null;
   onBack: () => void;
   onCancel: () => void;
   onUpdate: (updated: {
@@ -573,13 +637,15 @@ interface EditRoleProps {
 }
 
 const EditRole: React.FC<EditRoleProps> = ({
+  mode = "edit",
   role,
   onBack,
   onCancel,
   onUpdate,
 }) => {
-  const [name, setName] = useState(role.name);
-  const [label, setLabel] = useState(role.label);
+  const isCreate = mode === "create";
+  const [name, setName] = useState(role?.name ?? "");
+  const [label, setLabel] = useState(role?.label ?? "");
   const [featureSearch, setFeatureSearch] = useState("");
 
   // Permission matrix from the backend.
@@ -592,7 +658,7 @@ const EditRole: React.FC<EditRoleProps> = ({
   // Selected permissions, keyed by permission.value.
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  // ── Load the permission catalog + this role's current permissions ─────────
+  // ── Load the permission catalog (+ this role's current permissions, when editing) ──
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -601,16 +667,18 @@ const EditRole: React.FC<EditRoleProps> = ({
       try {
         const [catalog, rolePerms] = await Promise.all([
           api.get<ApiAddOn[]>("/permission/all-permissions/"),
-          api.get<ApiRolePermissions>(
-            `/user/role-permissions/${encodeURIComponent(role.name)}`,
-          ),
+          isCreate || !role
+            ? Promise.resolve<ApiRolePermissions | null>(null)
+            : api.get<ApiRolePermissions>(
+                `/user/role-permissions/${encodeURIComponent(role.name)}`,
+              ),
         ]);
         if (!active) return;
         const list = Array.isArray(catalog) ? catalog : [];
         setAddOns(list);
         setActiveTab(list[0]?.packageName ?? "");
 
-        // Pre-check the permissions the role already has.
+        // Pre-check the permissions the role already has (none yet when creating).
         const granted = rolePerms?.permissions ?? [];
         setSelected(
           granted.reduce<Record<string, boolean>>((acc, value) => {
@@ -630,7 +698,7 @@ const EditRole: React.FC<EditRoleProps> = ({
     return () => {
       active = false;
     };
-  }, [role.name]);
+  }, [isCreate, role]);
 
   const activeAddOn = addOns.find((a) => a.packageName === activeTab);
 
@@ -679,14 +747,43 @@ const EditRole: React.FC<EditRoleProps> = ({
     });
   };
 
-  // ── Persist the role's permissions ───────────────────────────────────────
-  // PATCH /permission/update-permission  body: { role, permissions: string[] }
+  // ── Persist the role ─────────────────────────────────────────────────────
+  // Create: POST /permission/create-role  body: { role, label, permissions }
+  // Edit:   PATCH /permission/update-permission  body: { role, permissions }
   const handleUpdate = async () => {
     const permissions = Object.keys(selected).filter((k) => selected[k]);
+
+    if (isCreate) {
+      const roleName = name.trim();
+      if (!roleName) {
+        alertApiError(null, "Role name is required.");
+        return;
+      }
+      if (RESERVED_ROLE_NAMES.has(roleName.toLowerCase())) {
+        alertApiError(null, "This role name is reserved.");
+        return;
+      }
+      setSaving(true);
+      try {
+        await api.post("/permission/create-role", {
+          role: roleName,
+          label: label.trim(),
+          permissions,
+        });
+        await alertSuccess("Role created successfully.");
+        onUpdate({ name: roleName, label, permissions });
+      } catch (err) {
+        alertApiError(err, "Couldn't create the role.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     setSaving(true);
     try {
       await api.patch("/permission/update-permission", {
-        role: role.name,
+        role: role!.name,
         permissions,
       });
       await alertSuccess("Role permissions updated successfully.");
@@ -702,7 +799,13 @@ const EditRole: React.FC<EditRoleProps> = ({
     <div className="module-page-shell !p-0 overflow-hidden flex flex-col">
       <div className="dashboard-title-bar shrink-0 flex items-center justify-between gap-4">
         <h1 className="text-lg font-semibold text-gray-900">
-          Edit Role: <span className="text-blue-600">{role.label}</span>
+          {isCreate ? (
+            "Add Role"
+          ) : (
+            <>
+              Edit Role: <span className="text-blue-600">{role?.label}</span>
+            </>
+          )}
         </h1>
         <button
           type="button"
@@ -879,7 +982,13 @@ const EditRole: React.FC<EditRoleProps> = ({
               className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {saving ? "Updating…" : "Update"}
+              {isCreate
+                ? saving
+                  ? "Creating…"
+                  : "Create Role"
+                : saving
+                  ? "Updating…"
+                  : "Update"}
             </button>
           </div>
         </div>
@@ -893,7 +1002,7 @@ const EditRole: React.FC<EditRoleProps> = ({
 /*                         MAIN EXPORT (Router)                          */
 /* ===================================================================== */
 export const UserRoles: React.FC = () => {
-  const [view, setView] = useState<"list" | "edit">("list");
+  const [view, setView] = useState<"list" | "edit" | "create">("list");
   const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   const handleEditRole = (role: Role) => {
@@ -901,12 +1010,17 @@ export const UserRoles: React.FC = () => {
     setView("edit");
   };
 
+  const handleAddRole = () => {
+    setEditingRole(null);
+    setView("create");
+  };
+
   const handleBack = () => {
     setView("list");
     setEditingRole(null);
   };
 
-  // Called after EditRole has already persisted the change via the API.
+  // Called after EditRole/CreateRole has already persisted the change via the API.
   const handleUpdate = () => {
     setView("list");
     setEditingRole(null);
@@ -915,6 +1029,7 @@ export const UserRoles: React.FC = () => {
   if (view === "edit" && editingRole) {
     return (
       <EditRole
+        mode="edit"
         role={editingRole}
         onBack={handleBack}
         onCancel={handleBack}
@@ -923,5 +1038,17 @@ export const UserRoles: React.FC = () => {
     );
   }
 
-  return <RolesList onEditRole={handleEditRole} />;
+  if (view === "create") {
+    return (
+      <EditRole
+        mode="create"
+        role={null}
+        onBack={handleBack}
+        onCancel={handleBack}
+        onUpdate={handleUpdate}
+      />
+    );
+  }
+
+  return <RolesList onEditRole={handleEditRole} onAddRole={handleAddRole} />;
 };

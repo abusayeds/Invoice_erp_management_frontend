@@ -1,14 +1,23 @@
 /**
  * File: src/pages/auth/Signup.tsx
- * Signup page - User registration
+ * Signup page - User registration.
+ *
+ * Backend contract: POST /user/register -> { data: { token } }. The token is a
+ * short-lived registration token (not a login session) used to authorize the
+ * OTP-verify step, so it's handed to VerifyOtp via router state, not persisted.
+ * New self-registered accounts default to the `company` role.
  */
 
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { SocialLogin } from "../../components/auth/SocialLogin";
+import { api } from "../../lib/api/client";
+import { alertApiError, alertWarning } from "../../utils/alert";
 
 export const Signup: React.FC = () => {
+  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -17,9 +26,29 @@ export const Signup: React.FC = () => {
     agreeToTerms: false,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Signup:", formData);
+    if (formData.password !== formData.confirmPassword) {
+      alertWarning("Passwords do not match.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await api.post<{ token: string }>("/user/register", {
+        name: formData.fullName,
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        role: "company",
+      });
+      navigate("/auth/verify-otp", {
+        state: { token: result.token, email: formData.email },
+      });
+    } catch (err) {
+      alertApiError(err, "Registration failed. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,9 +164,10 @@ export const Signup: React.FC = () => {
         {/* Submit Button */}
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 transition-all font-medium text-sm"
+          disabled={submitting}
+          className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 transition-all font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Sign Up
+          {submitting ? "Signing up..." : "Sign Up"}
         </button>
 
         {/* Social Login */}

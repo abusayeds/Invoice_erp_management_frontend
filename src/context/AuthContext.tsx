@@ -25,7 +25,10 @@ export interface AuthContextValue {
   token: string | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  /** `remember`: true persists the session past closing the tab; false (default) signs the user out when the tab closes. */
+  login: (email: string, password: string, remember?: boolean) => Promise<AuthUser>;
+  /** Google Identity Services ID token → backend session, same shape as `login`. */
+  loginWithGoogle: (credential: string) => Promise<AuthUser>;
   logout: () => void;
   setUser: (user: AuthUser | null) => void;
   refreshProfile: () => Promise<void>;

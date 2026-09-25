@@ -170,6 +170,7 @@ import NotificationTemplates from "@/pages/notificationTemplates/NotificationTem
 import { Plan } from "@/pages/plan/Plan";
 import { CheckoutSuccess } from "@/pages/plan/CheckoutSuccess";
 import { CheckoutCancel } from "@/pages/plan/CheckoutCancel";
+import { SuperAdminCompanies } from "@/pages/superadmin/SuperAdminCompanies";
 
 // Import your main app layout (update path as needed)
 // import { MainLayout } from "../components/layout/MainLayout";
@@ -241,6 +242,11 @@ export const route = createBrowserRouter([
       {
         path: "dashboard",
         element: <Dashboard />,
+      },
+      // Superadmin
+      {
+        path: "superadmin/companies",
+        element: <SuperAdminCompanies />,
       },
       {
         path: "project-dashboard",

@@ -14,19 +14,12 @@ import {
   Users,
   FolderKanban,
   ArrowRight,
-  Menu,
-  X,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
+import heroBackground from "@/assets/my-account-promo.png";
 import useAuth from "@/hooks/useAuth";
 import Loading from "@/components/utils/Loading";
-
-const NAV = [
-  { label: "Home", href: "#top" },
-  { label: "About Us", href: "#about" },
-  { label: "FAQ", href: "#faq" },
-  { label: "Help Center", href: "#help" },
-];
+import { SiteHeader } from "@/components/layout/SiteHeader";
 
 const FEATURES = [
   {
@@ -105,16 +98,8 @@ const FAQS = [
 
 export const Landing: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const heroRef = useRef<HTMLElement>(null);
   const [heroVisible, setHeroVisible] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     const t = requestAnimationFrame(() => setHeroVisible(true));
@@ -139,90 +124,19 @@ export const Landing: React.FC = () => {
         }}
       />
 
-      <header
-        className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
-          scrolled
-            ? "bg-[#0b1220]/90 backdrop-blur-md border-b border-white/10"
-            : "bg-transparent"
-        }`}
-      >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <a href="#top" className="flex items-center gap-2.5">
-            <img src={logo} alt="Qayd" className="h-8 w-auto object-contain" />
-            <span className="text-xl font-semibold tracking-tight text-white">
-              Qayd
-            </span>
-          </a>
-
-          <nav className="hidden items-center gap-8 md:flex">
-            {NAV.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className="text-sm text-white/70 transition hover:text-white"
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="hidden items-center gap-3 md:flex">
-            <Link
-              to="/auth/login"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-              Sign In
-            </Link>
-          </div>
-
-          <button
-            type="button"
-            className="md:hidden rounded-md p-2 text-white/80"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Menu"
-          >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-
-        {menuOpen && (
-          <div className="border-t border-white/10 bg-[#0b1220] px-4 py-4 md:hidden">
-            <div className="flex flex-col gap-3">
-              {NAV.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="text-sm text-white/80"
-                >
-                  {item.label}
-                </a>
-              ))}
-              <Link
-                to="/auth/login"
-                onClick={() => setMenuOpen(false)}
-                className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-center text-sm font-medium text-white"
-              >
-                Sign In
-              </Link>
-            </div>
-          </div>
-        )}
-      </header>
+      <SiteHeader />
 
       {/* Hero — one composition */}
       <section
         ref={heroRef}
-        className="relative flex min-h-screen flex-col justify-end overflow-hidden px-4 pb-20 pt-28 sm:px-6 sm:pb-28"
+        className="relative overflow-hidden px-4 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32"
       >
         <div
           aria-hidden
           className="absolute inset-0"
           style={{
-            backgroundImage:
-              "linear-gradient(to top, rgba(11,18,32,0.95) 0%, rgba(11,18,32,0.55) 45%, rgba(11,18,32,0.25) 100%), url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=2000&q=80')",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
+            background:
+              "linear-gradient(180deg, #0b1220 0%, #101a2c 55%, #0b1220 100%)",
           }}
         />
         <div
@@ -373,8 +287,7 @@ export const Landing: React.FC = () => {
           <div
             className="mt-10 min-h-[320px] w-full rounded-lg bg-cover bg-center shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
             style={{
-              backgroundImage:
-                "url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1800&q=80')",
+              backgroundImage: `url('${heroBackground}')`,
             }}
             role="img"
             aria-label="Qayd product preview"

@@ -172,6 +172,50 @@
   background-color: var(--app-bg) !important;
 }
 
+/* ── SweetAlert2 dialogs — theme-aware (app-wide) ──────────────────
+ * Swal ships its own unstyled white popup; without this it stays a
+ * bright white card in dark Appearance. Uses the same surface/gray
+ * variables as the rest of the app, so it flips with data-qayd-theme
+ * automatically — no per-call styling needed. */
+.swal2-popup {
+  background: var(--surface) !important;
+  color: var(--color-base-900) !important;
+}
+.swal2-title,
+.swal2-html-container {
+  color: var(--color-base-900) !important;
+}
+.swal2-input,
+.swal2-textarea,
+.swal2-select,
+.swal2-file {
+  background: var(--surface-2) !important;
+  color: var(--color-base-900) !important;
+  border: 1px solid var(--color-gray-300) !important;
+  box-shadow: none !important;
+}
+.swal2-input:focus,
+.swal2-textarea:focus,
+.swal2-select:focus {
+  border-color: var(--themeColor) !important;
+  box-shadow: 0 0 0 1px var(--themeColor) !important;
+}
+.swal2-validation-message {
+  background: var(--surface-2) !important;
+  color: var(--color-base-900) !important;
+}
+.swal2-actions .swal2-cancel {
+  background: var(--surface-2) !important;
+  color: var(--color-base-900) !important;
+}
+.swal2-close {
+  color: var(--color-base-500) !important;
+}
+.swal2-toast {
+  background: var(--surface) !important;
+  color: var(--color-base-900) !important;
+}
+
 /* ── Status / Draft badges (app-wide) ─────────────────────────────
  * Dark theme inverts the gray ramp, so utilities like
  * `bg-gray-600 text-white` become light-gray + white (unreadable).

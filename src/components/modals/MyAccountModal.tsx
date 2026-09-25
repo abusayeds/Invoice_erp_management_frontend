@@ -12,6 +12,8 @@ import {
   FileText,
   ShoppingBag,
   Loader2,
+  Plus,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
@@ -20,7 +22,17 @@ import { alertApiError, alertSuccess } from "@/utils/alert";
 import Swal from "@/utils/alert";
 import myAccountPromo from "@/assets/my-account-promo.png";
 
-type Props = { open: boolean; onClose: () => void };
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  /** Header summary — passed from Header.tsx (already fetches company/plan). */
+  companyName?: string;
+  companyLogoUrl?: string;
+  companyInitial?: string;
+  isOwner?: boolean;
+  planBadge?: { name: string; trial: boolean; expired: boolean } | null;
+  onLogoBroken?: () => void;
+};
 
 type PlanRow = {
   id: string;
@@ -34,14 +46,23 @@ type PlanRow = {
   endDate: string | null;
 };
 
-export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
+export const MyAccountModal: React.FC<Props> = ({
+  open,
+  onClose,
+  companyName,
+  companyLogoUrl,
+  companyInitial,
+  isOwner,
+  planBadge,
+  onLogoBroken,
+}) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState("");
-  const [companyName, setCompanyName] = useState(user?.name || "");
+  const [accountName, setAccountName] = useState(user?.name || "");
   const [plan, setPlan] = useState<PlanRow | null>(null);
 
   useEffect(() => {
@@ -109,7 +130,7 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
 
     setEmail(nextEmail);
     setPhone(nextPhone);
-    setCompanyName(nextName);
+    setAccountName(nextName);
     setPlan(nextPlan);
   };
 
@@ -132,6 +153,22 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
   const goPlan = () => {
     onClose();
     navigate("/plan");
+  };
+
+  const goAddCompany = () => {
+    onClose();
+    navigate("/companies", { state: { openCreate: true } });
+  };
+
+  const goSettings = () => {
+    onClose();
+    navigate("/settings");
+  };
+
+  const handleLogout = () => {
+    onClose();
+    logout();
+    navigate("/auth/login");
   };
 
   const handleCancel = async () => {
@@ -187,6 +224,55 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
           </button>
         </div>
 
+        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-200">
+          <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center text-white text-base font-semibold overflow-hidden flex-shrink-0">
+            {companyLogoUrl ? (
+              <img
+                src={companyLogoUrl}
+                alt={companyName || "Company"}
+                className="w-full h-full object-cover"
+                onError={onLogoBroken}
+              />
+            ) : (
+              companyInitial || (companyName || "?").charAt(0).toUpperCase()
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] text-gray-900 truncate">{companyName || user?.name}</p>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              {isOwner && (
+                <span className="px-2 py-0.5 rounded bg-gray-100 text-[11px] text-gray-700">
+                  Owner
+                </span>
+              )}
+              {planBadge && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                    planBadge.expired
+                      ? "bg-red-100 text-red-700"
+                      : planBadge.trial
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-blue-100 text-blue-700"
+                  }`}
+                  title={planBadge.expired ? "Plan expired" : planBadge.trial ? "Trial plan" : "Active plan"}
+                >
+                  {planBadge.name}
+                  {planBadge.trial && !planBadge.expired ? " · Trial" : ""}
+                  {planBadge.expired ? " · Expired" : ""}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={goAddCompany}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
+          >
+            <Plus className="w-3.5 h-3.5" strokeWidth={2.2} />
+            Add Company
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-sm text-gray-500">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -213,6 +299,24 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
                   navigate("/companies");
                 }}
               />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-y border-gray-100">
+              <button
+                type="button"
+                onClick={goSettings}
+                className="inline-flex items-center gap-2 text-sm text-gray-800 hover:text-gray-900"
+              >
+                <SettingsIcon className="w-4 h-4 text-gray-500" />
+                Settings
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-3.5 py-1.5 text-sm text-gray-800 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200"
+              >
+                Log Out
+              </button>
             </div>
 
             <div className="px-5 pt-3 pb-4">
@@ -248,7 +352,7 @@ export const MyAccountModal: React.FC<Props> = ({ open, onClose }) => {
                 <PlanCard
                   icon={FileText}
                   name="No plan"
-                  detail={companyName ? `${companyName}` : "Choose a subscription"}
+                  detail={accountName ? `${accountName}` : "Choose a subscription"}
                   status="None"
                   channel="Web"
                   actionLabel="View Plans"
