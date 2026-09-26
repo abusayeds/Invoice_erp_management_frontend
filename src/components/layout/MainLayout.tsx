@@ -7,7 +7,6 @@ import React, { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
-import { ToastContainer } from "../ui/ToastContainer";
 import { DataTransferHost } from "@/features/dataTransfer";
 import { GlobalApiLoadingBar } from "./GlobalApiLoadingBar";
 
@@ -52,7 +51,6 @@ export const MainLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
-      <ToastContainer />
       <DataTransferHost />
     </div>
   );
