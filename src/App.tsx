@@ -12,6 +12,7 @@ import { route } from "./router/router";
 import { queryClient } from "./lib/queryClient";
 import AuthProvider from "./context/AuthProvider";
 import { ErrorBoundary } from "./components/error/ErrorBoundary";
+import { AppToastContainer } from "./components/ui/AppToast";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
@@ -22,6 +23,7 @@ function App() {
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
           <AuthProvider>
             <RouterProvider router={route} />
+            <AppToastContainer />
           </AuthProvider>
         </GoogleOAuthProvider>
       </QueryClientProvider>
