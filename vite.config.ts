@@ -32,10 +32,9 @@ export default defineConfig({
         "**/agent-transcripts/**",
       ],
     },
-    hmr: {
-      // Prefer hot update over full browser reload when possible.
-      overlay: true,
-    },
+    // Disabled: this dev server is also viewed via public tunnel hosts, and
+    // HMR/auto-reload was refreshing viewers' browsers on every source edit.
+    hmr: false,
     proxy: {
       "/api": {
         target: "https://sabbir2000.ssh.bd",

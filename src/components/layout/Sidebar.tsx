@@ -9,6 +9,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAppSettings } from "@/lib/db/appSettings";
+import useAuth from "@/hooks/useAuth";
+import { requiredPermissionsForPath, usePermissionCatalogSet } from "@/auth/navPermissions";
 import {
   Home,
   Users,
@@ -392,18 +394,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const m = LABEL_MODULE[label];
     return !m || modules[m] !== false; // ungoverned items and defaults stay visible
   };
+  // Permission-based visibility: hide a path if the catalog models a
+  // permission for it and the user's role doesn't have it. A path with no
+  // matching permission anywhere in the catalog stays visible (fail-open).
+  const { hasAnyPermission } = useAuth();
+  const permissionCatalogSet = usePermissionCatalogSet();
+  const permissionOn = (path?: string) => {
+    const required = requiredPermissionsForPath(path, permissionCatalogSet);
+    return required.length === 0 || hasAnyPermission(required);
+  };
   const visibleItems = useMemo(
     () =>
       navigationItems
         .filter((item) => !HIDDEN_LABELS.has(item.label)) // temporarily hidden sections
         .map((item) =>
           item.children
-            ? { ...item, children: item.children.filter((c) => moduleOn(c.label) && !HIDDEN_LABELS.has(c.label)) }
+            ? {
+                ...item,
+                children: item.children.filter(
+                  (c) => moduleOn(c.label) && permissionOn(c.path) && !HIDDEN_LABELS.has(c.label),
+                ),
+              }
             : item,
         )
         // drop a governed top-level leaf that's off, and any group left with no children
-        .filter((item) => (item.children ? item.children.length > 0 : moduleOn(item.label))),
-    [modules],
+        .filter((item) =>
+          item.children ? item.children.length > 0 : moduleOn(item.label) && permissionOn(item.path),
+        ),
+    [modules, permissionCatalogSet, hasAnyPermission],
   );
   const [expandedItems, setExpandedItems] = useState<string[]>(["Sales"]);
   const [isCollapsed, setIsCollapsed] = useState(false);
