@@ -16,7 +16,7 @@
  *   /product/all               -> products
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   FileText,
   Search,
@@ -44,9 +44,6 @@ import { api } from "../lib/api/client";
 import { ApiError } from "../lib/api/ApiError";
 import { showToast } from "../utils/toast";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
-import type { AsyncOption } from "@/components/ui/AsyncSearchSelect";
-import { searchCustomers } from "@/services/accountingApi";
-import { searchWarehouses } from "@/services/warehousesApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,86 +196,6 @@ const STATUS_OPTIONS = [
   "CreditNotesApplied",
   "Open",
 ];
-
-/**
- * Backend-search text field — type to search, results from the API
- * (debounced). Same input+dropdown pattern as the Customer field in
- * CreateInvoiceForm.tsx (a real text input, not a select-styled button).
- */
-const BackendSearchField: React.FC<{
-  queryDefault: string;
-  onSearch: (q: string) => Promise<AsyncOption[]>;
-  onSelect: (option: AsyncOption) => void;
-  placeholder: string;
-}> = ({ queryDefault, onSearch, onSelect, placeholder }) => {
-  const [query, setQuery] = useState(queryDefault);
-  const [open, setOpen] = useState(false);
-  const [options, setOptions] = useState<AsyncOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => setQuery(queryDefault), [queryDefault]);
-
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    const handle = setTimeout(() => {
-      onSearch(query)
-        .then(setOptions)
-        .finally(() => setLoading(false));
-    }, 280);
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, open]);
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <input
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-      />
-      {open && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-xl py-1 max-h-60 overflow-y-auto">
-          {loading && (
-            <div className="px-3 py-2.5 text-sm text-gray-400">Searching…</div>
-          )}
-          {!loading &&
-            options.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => {
-                  setQuery(o.name);
-                  onSelect(o);
-                  setOpen(false);
-                }}
-                className="w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 text-left"
-              >
-                {o.name}
-              </button>
-            ))}
-          {!loading && options.length === 0 && (
-            <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export const SalesProposals: React.FC = () => {
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -666,26 +583,22 @@ export const SalesProposals: React.FC = () => {
       maximumFractionDigits: 2,
     }).format(value || 0);
 
-  // Fixed hex colors (not the plain green/yellow/orange/indigo/red/teal
-  // Tailwind utilities) — those aren't remapped for dark Appearance and show
-  // up as pale, theme-inconsistent patches. gray/blue below stay as Tailwind
-  // classes since those two ramps ARE remapped app-wide.
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Draft":
         return "bg-gray-100 text-gray-700";
       case "Partial":
-        return "bg-[#f59e0b26] text-[#f59e0b]";
+        return "bg-yellow-100 text-yellow-700";
       case "Paid":
-        return "bg-[#22c55e26] text-[#16a34a]";
+        return "bg-green-100 text-green-700";
       case "Overdue":
-        return "bg-[#f9731626] text-[#ea580c]";
+        return "bg-orange-100 text-orange-700";
       case "Recurring":
-        return "bg-[#6366f126] text-[#6366f1]";
+        return "bg-indigo-100 text-indigo-700";
       case "Void":
-        return "bg-[#ef444426] text-[#dc2626]";
+        return "bg-red-100 text-red-700";
       case "CreditNotesApplied":
-        return "bg-[#14b8a626] text-[#0d9488]";
+        return "bg-teal-100 text-teal-700";
       case "Open":
         return "bg-blue-100 text-blue-700";
       default:
@@ -718,7 +631,6 @@ export const SalesProposals: React.FC = () => {
 
   return (
     <div className="module-page-shell">
-      {!showModal && (
       <div className="max-w-[1600px] mx-auto">
         {/* Breadcrumb */}
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
@@ -728,7 +640,44 @@ export const SalesProposals: React.FC = () => {
             <span className="text-gray-900 font-medium">Sales Proposals</span>
           </div>
 
-       
+          {/* Language Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Globe className="w-4 h-4" />
+              {languages.find((lang) => lang.code === selectedLanguage)?.name}
+              <ChevronRight className="w-3 h-3 rotate-90" />
+            </button>
+            {showLanguageDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowLanguageDropdown(false)}
+                />
+                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                  {languages.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => {
+                        setSelectedLanguage(lang.code);
+                        setShowLanguageDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg flex items-center gap-2 ${
+                        selectedLanguage === lang.code
+                          ? "bg-blue-50 text-blue-600"
+                          : "text-gray-700"
+                      }`}
+                    >
+                      <span>{lang.flag}</span>
+                      {lang.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Header */}
@@ -1058,59 +1007,33 @@ export const SalesProposals: React.FC = () => {
           </div>
         </div>
       </div>
-      )}
 
-      {/* Create / Edit Proposal — full page (not a modal), same shell/title-bar as the list */}
+      {/* Create / Edit Proposal Modal */}
       {showModal && (
-        <div className="max-w-[1600px] mx-auto">
-          {/* Header — matches the "Manage Proposal" list title bar */}
-          <div className="dashboard-title-bar -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Back
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[90vw] max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
               <div>
-                <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
+                <h2 className="text-xl font-semibold text-gray-900">
                   {isEditing ? "Edit Sales Proposal" : "Create Sales Proposal"}
-                </h1>
-                <p className="text-sm text-gray-500 mt-1">
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
                   Fill in the details to {isEditing ? "update" : "create"} a
                   sales proposal
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowModal(false)}
-                disabled={saving}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveProposal}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {saving
-                  ? "Saving…"
-                  : isEditing
-                    ? "Update Proposal"
-                    : "Create Proposal"}
+                <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Modal Body */}
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-6">
                   {/* Details */}
@@ -1123,27 +1046,45 @@ export const SalesProposals: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Customer *
                         </label>
-                        <BackendSearchField
-                          queryDefault={customerNameById[formData.customerId] || ""}
-                          onSearch={searchCustomers}
-                          onSelect={(o) =>
-                            setFormData({ ...formData, customerId: o.id })
+                        <select
+                          value={formData.customerId}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              customerId: e.target.value,
+                            })
                           }
-                          placeholder="Search customers…"
-                        />
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select Customer</option>
+                          {customers.map((c) => (
+                            <option key={c._id} value={c._id}>
+                              {customerLabel(c)}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Warehouse *
                         </label>
-                        <BackendSearchField
-                          queryDefault={warehouseNameById[formData.warehouseId] || ""}
-                          onSearch={searchWarehouses}
-                          onSelect={(o) =>
-                            setFormData({ ...formData, warehouseId: o.id })
+                        <select
+                          value={formData.warehouseId}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              warehouseId: e.target.value,
+                            })
                           }
-                          placeholder="Search warehouses…"
-                        />
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select Warehouse</option>
+                          {warehouses.map((w) => (
+                            <option key={w._id} value={w._id}>
+                              {(w.name ?? "").trim()}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1416,9 +1357,7 @@ export const SalesProposals: React.FC = () => {
 
                 {/* Right Column - Summary */}
                 <div className="lg:col-span-1">
-                  {/* blue-50/blue-100 only — "indigo" isn't remapped for dark
-                      Appearance and made this box render half-dark, half-pale */}
-                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-5 sticky top-6">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 sticky top-6">
                     <h3 className="text-base font-semibold text-gray-900 mb-4">
                       Proposal Summary
                     </h3>
@@ -1470,12 +1409,41 @@ export const SalesProposals: React.FC = () => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => setShowModal(false)}
+                disabled={saving}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProposal}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {saving
+                  ? "Saving…"
+                  : isEditing
+                    ? "Update Proposal"
+                    : "Create Proposal"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* View Proposal Modal */}
       {showView && viewProposal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
               <div>
@@ -1661,11 +1629,11 @@ export const SalesProposals: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {showDelete && toDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
             <div className="p-6 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#ef444426] flex items-center justify-center">
-                <Trash2 className="w-8 h-8 text-[#dc2626]" />
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 className="w-8 h-8 text-red-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Delete Proposal
