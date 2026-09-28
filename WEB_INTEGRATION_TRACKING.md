@@ -1,6 +1,6 @@
 # Web ↔ Backend Integration Tracking
 
-Base `/api/v1` (tunnel `https://temp-api.ssh.bd`). Rule: **no web UI/design/field changes** — data layer only. Backend edits must stay mobile-safe. Every endpoint/write verified live with the test login (`company@gmail.com` / `1qazxsw2`).
+Base `/api/v1` (tunnel `https://qyad-api.ssh.bd`). Rule: **no web UI/design/field changes** — data layer only. Backend edits must stay mobile-safe. Every endpoint/write verified live with the test login (`company@gmail.com` / `1qazxsw2`).
 
 Legend: ✅ done & (where noted) live-verified · 🟡 partial · ⬜ todo · ⛔ blocked
 
