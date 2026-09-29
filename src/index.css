@@ -182,7 +182,8 @@
   color: var(--color-base-900) !important;
 }
 .swal2-title,
-.swal2-html-container {
+.swal2-html-container,
+.swal2-input-label {
   color: var(--color-base-900) !important;
 }
 .swal2-input,

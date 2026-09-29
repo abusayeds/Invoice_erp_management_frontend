@@ -15,6 +15,7 @@ import React, { useEffect, useState } from "react";
 import { Calendar, Bold, Italic, Underline } from "lucide-react";
 import { repo } from "./repo";
 import { useAppSettings, isCustomerFieldVisible, isVendorFieldVisible } from "./appSettings";
+import { alertApiError } from "@/utils/alert";
 
 const fc = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
 const Float: React.FC<{ label?: string; placeholder?: string; value?: string; onChange?: (v: string) => void; icon?: React.ReactNode }> = ({ label, placeholder, value, onChange, icon }) => (
@@ -40,6 +41,7 @@ export const CreateContactModal: React.FC<{
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [taxpayerType, setTaxpayerType] = useState("Regular");
+  const [saving, setSaving] = useState(false);
   const label = collection === "vendors" ? "Vendor" : "Customer";
   const isVendor = collection === "vendors";
   const customerSettings = useAppSettings("customer");
@@ -56,12 +58,19 @@ export const CreateContactModal: React.FC<{
   }, [onClose]);
 
   const save = async () => {
-    const name = company.trim() || `${first} ${last}`.trim() || "New " + label;
-    const contact = `${first} ${last}`.trim();
-    const extra = collection === "vendors" ? { payable: 0 } : { balance: 0 };
-    const id = await repo.add(collection, { name, contact, email: email.trim(), phone: mobile.trim(), subtitle: contact, status: "Active", ...extra });
-    onSaved(id, name);
-    onClose();
+    if (saving) return; // guard against double-click / double-submit firing two creates
+    setSaving(true);
+    try {
+      const name = company.trim() || `${first} ${last}`.trim() || "New " + label;
+      const contact = `${first} ${last}`.trim();
+      const extra = collection === "vendors" ? { payable: 0 } : { balance: 0 };
+      const id = await repo.add(collection, { name, contact, email: email.trim(), phone: mobile.trim(), subtitle: contact, status: "Active", ...extra });
+      onSaved(id, name);
+      onClose();
+    } catch (err) {
+      alertApiError(err, `Couldn't save this ${label.toLowerCase()}.`);
+      setSaving(false);
+    }
   };
 
   return (
@@ -76,8 +85,8 @@ export const CreateContactModal: React.FC<{
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-              <button onClick={save} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+              <button onClick={onClose} disabled={saving} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+              <button onClick={save} disabled={saving} className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">{saving ? "Saving..." : "Save"}</button>
             </div>
           </div>
         </div>
