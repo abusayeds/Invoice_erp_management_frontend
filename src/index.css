@@ -217,6 +217,24 @@
   color: var(--color-base-900) !important;
 }
 
+/* ── AppToast (src/components/ui/AppToast.tsx) ─────────────────────
+ * Countdown bar drives auto-dismiss via animationend, so it must run even
+ * under reduced motion; only the slide-in is dropped there. */
+@keyframes app-toast-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@keyframes app-toast-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+.app-toast-enter {
+  animation: app-toast-in 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast-enter { animation: none; }
+}
+
 /* ── Status / Draft badges (app-wide) ─────────────────────────────
  * Dark theme inverts the gray ramp, so utilities like
  * `bg-gray-600 text-white` become light-gray + white (unreadable).

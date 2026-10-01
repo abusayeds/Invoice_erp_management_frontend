@@ -7,4 +7,4 @@ export {
 export { SettingsSectionView } from "./SettingsSectionView";
 export { SettingsModalShell } from "./SettingsModalShell";
 export { CategoriesSettingsPanel } from "./CategoriesSettingsPanel";
-export { EditTitlesSettingsPanel } from "./EditTitlesSettingsPanel";
+export { EditTitlesModal } from "./EditTitlesModal";

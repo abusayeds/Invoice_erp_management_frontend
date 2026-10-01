@@ -5,7 +5,6 @@
 import React from "react";
 import { type SettingsSectionId } from "./settingsConfig";
 import { CategoriesSettingsPanel } from "./CategoriesSettingsPanel";
-import { EditTitlesSettingsPanel } from "./EditTitlesSettingsPanel";
 import { NotificationSettingsPanel } from "./NotificationSettingsPanel";
 import { GenerateBarcodePanel } from "@/features/barcode";
 
@@ -21,7 +20,8 @@ export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
     section === "pdf-print" ||
     section === "email-templates" ||
     section === "product-library" ||
-    section === "keyboard-shortcuts"
+    section === "keyboard-shortcuts" ||
+    section === "edit-titles"
   ) {
     // Hosts open dedicated modals — no stub UI here.
     return null;
@@ -29,10 +29,6 @@ export const SettingsSectionView: React.FC<SettingsSectionViewProps> = ({
 
   if (section === "categories") {
     return <CategoriesSettingsPanel />;
-  }
-
-  if (section === "edit-titles") {
-    return <EditTitlesSettingsPanel />;
   }
 
   if (section === "notifications") {

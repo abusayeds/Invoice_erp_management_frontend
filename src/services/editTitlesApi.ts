@@ -5,7 +5,7 @@
  *   GET   /edit-titles/single/:id
  *   PATCH /edit-titles/update   body: { _id, name } | { reset: true }
  */
-import { api } from "@/lib/api/client";
+import { api, type ApiRequestConfig } from "@/lib/api/client";
 
 export type EditTitleItem = {
   id: string;
@@ -23,8 +23,8 @@ function mapTitle(doc: any): EditTitleItem | null {
 }
 
 /** Flatten company EditTitle document(s) into a title list. */
-export async function fetchMyEditTitles(): Promise<EditTitleItem[]> {
-  const data = await api.get<any>("/edit-titles/my");
+export async function fetchMyEditTitles(config?: ApiRequestConfig): Promise<EditTitleItem[]> {
+  const data = await api.get<any>("/edit-titles/my", config);
   const docs = Array.isArray(data) ? data : data ? [data] : [];
   const out: EditTitleItem[] = [];
   for (const doc of docs) {

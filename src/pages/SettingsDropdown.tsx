@@ -25,6 +25,7 @@ import {
   type SettingsSectionId,
 } from "@/features/settings/settingsConfig";
 import { SettingsModalShell } from "@/features/settings/SettingsModalShell";
+import { EditTitlesModal } from "@/features/settings/EditTitlesModal";
 
 type Flyout = "import" | "export" | "language" | null;
 
@@ -171,6 +172,9 @@ export const SettingsDropdown: React.FC = () => {
       {activePage === "keyboard-shortcuts" && (
         <KeyboardShortcutsModal onClose={() => setActivePage(null)} />
       )}
+      {activePage === "edit-titles" && (
+        <EditTitlesModal onClose={() => setActivePage(null)} />
+      )}
 
       {exportModule && (
         <ExportDataModal moduleId={exportModule} onClose={() => setExportModule(null)} />
@@ -185,6 +189,7 @@ export const SettingsDropdown: React.FC = () => {
         activePage !== "email-templates" &&
         activePage !== "product-library" &&
         activePage !== "keyboard-shortcuts" &&
+        activePage !== "edit-titles" &&
         activePage !== "import" &&
         activePage !== "export" &&
         activePage !== "language" && (

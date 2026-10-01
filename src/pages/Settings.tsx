@@ -26,6 +26,7 @@ import {
   type SettingsSectionId,
 } from "@/features/settings/settingsConfig";
 import { SettingsSectionView } from "@/features/settings/SettingsSectionView";
+import { EditTitlesModal } from "@/features/settings/EditTitlesModal";
 
 export const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("categories");
@@ -34,6 +35,7 @@ export const SettingsPage: React.FC = () => {
   const [showEmailTemplates, setShowEmailTemplates] = useState(false);
   const [showProductLibrary, setShowProductLibrary] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
+  const [showEditTitles, setShowEditTitles] = useState(false);
   const [exportModule, setExportModule] = useState<ExportModuleId | null>(null);
   const [importModule, setImportModule] = useState<ImportModuleId | null>(null);
 
@@ -43,6 +45,7 @@ export const SettingsPage: React.FC = () => {
     if (activeSection === "email-templates") setShowEmailTemplates(true);
     if (activeSection === "product-library") setShowProductLibrary(true);
     if (activeSection === "keyboard-shortcuts") setShowKeyboard(true);
+    if (activeSection === "edit-titles") setShowEditTitles(true);
   }, [activeSection]);
 
   const closeAppSettings = () => {
@@ -65,13 +68,18 @@ export const SettingsPage: React.FC = () => {
     setShowKeyboard(false);
     if (activeSection === "keyboard-shortcuts") setActiveSection("categories");
   };
+  const closeEditTitles = () => {
+    setShowEditTitles(false);
+    if (activeSection === "edit-titles") setActiveSection("categories");
+  };
 
   const modalOnly =
     activeSection === "app-settings" ||
     activeSection === "pdf-print" ||
     activeSection === "email-templates" ||
     activeSection === "product-library" ||
-    activeSection === "keyboard-shortcuts";
+    activeSection === "keyboard-shortcuts" ||
+    activeSection === "edit-titles";
 
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">
@@ -93,6 +101,7 @@ export const SettingsPage: React.FC = () => {
         />
       )}
       {showKeyboard && <KeyboardShortcutsModal onClose={closeKeyboard} />}
+      {showEditTitles && <EditTitlesModal onClose={closeEditTitles} />}
       {exportModule && (
         <ExportDataModal moduleId={exportModule} onClose={() => setExportModule(null)} />
       )}
@@ -144,6 +153,7 @@ export const SettingsPage: React.FC = () => {
                   else if (activeSection === "email-templates") setShowEmailTemplates(true);
                   else if (activeSection === "product-library") setShowProductLibrary(true);
                   else if (activeSection === "keyboard-shortcuts") setShowKeyboard(true);
+                  else if (activeSection === "edit-titles") setShowEditTitles(true);
                 }}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
               >
