@@ -84,6 +84,12 @@ export async function deleteVendor(id: string): Promise<void> {
   await api.raw.delete(`/vendor/delete/${id}`);
 }
 
+/** Permanent delete from Trash — removes the row entirely. */
+export async function hardDeleteVendors(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/vendor/hard-delete/${ids.join(",")}`);
+}
+
 export async function deleteVendors(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await api.raw.delete(`/vendor/delete/${ids.join(",")}`);

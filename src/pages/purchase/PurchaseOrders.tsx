@@ -30,7 +30,7 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
-import { updatePurchaseOrder } from "@/services/purchaseOrdersApi";
+import { updatePurchaseOrder, hardDeletePurchaseOrders } from "@/services/purchaseOrdersApi";
 import { api } from "@/lib/api/client";
 import {
   Search,
@@ -329,15 +329,32 @@ export const PurchaseOrder: React.FC = () => {
     }
   };
   const trashCurrent = async () => {
-    await repo.remove("purchaseOrders", selectedDb.id);
-    showToast(`Purchase Order ${selectedDb.number} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    const backendId = selectedDb?._id ? String(selectedDb._id) : "";
+    try {
+      if (permanent && backendId) await hardDeletePurchaseOrders([backendId]);
+      await repo.remove("purchaseOrders", selectedDb.id);
+      showToast(permanent ? `Purchase Order ${selectedDb.number} permanently deleted` : `Purchase Order ${selectedDb.number} moved to trash`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     setSelectedId(orders.find((o) => o.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
   };
   const trashSelectedPo = async () => {
     const ids = [...checked];
-    await repo.removeMany("purchaseOrders", ids);
-    showToast(`${ids.length} purchase ${ids.length === 1 ? "order" : "orders"} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    const backendIds = ids
+      .map((id) => dbOrders.find((d) => d.id === id)?._id)
+      .filter(Boolean)
+      .map((v) => String(v));
+    try {
+      if (permanent && backendIds.length) await hardDeletePurchaseOrders(backendIds);
+      await repo.removeMany("purchaseOrders", ids);
+      showToast(`${ids.length} purchase ${ids.length === 1 ? "order" : "orders"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     if (ids.includes(selectedId)) setSelectedId(orders.find((o) => !ids.includes(o.id))?.id ?? 0);
     setConfirmAction(null);
     exitSelect();

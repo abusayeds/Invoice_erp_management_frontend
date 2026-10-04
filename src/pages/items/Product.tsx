@@ -23,6 +23,7 @@ import {
   fetchProducts,
   deleteProduct,
   deleteProducts,
+  hardDeleteProducts,
   archiveProduct,
   archiveProducts,
   unarchiveProduct,
@@ -796,13 +797,14 @@ export const Product: React.FC = () => {
       showToast("Select products to delete", "warning");
       return;
     }
+    const permanent = statusFilter === "Trash";
     try {
-      await deleteProducts(checkedBackendIds);
+      await (permanent ? hardDeleteProducts(checkedBackendIds) : deleteProducts(checkedBackendIds));
       invalidateProductsList();
       exitSelect();
-      showToast("Products deleted", "success");
+      showToast(permanent ? "Products permanently deleted" : "Products deleted", "success");
     } catch {
-      showToast("Delete failed", "error");
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
     }
   };
   useEffect(() => {
@@ -983,7 +985,7 @@ export const Product: React.FC = () => {
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-gray-50 text-left"
                     ><Archive className="w-4 h-4" /> {statusFilter === "Archived" ? "Unarchive" : "Archive"}</button>
-                    <button onClick={async () => { if (selected?.backendId) { try { await deleteProduct(selected.backendId); invalidateProductsList(); showToast("Product deleted", "success"); } catch { showToast("Delete failed", "error"); } } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Delete</button>
+                    <button onClick={async () => { if (selected?.backendId) { const permanent = statusFilter === "Trash"; try { await (permanent ? hardDeleteProducts([selected.backendId]) : deleteProduct(selected.backendId)); invalidateProductsList(); showToast(permanent ? "Product permanently deleted" : "Product deleted", "success"); } catch { showToast(permanent ? "Permanent delete failed" : "Delete failed", "error"); } } close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> {statusFilter === "Trash" ? "Delete permanently" : "Delete"}</button>
                   </>
                 )}
               </Dropdown>

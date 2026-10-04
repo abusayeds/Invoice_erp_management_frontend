@@ -393,7 +393,8 @@ export const SalesReceipts: React.FC = () => {
   const shippingLines = addressLines(selectedDoc?.shipping_address);
   const localBillingLines = [selectedCustomer.street1, selectedCustomer.street2, [selectedCustomer.city, selectedCustomer.zip].filter(Boolean).join(" "), selectedCustomer.country].filter(Boolean);
   const localShippingLines = [selectedCustomer.shipStreet1, selectedCustomer.shipStreet2, [selectedCustomer.shipCity, selectedCustomer.shipZip].filter(Boolean).join(" "), selectedCustomer.shipCountry].filter(Boolean);
-  const paymentType = apiText(selectedDoc?.payment_method?.[0]) || selected.paymentType || selectedDb.paymentType || selectedDb.method || "—";
+  // `selected` is undefined when the list is empty and the user just opened the create form — don't crash the whole page.
+  const paymentType = apiText(selectedDoc?.payment_method?.[0]) || selected?.paymentType || selectedDb.paymentType || selectedDb.method || "—";
 
   return (
     <div className="flex h-full w-full bg-[#FAFBFC] overflow-hidden">

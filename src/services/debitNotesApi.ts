@@ -138,6 +138,12 @@ export async function deleteDebitNote(id: string): Promise<void> {
   await api.raw.delete(`/account/debit-notes/delete/${id}`);
 }
 
+/** Permanent delete from Trash — removes the row entirely. */
+export async function hardDeleteDebitNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/account/debit-notes/hard-delete/${ids.join(",")}`);
+}
+
 export async function deleteDebitNotes(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await Promise.all(ids.map((id) => deleteDebitNote(id)));

@@ -1,4 +1,5 @@
 /** Purchase returns list — backend pagination via /purchase/returns/all */
+import { api } from "@/lib/api/client";
 import { fetchPaginatedList } from "./paginatedList";
 import type { TPartyPagination } from "./customerTypes";
 
@@ -80,4 +81,10 @@ export async function fetchPurchaseReturns(params: {
     isDeleted: params.isDeleted ? "true" : undefined,
   });
   return { rows: rows.map(mapPurchaseReturn), pagination };
+}
+
+/** Permanent delete from Trash — removes rows entirely. */
+export async function hardDeletePurchaseReturns(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/purchase/returns/hard-delete/${ids.join(",")}`);
 }

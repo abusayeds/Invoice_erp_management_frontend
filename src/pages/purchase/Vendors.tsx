@@ -27,6 +27,7 @@ import {
   archiveVendors,
   deleteVendor,
   deleteVendors,
+  hardDeleteVendors,
   mergeVendors,
   type VendorListRow,
 } from "@/services/vendorsApi";
@@ -690,14 +691,15 @@ export const Vendors: React.FC = () => {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteVendor(id),
+    mutationFn: (id: string) =>
+      statusFilter === "Trash" ? hardDeleteVendors([id]) : deleteVendor(id),
     onSuccess: () => {
       invalidateList();
-      showToast("Vendor deleted", "success");
+      showToast(statusFilter === "Trash" ? "Vendor permanently deleted" : "Vendor deleted", "success");
       setSelectedId(vendors.find((v) => v._id !== selectedId)?._id ?? "");
       setEditMode(false);
     },
-    onError: () => showToast("Delete failed", "error"),
+    onError: () => showToast(statusFilter === "Trash" ? "Permanent delete failed" : "Delete failed", "error"),
   });
 
   const bulkArchiveMut = useMutation({
@@ -713,15 +715,17 @@ export const Vendors: React.FC = () => {
   });
 
   const bulkDeleteMut = useMutation({
-    mutationFn: (ids: string[]) => deleteVendors(ids),
+    mutationFn: (ids: string[]) =>
+      statusFilter === "Trash" ? hardDeleteVendors(ids) : deleteVendors(ids),
     onSuccess: (_, ids) => {
       invalidateList();
-      showToast(`${ids.length} ${ids.length === 1 ? "vendor" : "vendors"} deleted`, "success");
+      const permanent = statusFilter === "Trash";
+      showToast(`${ids.length} ${ids.length === 1 ? "vendor" : "vendors"} ${permanent ? "permanently deleted" : "deleted"}`, "success");
       if (ids.includes(selectedId)) setSelectedId(vendors.find((v) => !ids.includes(v._id))?._id ?? "");
       exitSelect();
       setSelAction(null);
     },
-    onError: () => showToast("Delete failed", "error"),
+    onError: () => showToast(statusFilter === "Trash" ? "Permanent delete failed" : "Delete failed", "error"),
   });
 
   const mergeMut = useMutation({
@@ -845,7 +849,7 @@ export const Vendors: React.FC = () => {
     }
     return (
       <div className="flex h-full bg-[#FAFBFC] items-center justify-center">
-        <button onClick={() => setCreateMode(true)} className="px-5 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Vendor</button>
+        <button onClick={() => setCreateMode(true)} className="px-5 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Vendorr</button>
       </div>
     );
   }
@@ -1274,7 +1278,7 @@ export const Vendors: React.FC = () => {
         <ConfirmAlert message="Are you sure want to archive these vendors?" onNo={() => setSelAction(null)} onYes={() => bulkArchiveMut.mutate(checkedIds)} />
       )}
       {selAction === "delete" && (
-        <ConfirmAlert message="Are you sure want to delete these vendors?" onNo={() => setSelAction(null)} onYes={() => bulkDeleteMut.mutate(checkedIds)} />
+        <ConfirmAlert message={statusFilter === "Trash" ? "Permanently delete these vendors? This cannot be undone." : "Are you sure want to delete these vendors?"} onNo={() => setSelAction(null)} onYes={() => bulkDeleteMut.mutate(checkedIds)} />
       )}
     </div>
   );

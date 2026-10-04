@@ -132,6 +132,12 @@ export async function deleteProducts(ids: string[]): Promise<void> {
   await api.raw.delete(`/product/delete/${ids.join(",")}`);
 }
 
+/** Permanent delete from Trash — removes the row entirely. */
+export async function hardDeleteProducts(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/product/hard-delete/${ids.join(",")}`);
+}
+
 export async function archiveProduct(id: string): Promise<void> {
   await api.raw.patch(`/product/update/${id}`, { isArchive: true });
 }

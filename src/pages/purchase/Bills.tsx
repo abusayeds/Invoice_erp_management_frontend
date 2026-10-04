@@ -22,7 +22,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, CreateDocForm, DocPreview , PdfPreviewModal} from "@/lib/db";
-import { fetchBills, updateBill } from "@/services/billsApi";
+import { fetchBills, updateBill, hardDeleteBills } from "@/services/billsApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { buildListSortParam } from "@/lib/listSort";
 import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
@@ -489,15 +489,36 @@ export const Bills: React.FC = () => {
     showToast("Bill duplicated", "success");
   };
   const trashCurrent = async () => {
-    await repo.remove("bills", selectedDb.id);
-    showToast(`Bill ${selectedDb.number} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      if (permanent) {
+        const backendId = selectedDb?._id || selected?.backendId;
+        if (backendId) await hardDeleteBills([String(backendId)]);
+      }
+      await repo.remove("bills", selectedDb.id);
+      showToast(permanent ? `Bill ${selectedDb.number} permanently deleted` : `Bill ${selectedDb.number} moved to trash`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     setSelectedId(bills.find((b) => b.id !== selectedDb.id)?.id ?? 0);
     setConfirmAction(null);
   };
   const trashSelectedBills = async () => {
     const ids = [...checked];
-    await repo.removeMany("bills", ids);
-    showToast(`${ids.length} ${ids.length === 1 ? "bill" : "bills"} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      if (permanent) {
+        const backendIds = bills
+          .filter((b) => ids.includes(b.id))
+          .map((b) => b.backendId)
+          .filter(Boolean) as string[];
+        if (backendIds.length) await hardDeleteBills(backendIds);
+      }
+      await repo.removeMany("bills", ids);
+      showToast(`${ids.length} ${ids.length === 1 ? "bill" : "bills"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     if (ids.includes(Number(selectedId))) setSelectedId(bills.find((b) => !ids.includes(b.id))?.id ?? 0);
     setConfirmAction(null);
     exitSelect();

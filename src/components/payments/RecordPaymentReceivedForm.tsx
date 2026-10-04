@@ -8,7 +8,7 @@ import { Check } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { fetchCustomers, type TCustomerRow } from "@/services/customersApi";
 import { fetchInvoices, type InvoiceListRow } from "@/services/invoicesApi";
-import { createInvoicePayment } from "@/services/paymentReceivedApi";
+import { createInvoicePayment, createPaymentReceived } from "@/services/paymentReceivedApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
@@ -111,6 +111,13 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [lineAmounts, setLineAmounts] = useState<Record<string, string>>(() =>
     initLineAmounts(initSelectedFromPrefill(prefill)),
+  );
+  // Standalone amount — used when no invoice is picked, so the user can record
+  // a payment against a customer directly (invoice selection is optional).
+  const [standaloneAmount, setStandaloneAmount] = useState<string>(
+    prefill?.dueAmount && !prefill?.invoiceId && !prefill?.invoices?.length
+      ? prefill.dueAmount.toFixed(2)
+      : "",
   );
 
   const [method, setMethod] = useState("Cash");
@@ -236,8 +243,42 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
       showToast("Select a customer", "warning");
       return;
     }
+
+    // Invoice is now optional: when none is picked, record the payment against
+    // the customer alone using the amount in the standalone field.
     if (selectedInvoices.length === 0) {
-      showToast("Select an invoice", "warning");
+      const parsedAmount = Math.max(0, Number(standaloneAmount) || 0);
+      if (parsedAmount <= 0) {
+        showToast("Enter a valid amount", "warning");
+        return;
+      }
+      setSaving(true);
+      try {
+        const serial = `PR-${Date.now().toString().slice(-8)}`;
+        const result = await createPaymentReceived({
+          customer_id: customerId,
+          customer_name: customerQuery || undefined,
+          payment_number: serial,
+          currency: prefill?.currency,
+          date,
+          payment_method: [method || "Cash"],
+          notes: notes || undefined,
+          internal_notes: internalNotes || undefined,
+          Attachment: attachment || undefined,
+          product: [],
+          service: [],
+          sub_total: parsedAmount,
+          total: parsedAmount,
+        });
+        showToast("Payment recorded", "success");
+        onSaved(String(result._id));
+        onClose();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "";
+        showToast(message || "Couldn't save payment", "error");
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -310,7 +351,7 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !customerId || selectedInvoices.length === 0 || totalLineAmount <= 0}
+            disabled={saving || !customerId || (selectedInvoices.length === 0 ? (Number(standaloneAmount) || 0) <= 0 : totalLineAmount <= 0)}
             className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-40"
           >
             Save
@@ -318,7 +359,7 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !customerId || selectedInvoices.length === 0 || totalLineAmount <= 0}
+            disabled={saving || !customerId || (selectedInvoices.length === 0 ? (Number(standaloneAmount) || 0) <= 0 : totalLineAmount <= 0)}
             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save & Send"}
@@ -363,7 +404,7 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Invoice *</label>
+            <label className="text-xs text-gray-500">Invoice <span className="text-gray-400">(optional)</span></label>
             {selectedInvoices.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {selectedInvoices.map((inv) => (
@@ -441,7 +482,15 @@ export const RecordPaymentReceivedForm: React.FC<Props> = ({ onClose, onSaved, p
             <label className="text-xs text-gray-500">Amount</label>
             <div className="space-y-2 mt-1">
               {selectedInvoices.length === 0 && (
-                <p className="text-sm text-gray-400">Select one or more invoices to enter amounts.</p>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={standaloneAmount}
+                  onChange={(e) => setStandaloneAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                />
               )}
               {selectedInvoices.map((inv) => (
                 <div key={inv._id} className="flex items-center gap-2">

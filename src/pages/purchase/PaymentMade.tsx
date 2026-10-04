@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { buildListSortParam } from "@/lib/listSort";
-import { fetchVendorPayments, type VendorPaymentListRow } from "@/services/vendorPaymentsApi";
+import { fetchVendorPayments, deleteVendorPayment, hardDeleteVendorPayments, type VendorPaymentListRow } from "@/services/vendorPaymentsApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
 import { useCollection, repo, DocPreview, PdfPreviewModal } from "@/lib/db";
@@ -354,6 +354,41 @@ export const PaymentMade: React.FC = () => {
   const allSelected = filtered.length > 0 && filtered.every((i) => checked.has(i.id));
   const selectedTotal = payments.filter((i) => checked.has(i.id)).reduce((s, i) => s + num(i.amount), 0);
   const exitSelect = () => { setSelectMode(false); setChecked(new Set()); };
+
+  const trashCurrent = async () => {
+    const backendId = selected?.backendId;
+    if (!backendId) { showToast("Nothing to delete", "warning"); return; }
+    const permanent = statusFilter === "Trash";
+    try {
+      await (permanent ? hardDeleteVendorPayments([backendId]) : deleteVendorPayment(backendId));
+      showToast(permanent ? `Payment ${selected?.number} permanently deleted` : `Payment ${selected?.number} moved to trash`, "success");
+      void queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
+      setSelectedId(payments.find((p) => p.id !== selected?.id)?.id ?? "");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
+  };
+
+  const trashSelected = async () => {
+    const backendIds = payments
+      .filter((p) => checked.has(p.id))
+      .map((p) => p.backendId)
+      .filter(Boolean);
+    if (backendIds.length === 0) { showToast("Select payments to delete", "warning"); return; }
+    const permanent = statusFilter === "Trash";
+    try {
+      if (permanent) {
+        await hardDeleteVendorPayments(backendIds);
+      } else {
+        for (const id of backendIds) await deleteVendorPayment(id);
+      }
+      showToast(`${backendIds.length} ${backendIds.length === 1 ? "payment" : "payments"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+      void queryClient.invalidateQueries({ queryKey: ["vendor-payments-list"] });
+      exitSelect();
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
+  };
   const toggleRow = (id: string) => setChecked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => (allSelected ? exitSelect() : setChecked(new Set(filtered.map((i) => i.id))));
   useEffect(() => {
@@ -385,8 +420,14 @@ export const PaymentMade: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              {[Trash2, MessageCircle, Mail, Eye, Check].map((Ic, i) => (
-                <button key={i} onClick={Ic === Check ? exitSelect : Ic === Eye ? () => setModal("preview") : undefined} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
+              {([
+                { Ic: Trash2, title: statusFilter === "Trash" ? "Delete permanently" : "Delete", onClick: () => (checked.size === 0 ? showToast("Select payments to delete", "warning") : void trashSelected()) },
+                { Ic: MessageCircle, title: "WhatsApp", onClick: () => showToast("Opening WhatsApp...", "info") },
+                { Ic: Mail, title: "Email", onClick: () => setModal("email") },
+                { Ic: Eye, title: "Preview", onClick: () => setModal("preview") },
+                { Ic: Check, title: "Done", onClick: exitSelect },
+              ] as const).map(({ Ic, title, onClick }, i) => (
+                <button key={i} title={title} onClick={onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
               ))}
             </div>
           </div>
@@ -517,8 +558,8 @@ export const PaymentMade: React.FC = () => {
                 <Dropdown align="right" panelClass="w-48" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <>
-                      <button onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
-                      <button onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
+                      <button onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
+                      <button onClick={() => { void trashCurrent(); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> {statusFilter === "Trash" ? "Delete permanently" : "Trash"}</button>
                     </>
                   )}
                 </Dropdown>

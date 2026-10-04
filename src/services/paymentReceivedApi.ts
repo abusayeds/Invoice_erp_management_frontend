@@ -147,8 +147,10 @@ export async function restorePaymentReceivedMany(ids: string[]): Promise<void> {
 
 export interface BackendInvoicePaymentDoc {
   _id: string;
-  customer_id?: string;
-  invoice_id?: string;
+  customer_id?: string | { _id?: string; name?: string; businessProfile?: { companyName?: string } } | null;
+  customer_name?: string;
+  invoice_id?: string | { _id?: string; invoice_number?: string } | null;
+  invoice_number?: string;
   payment_number?: string;
   payment_date?: string;
   payment_type?: string;
@@ -157,6 +159,29 @@ export interface BackendInvoicePaymentDoc {
   internal_notes?: string;
   attachments?: string;
   createdAt?: string;
+}
+
+/** List direct invoice payments (no invoice/customer filter required). */
+export async function fetchDirectPayments(params: {
+  limit?: number;
+  customer_id?: string;
+  invoice_id?: string;
+} = {}): Promise<BackendInvoicePaymentDoc[]> {
+  const res = await api.raw.get("/payment/all", {
+    params: {
+      limit: params.limit ?? 500,
+      sort: "-payment_date",
+      ...(params.customer_id ? { customer_id: params.customer_id } : {}),
+      ...(params.invoice_id ? { invoice_id: params.invoice_id } : {}),
+    },
+  });
+  const body = res.data ?? {};
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+/** Delete a direct invoice payment (from `/payment` collection). */
+export async function deleteDirectPayment(id: string): Promise<void> {
+  await api.raw.delete(`/payment/${id}`);
 }
 
 export interface CreateInvoicePaymentPayload {

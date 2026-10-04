@@ -90,3 +90,9 @@ export async function updatePurchaseOrder(
   const res = await api.raw.patch(`/purchase/invoices/edit/${id}`, payload);
   return res.data?.data ?? res.data;
 }
+
+/** Permanent delete from Trash — removes rows entirely. */
+export async function hardDeletePurchaseOrders(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/purchase/invoices/hard-delete/${ids.join(",")}`);
+}

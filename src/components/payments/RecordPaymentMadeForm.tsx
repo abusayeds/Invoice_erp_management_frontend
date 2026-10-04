@@ -8,7 +8,7 @@ import { Check, X } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { fetchVendors, type VendorListRow } from "@/services/vendorsApi";
 import { fetchBills, updateBill, type BillListRow } from "@/services/billsApi";
-import { createVendorPayment } from "@/services/vendorPaymentsApi";
+import { createVendorPayment, recordVendorPayment } from "@/services/vendorPaymentsApi";
 import { fetchPaymentMethods } from "@/services/paymentMethodsApi";
 import { showToast } from "@/utils/toast";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
@@ -121,6 +121,9 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
   const [lineAmounts, setLineAmounts] = useState<Record<string, string>>(() =>
     initLineAmounts(initSelectedFromPrefill(prefill)),
   );
+  // Standalone amount — bill selection is optional, so when none is picked the
+  // user can still record a vendor-level payment from this amount.
+  const [standaloneAmount, setStandaloneAmount] = useState<string>("");
 
   const [method, setMethod] = useState("Cash");
   const [date, setDate] = useState(todayInput());
@@ -244,8 +247,36 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
       showToast("Select a vendor", "warning");
       return;
     }
+
+    // Bill is now optional — record a standalone vendor-level payment when
+    // nothing is picked. Uses `/vendor-payments/record` which doesn't require
+    // allocations or a bank account.
     if (selectedBills.length === 0) {
-      showToast("Select a bill", "warning");
+      const parsedAmount = Math.max(0, Number(standaloneAmount) || 0);
+      if (parsedAmount <= 0) {
+        showToast("Enter a valid amount", "warning");
+        return;
+      }
+      setSaving(true);
+      try {
+        const serial = `PM-${Date.now().toString().slice(-8)}`;
+        const created = await recordVendorPayment({
+          vendor_id: vendorId,
+          payment_amount: parsedAmount,
+          payment_date: date,
+          payment_method: [method || "Cash"],
+          notes: notes || undefined,
+          reference_number: serial,
+        });
+        showToast("Payment recorded", "success");
+        onSaved(String(created._id));
+        onClose();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "";
+        showToast(message || "Couldn't save payment", "error");
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -332,7 +363,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !vendorId || selectedBills.length === 0 || totalLineAmount <= 0}
+            disabled={saving || !vendorId || (selectedBills.length === 0 ? (Number(standaloneAmount) || 0) <= 0 : totalLineAmount <= 0)}
             className="px-4 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-40"
           >
             Save
@@ -340,7 +371,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !vendorId || selectedBills.length === 0 || totalLineAmount <= 0}
+            disabled={saving || !vendorId || (selectedBills.length === 0 ? (Number(standaloneAmount) || 0) <= 0 : totalLineAmount <= 0)}
             className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save & Send"}
@@ -393,7 +424,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Bill *</label>
+            <label className="text-xs text-gray-500">Bill <span className="text-gray-400">(optional)</span></label>
             {selectedBills.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {selectedBills.map((b) => (
@@ -471,7 +502,15 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
             <label className="text-xs text-gray-500">Amount</label>
             <div className="space-y-2 mt-1">
               {selectedBills.length === 0 && (
-                <p className="text-sm text-gray-400">Select one or more bills to enter amounts.</p>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={standaloneAmount}
+                  onChange={(e) => setStandaloneAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                />
               )}
               {selectedBills.map((b) => (
                 <div key={b._id} className="flex items-center gap-2">

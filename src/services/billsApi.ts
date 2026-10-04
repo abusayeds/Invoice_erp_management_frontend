@@ -95,3 +95,9 @@ export async function updateBill(
   const res = await api.raw.post(`/bill/edit/${id}`, payload);
   return res.data?.data ?? res.data;
 }
+
+/** Permanent delete from Trash — removes rows entirely. */
+export async function hardDeleteBills(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/bill/hard-delete/${ids.join(",")}`);
+}

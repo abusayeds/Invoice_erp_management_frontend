@@ -71,6 +71,12 @@ export async function deleteExpense(id: string): Promise<void> {
   await api.raw.delete(`/expenses/delete/${id}`);
 }
 
+/** Permanent delete from Trash — removes the row entirely. */
+export async function hardDeleteExpenses(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/expenses/hard-delete/${ids.join(",")}`);
+}
+
 export async function deleteExpenses(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await Promise.all(ids.map((id) => deleteExpense(id)));

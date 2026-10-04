@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { buildListSortParam } from "@/lib/listSort";
-import { fetchExpenses, deleteExpense, deleteExpenses, type ExpenseListRow } from "@/services/expensesApi";
+import { fetchExpenses, deleteExpense, deleteExpenses, hardDeleteExpenses, type ExpenseListRow } from "@/services/expensesApi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -601,8 +601,13 @@ export const Expenses: React.FC = () => {
   const trashCurrent = async () => {
     const id = selected?.id;
     if (!id) return;
-    await deleteExpense(id);
-    showToast(`Expense ${selected?.number} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      await (permanent ? hardDeleteExpenses([id]) : deleteExpense(id));
+      showToast(permanent ? `Expense ${selected?.number} permanently deleted` : `Expense ${selected?.number} moved to trash`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     setSelectedId(expenses.find((e) => e.id !== id)?.id ?? "");
     void queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
     setConfirmAction(null);
@@ -610,8 +615,13 @@ export const Expenses: React.FC = () => {
   const trashSelectedExp = async () => {
     const ids = [...checked];
     if (ids.length === 0) { showToast("Select expenses to delete", "warning"); return; }
-    await deleteExpenses(ids);
-    showToast(`${ids.length} ${ids.length === 1 ? "expense" : "expenses"} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      await (permanent ? hardDeleteExpenses(ids) : deleteExpenses(ids));
+      showToast(`${ids.length} ${ids.length === 1 ? "expense" : "expenses"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     if (ids.includes(selectedId)) setSelectedId(expenses.find((e) => !ids.includes(e.id))?.id ?? "");
     void queryClient.invalidateQueries({ queryKey: ["expenses-list"] });
     setConfirmAction(null);

@@ -26,6 +26,7 @@ import {
   updateDebitNoteSignature,
   deleteDebitNote,
   deleteDebitNotes,
+  hardDeleteDebitNotes,
   type DebitNoteListRow,
 } from "@/services/debitNotesApi";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -636,8 +637,13 @@ export const DebitNotes: React.FC = () => {
   const trashCurrent = async () => {
     const id = selected?.backendId;
     if (!id) return;
-    await deleteDebitNote(id);
-    showToast(`Debit Note ${selected?.number} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      await (permanent ? hardDeleteDebitNotes([id]) : deleteDebitNote(id));
+      showToast(permanent ? `Debit Note ${selected?.number} permanently deleted` : `Debit Note ${selected?.number} moved to trash`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     setSelectedId(debitNotes.find((c) => c.id !== id)?.id ?? "");
     setConfirmAction(null);
     void queryClient.invalidateQueries({ queryKey: ["debit-notes-list"] });
@@ -645,8 +651,13 @@ export const DebitNotes: React.FC = () => {
   const trashSelected = async () => {
     const ids = [...checked];
     if (ids.length === 0) { showToast("Select debit notes to delete", "info"); return; }
-    await deleteDebitNotes(ids);
-    showToast(`${ids.length} debit ${ids.length === 1 ? "note" : "notes"} moved to trash`, "success");
+    const permanent = statusFilter === "Trash";
+    try {
+      await (permanent ? hardDeleteDebitNotes(ids) : deleteDebitNotes(ids));
+      showToast(`${ids.length} debit ${ids.length === 1 ? "note" : "notes"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
     if (ids.includes(selectedId)) setSelectedId(debitNotes.find((c) => !ids.includes(c.id))?.id ?? "");
     setConfirmAction(null);
     exitSelect();

@@ -20,7 +20,7 @@ import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
-import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, updatePaymentReceived, type BackendPaymentReceivedDoc } from "@/services/paymentReceivedApi";
+import { fetchPaymentReceived, deletePaymentReceived, hardDeletePaymentReceivedMany, updatePaymentReceived, fetchDirectPayments, deleteDirectPayment, type BackendPaymentReceivedDoc, type BackendInvoicePaymentDoc } from "@/services/paymentReceivedApi";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { AppDatePicker } from "@/components/ui/AppDatePicker";
 import { showToast } from "@/utils/toast";
@@ -55,15 +55,21 @@ interface Payment {
   date: string;
   amount: string;
   method: string;
+  /** "received" = /payment-received collection; "direct" = /payment (invoice $ modal). */
+  source: "received" | "direct";
+  /** Sort-friendly ms epoch */
+  sortTs: number;
 }
 
-const paymentCustomerName = (doc: BackendPaymentReceivedDoc): string => {
-  const c = doc.customer_id;
+const refName = (c: any): string => {
   if (c && typeof c === "object") {
-    return (c as any).businessProfile?.companyName?.trim() || (c as any).name?.trim() || "—";
+    return c.businessProfile?.companyName?.trim() || c.name?.trim() || "—";
   }
   return "—";
 };
+
+const paymentCustomerName = (doc: BackendPaymentReceivedDoc | BackendInvoicePaymentDoc): string =>
+  (doc as any).customer_name?.trim() || refName((doc as any).customer_id);
 
 const formatPayDate = (value?: string): string => {
   if (!value) return "—";
@@ -71,6 +77,9 @@ const formatPayDate = (value?: string): string => {
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
+
+  
+const toTs = (value?: string) => (value ? new Date(value).getTime() || 0 : 0);
 
 const mapPaymentRow = (doc: BackendPaymentReceivedDoc): Payment => ({
   id: doc._id,
@@ -81,6 +90,22 @@ const mapPaymentRow = (doc: BackendPaymentReceivedDoc): Payment => ({
   date: formatPayDate(doc.date || doc.createdAt),
   amount: fmtMoney(doc.total || 0),
   method: Array.isArray(doc.payment_method) && doc.payment_method[0] ? String(doc.payment_method[0]) : "Cash",
+  source: "received",
+  sortTs: toTs(doc.date || doc.createdAt),
+});
+
+/** Direct invoice payments (`/payment` collection) rendered in the same list. */
+const mapDirectRow = (doc: BackendInvoicePaymentDoc): Payment => ({
+  id: doc._id,
+  backendId: doc._id,
+  name: paymentCustomerName(doc),
+  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : "—",
+  note: doc.notes || "No Notes",
+  date: formatPayDate(doc.payment_date || doc.createdAt),
+  amount: fmtMoney(doc.amount || 0),
+  method: doc.payment_type?.trim() || "Cash",
+  source: "direct",
+  sortTs: toTs(doc.payment_date || doc.createdAt),
 });
 
 const sortFields = ["Name", "First Name", "Last Name", "Payment date", "Payment #", "Amount"];
@@ -341,10 +366,10 @@ export const PaymentReceived: React.FC = () => {
 
   const dateRange = dateRangeFor(dateFilter);
   const { data: listData } = useQuery({
-    queryKey: ["payment-received-list", page, search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
+    queryKey: ["payment-received-list", search, sortBy, sortDir, statusFilter, customerFilter, dateFilter],
     queryFn: () => fetchPaymentReceived({
-      page,
-      limit: LIST_PAGE_SIZE,
+      page: 1,
+      limit: 500,
       searchTerm: search || undefined,
       sort: buildListSortParam(paySortField(sortBy), sortDir),
       isDeleted: statusFilter === "Trash" || undefined,
@@ -356,12 +381,53 @@ export const PaymentReceived: React.FC = () => {
     placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
-  const listPagination = listData?.pagination;
-  const payments: Payment[] = useMemo(
-    () => (listData?.rows ?? []).map(mapPaymentRow),
-    [listData?.rows],
-  );
+  // Direct payments created from the invoice detail $-modal live in a separate
+  // `/payment` collection — merged here so this listing shows ALL incoming
+  // payments, not just the ones captured through `/payment-received`.
+  const { data: directPayments } = useQuery({
+    queryKey: ["payment-received-direct", statusFilter, customerFilter],
+    // Trash tab belongs to /payment-received only — direct payments don't have
+    // the soft-delete surface wired, so we skip them when viewing Trash.
+    queryFn: () =>
+      statusFilter === "Trash"
+        ? Promise.resolve([] as BackendInvoicePaymentDoc[])
+        : fetchDirectPayments({
+            limit: 500,
+            customer_id: (partyFilterParam(customerFilter) ?? "").split(",").filter(Boolean)[0] || undefined,
+          }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
 
+  const mergedRows: Payment[] = useMemo(() => {
+    const received = (listData?.rows ?? []).map(mapPaymentRow);
+    const direct = (directPayments ?? []).map(mapDirectRow);
+    const q = search.trim().toLowerCase();
+    const matchesSearch = (p: Payment) =>
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.number.toLowerCase().includes(q) ||
+      p.note.toLowerCase().includes(q);
+    return [...received, ...direct]
+      .filter(matchesSearch)
+      .sort((a, b) => b.sortTs - a.sortTs);
+  }, [listData?.rows, directPayments, search]);
+  
+  const totalRows = mergedRows.length;
+  const pageSize = LIST_PAGE_SIZE;
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return mergedRows.slice(start, start + pageSize);
+  }, [mergedRows, page, pageSize]);
+  const listPagination = useMemo(() => ({
+    totalPage: Math.max(1, Math.ceil(totalRows / pageSize)),
+    currentPage: page,
+    prevPage: Math.max(1, page - 1),
+    nextPage: Math.min(Math.max(1, Math.ceil(totalRows / pageSize)), page + 1),
+    totalData: totalRows,
+  }), [totalRows, page, pageSize]);
+
+  const payments: Payment[] = paginated;
   const filtered = payments;
   const selected = payments.find((i) => i.id === selectedId) || payments[0];
   const dbPayments = useCollection<any>("paymentsReceived");
@@ -392,10 +458,25 @@ export const PaymentReceived: React.FC = () => {
   const bulkTrash = async () => {
     const ids = [...checked];
     if (ids.length === 0) { showToast("Select payments to delete", "info"); return; }
-    if (statusFilter === "Trash") await hardDeletePaymentReceivedMany(ids);
-    else await Promise.all(ids.map((id) => deletePaymentReceived(id)));
+    // Each payment has its own source — route the delete call to the matching
+    // backend collection so direct-invoice payments don't fail against the
+    // /payment-received endpoint and vice-versa.
+    const bySource = { received: [] as string[], direct: [] as string[] };
+    for (const id of ids) {
+      const row = mergedRows.find((p) => p.id === id);
+      bySource[row?.source ?? "received"].push(id);
+    }
+    if (statusFilter === "Trash") {
+      if (bySource.received.length) await hardDeletePaymentReceivedMany(bySource.received);
+      // Direct payments don't have a Trash tab; the ids list in this branch should be empty anyway.
+      await Promise.all(bySource.direct.map((id) => deleteDirectPayment(id)));
+    } else {
+      await Promise.all(bySource.received.map((id) => deletePaymentReceived(id)));
+      await Promise.all(bySource.direct.map((id) => deleteDirectPayment(id)));
+    }
     showToast(`${ids.length} ${ids.length === 1 ? "payment" : "payments"} ${statusFilter === "Trash" ? "permanently deleted" : "moved to trash"}`, "success");
     void queryClient.invalidateQueries({ queryKey: ["payment-received-list"] });
+    void queryClient.invalidateQueries({ queryKey: ["payment-received-direct"] });
     if (ids.includes(selectedId)) setSelectedId(payments.find((i) => !ids.includes(i.id))?.id ?? "");
     exitSelect();
   };

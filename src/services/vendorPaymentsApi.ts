@@ -117,3 +117,9 @@ export async function createVendorPayment(payload: {
 export async function deleteVendorPayment(id: string): Promise<void> {
   await api.raw.delete(`/account/vendor-payments/delete/${id}`);
 }
+
+/** Permanent delete from Trash — removes rows entirely. */
+export async function hardDeleteVendorPayments(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await api.raw.delete(`/account/vendor-payments/hard-delete/${ids.join(",")}`);
+}

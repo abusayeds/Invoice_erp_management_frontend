@@ -20,10 +20,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { buildListSortParam } from "@/lib/listSort";
-import { fetchPurchaseReturns, type PurchaseReturnListRow } from "@/services/purchaseReturnsApi";
+import { fetchPurchaseReturns, hardDeletePurchaseReturns, type PurchaseReturnListRow } from "@/services/purchaseReturnsApi";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
+import { useNavigate } from "react-router-dom";
 import { AppSettingsModal } from "@/components/modals/AppSettingsModal";
-import { useCollection, repo, money as fmtMoney, CreateDocModal, DocPreview } from "@/lib/db";
+import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
+import { useCollection, repo, nextNumber, money as fmtMoney, CreateDocModal, CreateDocForm, DocPreview } from "@/lib/db";
+import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
@@ -467,10 +470,12 @@ export const PurchaseReturns: React.FC = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "activity">(null);
+  const navigate = useNavigate();
+  const [modal, setModal] = useState<null | "settings" | "preview" | "email" | "activity" | "pdfSettings">(null);
   const [createMode, setCreateMode] = useState(false);
-  const [markAsOpen, setMarkAsOpen] = useState(false);
-  const [dupOpen, setDupOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const [confirmAction, setConfirmAction] = useState<null | "trashOne" | "trashMany">(null);
 
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -539,12 +544,68 @@ export const PurchaseReturns: React.FC = () => {
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
+  const trashCurrent = async () => {
+    if (!selected) { setConfirmAction(null); return; }
+    const permanent = statusFilter === "Trash";
+    const localId = selectedDb?.id;
+    const backendId = selected.backendId || selectedDb?._id;
+    try {
+      if (permanent && backendId) await hardDeletePurchaseReturns([String(backendId)]);
+      if (localId) await repo.remove("purchaseReturns", localId);
+      showToast(permanent ? `Purchase Return ${selected.number} permanently deleted` : `Purchase Return ${selected.number} moved to trash`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
+    const nextItem = filtered.find((i) => i.id !== selected.id);
+    setSelectedId(nextItem?.id ?? "");
+    setConfirmAction(null);
+  };
+
+  const trashMany = async () => {
+    const permanent = statusFilter === "Trash";
+    const selectedRows = filtered.filter((i) => checked.has(i.id));
+    const backendIds = selectedRows.map((i) => i.backendId).filter(Boolean) as string[];
+    const localIds = selectedRows
+      .map((i) => dbReturns.find((d) => String(d._id) === i.backendId || String(d.id) === i.id)?.id)
+      .filter((v): v is number => typeof v === "number");
+    try {
+      if (permanent && backendIds.length) await hardDeletePurchaseReturns(backendIds);
+      if (localIds.length) await repo.removeMany("purchaseReturns", localIds);
+      showToast(`${checked.size} ${checked.size === 1 ? "purchase return" : "purchase returns"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
+    } catch {
+      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
+    }
+    if (checked.has(selectedId)) setSelectedId(filtered.find((i) => !checked.has(i.id))?.id ?? "");
+    setConfirmAction(null);
+    exitSelect();
+  };
+
+  const duplicateReturnAs = async (_: string) => {
+    if (!selectedDb?.id) { showToast("Nothing selected to duplicate", "warning"); return; }
+    const n = await nextNumber("purchaseReturns");
+    const { id: _skip, _id: _bid, ...base } = selectedDb;
+    const newId = await repo.add("purchaseReturns", { ...base, number: "#" + n, status: "Draft" });
+    setSelectedId(String(newId));
+    showToast("Purchase Return duplicated", "success");
+  };
+
+  const markAs = async (status: Status) => {
+    if (!selectedDb?.id) { showToast("Select a purchase return first", "warning"); return; }
+    await repo.update("purchaseReturns", selectedDb.id, { status });
+    showToast(`Marked as ${status}`, "success");
+  };
+
+  const convertToDebitNote = () => {
+    if (!selected) { showToast("Select a purchase return first", "warning"); return; }
+    navigate("/purchase/debit-notes", { state: { openCreate: true, fromReturnId: selected.backendId || selected.id } });
+  };
+
   const actionIcons: { icon: React.ElementType; title: string; onClick?: () => void }[] = [
     { icon: Settings, title: "Settings", onClick: () => setModal("settings") },
-    { icon: ChevronUp, title: "Collapse" },
-    { icon: SlidersHorizontal, title: "Adjust" },
-    { icon: Pencil, title: "Edit" },
-    { icon: PenTool, title: "Signature" },
+    { icon: expanded ? ChevronUp : ChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) },
+    { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") },
+    { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) },
+    { icon: PenTool, title: "Signature", onClick: () => showToast("Signature is not available for Purchase Returns yet.", "info") },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
     { icon: Printer, title: "Print", onClick: () => setModal("preview") },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
@@ -561,8 +622,14 @@ export const PurchaseReturns: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              {[Trash2, MessageCircle, Mail, Eye, Check].map((Ic, i) => (
-                <button key={i} onClick={Ic === Check ? exitSelect : Ic === Eye ? () => setModal("preview") : undefined} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
+              {([
+                { Ic: Trash2, title: "Delete", onClick: () => (checked.size === 0 ? showToast("Select purchase returns to delete", "warning") : setConfirmAction("trashMany")) },
+                { Ic: MessageCircle, title: "WhatsApp", onClick: () => showToast("Opening WhatsApp...", "info") },
+                { Ic: Mail, title: "Email", onClick: () => setModal("email") },
+                { Ic: Eye, title: "Preview", onClick: () => setModal("preview") },
+                { Ic: Check, title: "Done", onClick: exitSelect },
+              ] as const).map(({ Ic, title, onClick }, i) => (
+                <button key={i} title={title} onClick={onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
               ))}
             </div>
           </div>
@@ -665,6 +732,17 @@ export const PurchaseReturns: React.FC = () => {
         </section>
       ) : createMode ? (
         <CreateReturn onClose={() => setCreateMode(false)} />
+      ) : editOpen && selectedDb?.id ? (
+        <CreateDocForm
+          key={selectedDb.id}
+          collection="purchaseReturns"
+          title="Edit Purchase Return"
+          party="vendors"
+          buy
+          record={selectedDb}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); }}
+        />
       ) : (
         <section className="module-detail-panel custom-scrollbar">
           <div className="relative flex-1 overflow-hidden flex flex-col">
@@ -683,33 +761,34 @@ export const PurchaseReturns: React.FC = () => {
                 <Dropdown align="right" panelClass="w-60" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <>
-                      <button type="button" onClick={close} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
+                      <button type="button" onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>
                       <MoreMenuFlyoutRow
                         label={<span className="flex items-center gap-2"><Copy className="w-4 h-4 text-gray-400" /> Duplicate</span>}
                         className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
                       >
                         {duplicateAs.map((s) => (
-                          <button key={s} type="button" onClick={close} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
+                          <button key={s} type="button" onClick={() => { void duplicateReturnAs(s); close(); }} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
                         ))}
                       </MoreMenuFlyoutRow>
-                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><CornerUpLeft className="w-4 h-4 text-gray-400" /> Convert to Debit Note</button>
+                      <button type="button" onClick={() => { convertToDebitNote(); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><CornerUpLeft className="w-4 h-4 text-gray-400" /> Convert to Debit Note</button>
                       <MoreMenuFlyoutRow
                         label="Mark As"
                         className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
                       >
                         {markAsList.map((s) => (
-                          <button key={s} type="button" onClick={close} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
+                          <button key={s} type="button" onClick={() => { void markAs(s); close(); }} className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left whitespace-nowrap">{s}</button>
                         ))}
                       </MoreMenuFlyoutRow>
-                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button>
+                      <button type="button" onClick={() => { showToast("Signature requests aren't available for Purchase Returns yet.", "info"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><Signature className="w-4 h-4 text-gray-400" /> Signature Request</button>
                       <button type="button" onClick={() => { setModal("activity"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"><History className="w-4 h-4 text-gray-400" /> Activity Log</button>
-                      <button type="button" onClick={close} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
+                      <button type="button" onClick={() => { setConfirmAction("trashOne"); close(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-gray-50 text-left border-t border-gray-200"><Trash2 className="w-4 h-4" /> Trash</button>
                     </>
                   )}
                 </Dropdown>
               </div>
             </div>
 
+            {expanded && <>
             {/* meta row */}
             <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-200">
               <div className="flex items-center gap-12">
@@ -766,6 +845,7 @@ export const PurchaseReturns: React.FC = () => {
                 <div className="flex justify-between px-4 py-3 bg-gray-100 border-t border-gray-200"><span className="font-semibold text-gray-900">Total</span><span className="font-semibold text-gray-900">{selected.amount}</span></div>
               </div>
             </div>
+            </>}
 
             <div className="absolute bottom-0 left-0 w-24 h-24 overflow-hidden pointer-events-none">
               <div className={`absolute bottom-[18px] -left-[34px] w-32 rotate-45 text-[10px] font-semibold py-1 text-center ${STATUS_BADGE[selected.status]}`}>{selected.status}</div>
@@ -775,6 +855,9 @@ export const PurchaseReturns: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Debit Note" onClose={() => setModal(null)} />}
+      {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="debitNote" />}
+      {confirmAction === "trashOne" && <ConfirmAlert message="Are you sure want to trash this purchase return?" onNo={() => setConfirmAction(null)} onYes={trashCurrent} />}
+      {confirmAction === "trashMany" && <ConfirmAlert message="Are you sure want to delete these purchase returns?" onNo={() => setConfirmAction(null)} onYes={trashMany} />}
       {modal === "preview" && selected && (() => {
         const d: any = dbReturns.find((x) => String(x._id) === selectedId || String(x.id) === selectedId) || {};
         const pp: any = dbVendors.find((x) => x.id === d.vendorId) || { name: selected.name };
