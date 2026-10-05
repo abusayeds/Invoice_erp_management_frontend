@@ -852,10 +852,6 @@ export const Timesheet: React.FC = () => {
           <span className="text-gray-400">›</span>
           <span className="text-gray-900 font-medium">Timesheet</span>
         </div>
-        <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1">
-          <Globe className="w-4 h-4" />
-          <span>en English</span>
-        </div>
       </div>
 
       {/* Page title */}

@@ -504,10 +504,6 @@ export const LeadReports: React.FC = () => {
             <span>›</span>
             <span className="text-gray-900 font-medium">Lead Reports</span>
           </div>
-          <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1 bg-white">
-            <Globe className="w-4 h-4" />
-            <span>ga English</span>
-          </div>
         </div>
       </div>
 

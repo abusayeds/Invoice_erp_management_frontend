@@ -417,10 +417,6 @@ const EditNotifTemplate: React.FC<{
             Edit Notification Template
           </span>
         </div>
-        <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1">
-          <Globe className="w-4 h-4" />
-          <span>en English</span>
-        </div>
       </div>
 
       {/* Page title + Back */}
@@ -555,10 +551,6 @@ const NotifTemplatesList: React.FC<{ onEdit: (t: NotifTemplate) => void }> = ({
           <span className="text-gray-900 font-medium">
             Notification Templates
           </span>
-        </div>
-        <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1">
-          <Globe className="w-4 h-4" />
-          <span>en English</span>
         </div>
       </div>
 

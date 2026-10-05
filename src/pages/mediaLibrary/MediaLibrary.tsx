@@ -681,12 +681,6 @@ export const MediaLibrary: React.FC = () => {
           <span className="text-gray-400">›</span>
           <span className="text-gray-900 font-medium">Media Library</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 text-sm text-gray-600 border border-gray-200 rounded-md px-2 py-1">
-            <Globe className="w-4 h-4" />
-            <span>en English</span>
-          </div>
-        </div>
       </div>
 
       {/* Page title + Upload button */}
