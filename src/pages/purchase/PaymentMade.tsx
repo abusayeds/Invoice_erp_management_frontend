@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import { printDocumentPdf } from "@/lib/printDocumentPdf";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -401,7 +402,7 @@ export const PaymentMade: React.FC = () => {
                 { Ic: Eye, title: "Preview", onClick: () => setModal("preview") },
                 { Ic: Check, title: "Done", onClick: exitSelect },
               ] as const).map(({ Ic, title, onClick }, i) => (
-                <button key={i} title={title} onClick={onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Ic className="w-4 h-4" /></button>
+                <DocumentIconButton key={i} title={title} onClick={onClick} ><Ic className="w-4 h-4" /></DocumentIconButton>
               ))}
             </div>
           </div>
@@ -527,9 +528,9 @@ export const PaymentMade: React.FC = () => {
               <h1 className="text-lg font-semibold text-gray-900 truncate min-w-0">{selected.name}</h1>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (
-                  <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><a.icon className="w-4 h-4" /></button>
+                  <DocumentIconButton key={a.title} title={a.title} onClick={a.onClick} ><a.icon className="w-4 h-4" /></DocumentIconButton>
                 ))}
-                <Dropdown align="right" panelClass="w-48" trigger={<span className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
+                <Dropdown align="right" panelClass="w-48" trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="w-4 h-4" /></DocumentIconButton>}>
                   {(close) => (
                     <>
                       <button onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-400" /></button>

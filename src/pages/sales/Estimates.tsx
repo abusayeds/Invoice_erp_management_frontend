@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import { printDocumentPdf } from "@/lib/printDocumentPdf";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -422,13 +423,13 @@ export const Estimates: React.FC = () => {
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
               {statusFilter === "Trash" && (
-                <button title="Restore" onClick={() => (checked.size === 0 ? showToast("Select estimates to restore", "warning") : restoreSelectedEst())} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><RotateCcw className="w-4 h-4" /></button>
+                <DocumentIconButton title="Restore" onClick={() => (checked.size === 0 ? showToast("Select estimates to restore", "warning") : restoreSelectedEst())} ><RotateCcw className="w-4 h-4" /></DocumentIconButton>
               )}
-              <button title={statusFilter === "Trash" ? "Delete permanently" : "Delete"} onClick={() => (checked.size === 0 ? showToast("Select estimates to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
-              <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp...", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
-              <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
-              <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
-              <button title="Done" onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Check className="w-4 h-4" /></button>
+              <DocumentIconButton title={statusFilter === "Trash" ? "Delete permanently" : "Delete"} onClick={() => (checked.size === 0 ? showToast("Select estimates to delete", "warning") : setConfirmAction("trashSelected"))} ><Trash2 className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="WhatsApp" onClick={() => showToast("Opening WhatsApp...", "info")} ><MessageCircle className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Email" onClick={() => setModal("email")} ><Mail className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Preview" onClick={() => setModal("preview")} ><Eye className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Done" onClick={exitSelect} ><Check className="w-4 h-4" /></DocumentIconButton>
             </div>
           </div>
         ) : (
@@ -497,8 +498,8 @@ export const Estimates: React.FC = () => {
                 subtitle={selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || ""}
               />
               <div className="flex items-center gap-0.5 flex-shrink-0">
-                {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("estimate", String(selected?.backendId || selectedDb?._id || "")) }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>)}
-                <Dropdown align="right" panelClass="min-w-[200px]" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 cursor-pointer"><MoreVertical className="w-4 h-4" /></span>}>
+                {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("estimate", String(selected?.backendId || selectedDb?._id || "")) }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <DocumentIconButton key={item.title} title={item.title} onClick={item.onClick} ><item.icon className="w-4 h-4" /></DocumentIconButton>)}
+                <Dropdown align="right" panelClass="min-w-[200px]" trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="w-4 h-4" /></DocumentIconButton>}>
                   {(close) => (
                     <div className="py-1">
                       <button type="button" onClick={() => { showToast("Opening WhatsApp...", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>

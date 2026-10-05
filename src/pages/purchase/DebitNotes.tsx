@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import { printDocumentPdf } from "@/lib/printDocumentPdf";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -367,7 +368,7 @@ const EditDebitNote: React.FC<{ dn: DebitNote; onClose: () => void }> = ({ dn, o
       <div className="module-title-bar sticky top-0 z-20">
         <h1 className="text-lg font-semibold text-gray-900">Edit Debit Note</h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => setSettingsOpen(true)} title="Settings" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
+          <DocumentIconButton onClick={() => setSettingsOpen(true)} title="Settings" ><Settings className="w-4 h-4" /></DocumentIconButton>
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Barcode className="w-4 h-4" /></button>
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
           <button onClick={onClose} className="px-5 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-medium">Save</button>
@@ -736,11 +737,11 @@ export const DebitNotes: React.FC = () => {
           <div className="h-12 flex items-center justify-between px-4 border-b border-gray-300 bg-gray-100">
             <button onClick={toggleAll} className={`w-5 h-5 rounded-[5px] border flex items-center justify-center ${allSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{allSelected && <Check className="w-3.5 h-3.5 text-white" />}</button>
             <div className="flex items-center gap-0.5">
-              <button title="Delete" onClick={() => (checked.size === 0 ? showToast("Select debit notes to delete", "warning") : setConfirmAction("trashSelected"))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Trash2 className="w-4 h-4" /></button>
-              <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MessageCircle className="w-4 h-4" /></button>
-              <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Mail className="w-4 h-4" /></button>
-              <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Eye className="w-4 h-4" /></button>
-              <button title="Done" onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Check className="w-4 h-4" /></button>
+              <DocumentIconButton title="Delete" onClick={() => (checked.size === 0 ? showToast("Select debit notes to delete", "warning") : setConfirmAction("trashSelected"))} ><Trash2 className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} ><MessageCircle className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Email" onClick={() => setModal("email")} ><Mail className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Preview" onClick={() => setModal("preview")} ><Eye className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Done" onClick={exitSelect} ><Check className="w-4 h-4" /></DocumentIconButton>
             </div>
           </div>
         ) : (
@@ -878,10 +879,10 @@ export const DebitNotes: React.FC = () => {
               />
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {actionIcons.map((a) => (
-                  <button key={a.title} title={a.title} onClick={a.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><a.icon className="w-4 h-4" /></button>
+                  <DocumentIconButton key={a.title} title={a.title} onClick={a.onClick} ><a.icon className="w-4 h-4" /></DocumentIconButton>
                 ))}
                 {/* ⋮ menu */}
-                <Dropdown align="right" panelClass="min-w-[200px]" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 cursor-pointer"><MoreVertical className="w-4 h-4" /></span>}>
+                <Dropdown align="right" panelClass="min-w-[200px]" trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="w-4 h-4" /></DocumentIconButton>}>
                   {(close) => (
                     <div className="py-1">
                       <button type="button" onClick={() => { showToast("Opening WhatsApp…", "info"); close(); }} className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left">WhatsApp <MessageCircle className="w-4 h-4 text-gray-500" /></button>

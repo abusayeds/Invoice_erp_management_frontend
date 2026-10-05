@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
@@ -626,14 +627,14 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
       <div className="flex h-full w-full items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
         <div className={`relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-2xl border shadow-2xl ${modalShell}`}>
-          <button
+          <DocumentIconButton
             type="button"
             onClick={onClose}
             title="Close"
-            className="absolute right-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            wrapperClassName="absolute right-3 top-3 z-50"
           >
             <X className="h-5 w-5" />
-          </button>
+          </DocumentIconButton>
           <div className="flex h-full">
             <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
               <div className={`flex items-center border-b px-4 py-3 ${modalHeader}`}>
@@ -876,22 +877,22 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       {customerSubtitle(invoice) && <p className="truncate text-xs text-gray-500">{customerSubtitle(invoice)}</p>}
                     </div>
                     <div className="flex items-center gap-0.5">
-                      <button title="Edit" onClick={openEditForm} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <DocumentIconButton title="Edit" onClick={openEditForm} >
                         <Pencil className="h-4 w-4" />
-                      </button>
-                      <button title="Preview" onClick={() => void openReceiptWindow("preview")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      </DocumentIconButton>
+                      <DocumentIconButton title="Preview" onClick={() => void openReceiptWindow("preview")} >
                         <Eye className="h-4 w-4" />
-                      </button>
-                      <button title={printingReceipt ? "Preparing print…" : "Print"} disabled={printingReceipt} onClick={() => void openReceiptWindow("print")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 disabled:opacity-40">
+                      </DocumentIconButton>
+                      <DocumentIconButton title={printingReceipt ? "Preparing print…" : "Print"} disabled={printingReceipt} onClick={() => void openReceiptWindow("print")} >
                         <Printer className="h-4 w-4" />
-                      </button>
-                      <button title="Email" onClick={() => void openReceiptWindow("email")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      </DocumentIconButton>
+                      <DocumentIconButton title="Email" onClick={() => void openReceiptWindow("email")} >
                         <Mail className="h-4 w-4" />
-                      </button>
+                      </DocumentIconButton>
                       <Dropdown
                         align="right"
                         panelClass="w-48"
-                        trigger={<span className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"><MoreVertical className="h-4 w-4" /></span>}
+                        trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="h-4 w-4" /></DocumentIconButton>}
                       >
                         {(close) => (
                           <>

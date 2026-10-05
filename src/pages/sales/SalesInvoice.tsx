@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { PdfPreviewModal } from "@/lib/db/PdfPreviewModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -1458,17 +1459,17 @@ export const SalesInvoice: React.FC = () => {
             </button>
             <div className="flex items-center gap-0.5">
               {statusFilter === "Trash" && (
-                <button
+                <DocumentIconButton
                   title="Restore"
                   onClick={() => (checked.size === 0 ? showToast("Select invoices to restore", "warning") : restoreSelectedInvoices())}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
-                ><RotateCcw className="w-4 h-4" /></button>
+
+                ><RotateCcw className="w-4 h-4" /></DocumentIconButton>
               )}
-              <button
+              <DocumentIconButton
                 title={statusFilter === "Trash" ? "Delete permanently" : "Delete"}
                 onClick={() => (checked.size === 0 ? showToast("Select invoices to delete", "warning") : setConfirmAction("trashSelected"))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
-              ><Trash2 className="w-4 h-4" /></button>
+
+              ><Trash2 className="w-4 h-4" /></DocumentIconButton>
               {/* $ → Add Payment / Mark as Paid ▸ (payment-method submenu) */}
               <Dropdown
                 align="right"
@@ -1487,10 +1488,10 @@ export const SalesInvoice: React.FC = () => {
                   />
                 )}
               </Dropdown>
-              <button title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"><MessageCircle className="w-4 h-4" /></button>
-              <button title="Email" onClick={() => setModal("email")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"><Mail className="w-4 h-4" /></button>
-              <button title="Preview" onClick={() => setModal("preview")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"><Eye className="w-4 h-4" /></button>
-              <button title="Done" onClick={exitSelect} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"><Check className="w-4 h-4" /></button>
+              <DocumentIconButton title="WhatsApp" onClick={() => showToast("Opening WhatsApp…", "info")} ><MessageCircle className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Email" onClick={() => setModal("email")} ><Mail className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Preview" onClick={() => setModal("preview")} ><Eye className="w-4 h-4" /></DocumentIconButton>
+              <DocumentIconButton title="Done" onClick={exitSelect} ><Check className="w-4 h-4" /></DocumentIconButton>
             </div>
           </div>
         ) : (
@@ -1710,16 +1711,16 @@ export const SalesInvoice: React.FC = () => {
             />
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {actionIcons.map((a) => (
-                <button
+                <DocumentIconButton
                   key={a.title}
                   title={a.title}
                   onClick={a.onClick}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+
                 >
                   <a.icon className="w-4 h-4" />
-                </button>
+                </DocumentIconButton>
               ))}
-              <Dropdown align="right" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition-colors cursor-pointer"><MoreVertical className="w-4 h-4" /></span>}>
+              <Dropdown align="right" trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="w-4 h-4" /></DocumentIconButton>}>
                 {(close) => (
                   <InvoiceMoreMenu
                     close={close}

@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 /**
  * Bill → Add Payment modal — same split-pane UX as InvoicePaymentsModal,
  * with Vendor / Bill instead of Customer / Invoice (Payment Made).
@@ -516,14 +517,14 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
       <div className="flex h-full w-full items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
         <div className={`relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-2xl border shadow-2xl ${modalShell}`}>
-          <button
+          <DocumentIconButton
             type="button"
             onClick={onClose}
             title="Close"
-            className="absolute right-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            wrapperClassName="absolute right-3 top-3 z-50"
           >
             <X className="h-5 w-5" />
-          </button>
+          </DocumentIconButton>
           <div className="flex h-full">
             <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
               <div className={`flex items-center border-b px-4 py-3 ${modalHeader}`}>
@@ -785,45 +786,45 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       </h3>
                     </div>
                     <div className="flex items-center gap-0.5">
-                      <button
+                      <DocumentIconButton
                         type="button"
                         title="Edit"
                         onClick={openCreateForm}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+
                       >
                         <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
+                      </DocumentIconButton>
+                      <DocumentIconButton
                         type="button"
                         title="Preview"
                         onClick={() => openReceiptWindow("preview")}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+
                       >
                         <Eye className="h-4 w-4" />
-                      </button>
-                      <button
+                      </DocumentIconButton>
+                      <DocumentIconButton
                         type="button"
                         title="Print"
                         onClick={() => openReceiptWindow("print")}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+
                       >
                         <Printer className="h-4 w-4" />
-                      </button>
-                      <button
+                      </DocumentIconButton>
+                      <DocumentIconButton
                         type="button"
                         title="Email"
                         onClick={() => openReceiptWindow("email")}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+
                       >
                         <Mail className="h-4 w-4" />
-                      </button>
+                      </DocumentIconButton>
                       <Dropdown
                         align="right"
                         panelClass="w-48"
                         trigger={
-                          <span className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                          <DocumentIconButton as="span" title="More actions" >
                             <MoreVertical className="h-4 w-4" />
-                          </span>
+                          </DocumentIconButton>
                         }
                       >
                         {(close) => (

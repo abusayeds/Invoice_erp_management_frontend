@@ -1,0 +1,63 @@
+.document-icon-anchor { display: inline-flex; flex-shrink: 0; }
+.document-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  color: #fff !important;
+  background: #374151 !important;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.document-icon-button svg { width: 18px; height: 18px; color: #fff !important; }
+.document-icon-button:hover, .document-icon-button:focus-visible { color: #fff !important; background: #007aff !important; }
+.document-icon-button:focus-visible { outline: 2px solid #007aff; outline-offset: 2px; }
+.document-icon-button:disabled { opacity: .4; cursor: not-allowed; }
+.document-icon-button:disabled:hover { background: #374151 !important; }
+.document-icon-tooltip {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  width: max-content;
+  max-width: 190px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  background: #111827 !important;
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 2px 8px #0003;
+}
+.document-print-mode-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 208px;
+  padding: 6px;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  background: #1f2937 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 16px #0005;
+}
+.document-print-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: left;
+  color: #fff !important;
+  cursor: pointer;
+}
+.document-print-mode-option:hover, .document-print-mode-option:focus-visible { background: #374151 !important; }
+.document-print-mode-option[aria-checked="true"] { background: #005ac2 !important; }
+.document-print-mode-option:disabled { opacity: .45; cursor: not-allowed; }
+.document-print-mode-option svg { width: 16px; height: 16px; flex-shrink: 0; }
+.document-print-mode-note { padding: 6px 10px; font-size: 11px; line-height: 1.4; color: #d1d5db; }

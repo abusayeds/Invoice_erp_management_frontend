@@ -1,3 +1,4 @@
+import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DollarSign, Mail, Trash2, X } from "lucide-react";
@@ -49,15 +50,14 @@ export function DocumentListRow({ children, className, onClick, docType, backend
     } catch (error) { showToast(error instanceof Error ? error.message : "Unable to delete document", "error"); }
     finally { deletingRef.current = false; setDeleting(false); }
   };
-  const actionClass = "h-7 w-7 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-40";
   return (
     <div className={`group relative ${className || ""}`}>
       <button type="button" aria-label={`Select ${label}`} onClick={onClick} className="absolute inset-0 w-full h-full rounded-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" />
       <div className="contents pointer-events-none">{children}</div>
-      {!selectMode && <div className="absolute right-3 bottom-1 flex gap-0.5 rounded-full bg-white shadow-sm opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto">
-        <button type="button" title={permanent ? "Delete permanently" : "Trash"} aria-label={`${permanent ? "Delete permanently" : "Trash"} ${label}`} disabled={!backendId} onClick={() => setConfirm(true)} className={actionClass}><Trash2 className="h-3.5 w-3.5" /></button>
-        <button type="button" title="Email" aria-label={`Email ${label}`} disabled={!backendId || permanent} onClick={onEmail} className={actionClass}><Mail className="h-3.5 w-3.5" /></button>
-        {(docType === "invoice" || docType === "bill") && !permanent && <button type="button" title="Add Payment" aria-label={`Add payment to ${label}`} disabled={!backendId} onClick={() => setPaymentOpen(true)} className={actionClass}><DollarSign className="h-3.5 w-3.5" /></button>}
+      {!selectMode && <div className="absolute right-3 bottom-1 flex gap-1 rounded-full bg-white shadow-sm opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto">
+        <DocumentIconButton type="button" title={permanent ? "Delete permanently" : "Trash"} aria-label={`${permanent ? "Delete permanently" : "Trash"} ${label}`} disabled={!backendId} onClick={() => setConfirm(true)} ><Trash2 className="h-3.5 w-3.5" /></DocumentIconButton>
+        <DocumentIconButton type="button" title="Email" aria-label={`Email ${label}`} disabled={!backendId || permanent} onClick={onEmail} ><Mail className="h-3.5 w-3.5" /></DocumentIconButton>
+        {(docType === "invoice" || docType === "bill") && !permanent && <DocumentIconButton type="button" title="Add Payment" aria-label={`Add payment to ${label}`} disabled={!backendId} onClick={() => setPaymentOpen(true)} ><DollarSign className="h-3.5 w-3.5" /></DocumentIconButton>}
       </div>}
       {confirm && createPortal(<ConfirmAlert message={deleting ? "Deleting…" : permanent ? `Permanently delete ${label}? This cannot be undone.` : `Move ${label} to trash?`} onNo={() => !deleting && setConfirm(false)} onYes={() => void trash()} />, document.body)}
       {paymentOpen && createPortal(payment.data && methods.data ? (
