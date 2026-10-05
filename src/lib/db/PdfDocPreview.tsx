@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import { useCollection } from "./hooks";
 import { fetchServerPdfUrl, hasServerPdf } from "./serverPdf";
 import type { PdfDocType, PdfSettings, PrintMode } from "./pdfSettings";
+import { fetchPaymentReceiptPdf } from "@/services/paymentReceiptPdfApi";
 
 /** Resolve Mongo `_id` from Dexie when the caller only has a numeric UI id. */
 function useDexieBackendId(docType: PdfDocType, recordId?: number, partyId?: number): string {
@@ -83,12 +84,13 @@ export const PdfDocPreview: React.FC<{
   /** Fires with the blob object URL once the PDF is ready (null while loading / on failure). */
   onPdfUrl?: (url: string | null) => void;
 }> = ({ docType, mode, settings: _settings, partyId, recordId, backendId, className = "", onPdfUrl }) => {
-  // settings are applied server-side from saved PDF settings; prop kept for API compat
-  void _settings;
+  // Payment receipts support draft settings through the website endpoint.
+  // Other document types retain their existing saved-settings preview flow.
 
   const fromDexie = useDexieBackendId(docType, recordId, partyId);
   const resolvedBackendId = String(backendId || fromDexie || "").trim();
   const useServer = hasServerPdf(docType);
+  const receiptSettingsKey = docType === "paymentReceived" ? JSON.stringify(_settings) : "";
 
   const [serverPdfUrl, setServerPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(true);
@@ -113,9 +115,10 @@ export const PdfDocPreview: React.FC<{
     setPdfFailed(false);
     onPdfUrlRef.current?.(null);
     // With or without id: server returns real PDF (blank/sample when id omitted).
-    fetchServerPdfUrl(docType, resolvedBackendId || undefined, {
-      thermal: mode === "thermal",
-    }).then((u) => {
+    const request = docType === "paymentReceived"
+      ? fetchPaymentReceiptPdf(resolvedBackendId ? [{ id: resolvedBackendId, source: "received" }] : [], JSON.parse(receiptSettingsKey) as PdfSettings).catch(() => null)
+      : fetchServerPdfUrl(docType, resolvedBackendId || undefined, { thermal: mode === "thermal" });
+    request.then((u) => {
       url = u;
       if (!alive) {
         if (u) URL.revokeObjectURL(u);
@@ -131,7 +134,7 @@ export const PdfDocPreview: React.FC<{
       onPdfUrlRef.current?.(null);
       if (url) URL.revokeObjectURL(url);
     };
-  }, [docType, resolvedBackendId, mode, useServer]);
+  }, [docType, resolvedBackendId, mode, useServer, receiptSettingsKey]);
 
   if (pdfLoading) {
     return (

@@ -20,7 +20,8 @@ import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
 import { PdfDocPreview } from "@/lib/db/PdfDocPreview";
-import { downloadServerPdf, printServerPdf, downloadServerBatchPdf, printServerBatchPdf, serverBatchPdfUrlForRecords, triggerBlobDownload } from "@/lib/db/serverPdf";
+import { downloadServerPdf, printServerPdf, downloadServerBatchPdf, printServerBatchPdf, serverBatchPdfUrlForRecords, triggerBlobDownload, fetchServerPdfUrl, fetchServerBatchPdfUrl } from "@/lib/db/serverPdf";
+import { printPdfUrl } from "@/lib/printPdf";
 import { usePdfSettings, type PdfDocType } from "@/lib/db/pdfSettings";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
@@ -844,6 +845,7 @@ export const SalesInvoice: React.FC = () => {
   >(null);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<number | string>>(new Set());
+  const invoicePrintInProgress = useRef(false);
   const [createOpen, setCreateOpen] = useState(!!navState?.openCreate);
   const [createPrefillCustomer, setCreatePrefillCustomer] = useState(navState?.prefillCustomer);
   const [editOpen, setEditOpen] = useState(false);
@@ -1547,6 +1549,30 @@ export const SalesInvoice: React.FC = () => {
     return () => document.removeEventListener("keydown", h);
   }, [selectMode]);
 
+  const printInvoiceDetails = async () => {
+    if (invoicePrintInProgress.current) return;
+    invoicePrintInProgress.current = true;
+    try {
+      let url: string | null;
+      if (selectMode && selectedInvoices.length > 0) {
+        const ids = selectedInvoices.map(item => String(item.backendId || dbInvoices.find(row => row.id === item.id)?._id || ""));
+        if (ids.some(id => !id)) throw new Error("Some selected invoices are not available for printing.");
+        url = await fetchServerBatchPdfUrl("invoice", ids);
+      } else {
+        // Cached detail data may still belong to the previous selection.
+        const id = String(selected?.backendId || selectedDb?._id || "");
+        if (!id) throw new Error("Select a saved invoice to print.");
+        url = await fetchServerPdfUrl("invoice", id);
+      }
+      if (!url) throw new Error("Unable to load the invoice PDF. Please try again.");
+      await printPdfUrl(url, true);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to print invoice", "error");
+    } finally {
+      invoicePrintInProgress.current = false;
+    }
+  };
+
   const actionIcons: {
     icon: React.ElementType;
     title: string;
@@ -1559,7 +1585,7 @@ export const SalesInvoice: React.FC = () => {
     { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) },
     { icon: DollarSign, title: "Add Payment", onClick: openAddPayment },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
-    { icon: Printer, title: "Print", onClick: () => setModal("preview") },
+    { icon: Printer, title: "Print", onClick: () => void printInvoiceDetails() },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 

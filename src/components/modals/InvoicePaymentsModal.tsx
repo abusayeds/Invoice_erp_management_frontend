@@ -3,7 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { showToast } from "@/utils/toast";
-import { useCollection } from "@/lib/db";
+import { PaymentReceiptPreviewModal } from "@/components/payments/PaymentReceiptPreviewModal";
+import { fetchPaymentReceiptPdf, type PaymentReceiptReference } from "@/services/paymentReceiptPdfApi";
+import { getPdfSettings } from "@/lib/db/pdfSettings";
+import { printPdfUrl } from "@/lib/printPdf";
 import type { BackendInvoiceDoc } from "@/services/invoicesApi";
 import {
   createInvoicePayment,
@@ -180,9 +183,10 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   onSaved,
 }) => {
   const queryClient = useQueryClient();
-  const localInvoices = useCollection<any>("invoices");
-  const localPaymentsReceived = useCollection<any>("paymentsReceived");
   const [selectedPaymentId, setSelectedPaymentId] = useState<string>("");
+  const [receiptPreview, setReceiptPreview] = useState<{ record: PaymentReceiptReference; title: string } | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  const printingReceiptRef = useRef(false);
   const [showForm, setShowForm] = useState(true);
   const [paymentSerial, setPaymentSerial] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInput());
@@ -212,16 +216,6 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     () => (partyMode ? `customer:${partyCustomerId}` : paymentDocIds.slice().sort().join(",")),
     [partyMode, partyCustomerId, paymentDocIds],
   );
-
-  const allowedLocalInvoiceKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const id of paymentDocIds) {
-      keys.add(String(id));
-      const local = localInvoices.find((item) => String(item._id) === id);
-      if (local?.id != null) keys.add(String(local.id));
-    }
-    return keys;
-  }, [paymentDocIds, localInvoices]);
 
   const invoiceId = invoice?._id ?? "";
   const invoiceCustomerId =
@@ -293,7 +287,6 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       return { received: dedupedReceived, direct: dedupedDirect };
     },
     enabled: open && (partyMode || paymentDocIds.length > 0),
-    placeholderData: (prev) => prev,
   });
 
   const invoiceNumberForReceived = (payment: BackendPaymentReceivedDoc) => {
@@ -315,9 +308,9 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   };
 
   const payments = useMemo<UnifiedPayment[]>(() => {
-    const received = (paymentsData?.received ?? []).map((payment, index) => ({
+    const received = (paymentsData?.received ?? []).map((payment) => ({
       id: payment._id,
-      serial: text(payment.payment_number) || `PR-${String(index + 1).padStart(4, "0")}`,
+      serial: text(payment.payment_number) || `PR-${String(payment._id).slice(-8).toUpperCase()}`,
       invoiceNumber: invoiceNumberForReceived(payment),
       dateLabel: dateLabel(payment.date ?? payment.createdAt),
       timestamp: new Date(payment.date ?? payment.createdAt ?? 0).getTime() || 0,
@@ -329,9 +322,9 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       attachment: text(payment.Attachment),
       source: "paymentReceived" as const,
     }));
-    const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc, index) => ({
+    const direct = (paymentsData?.direct ?? []).map((payment: BackendInvoicePaymentDoc) => ({
       id: payment._id,
-      serial: text(payment.payment_number) || `PAY-${String(index + 1).padStart(4, "0")}`,
+      serial: text(payment.payment_number) || `PR-${String(payment._id).slice(-8).toUpperCase()}`,
       invoiceNumber: invoiceNumberForDirect(payment),
       dateLabel: dateLabel(payment.payment_date ?? payment.createdAt),
       timestamp: new Date(payment.payment_date ?? payment.createdAt ?? 0).getTime() || 0,
@@ -343,25 +336,9 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       attachment: text(payment.attachments),
       source: "payment" as const,
     }));
-    const local = localPaymentsReceived
-      .filter((payment) => allowedLocalInvoiceKeys.has(String(payment.invoiceId ?? "")))
-      .map((payment, index) => ({
-        id: `local-${payment.id}`,
-        serial: text(payment.number) || `PR-LOCAL-${String(index + 1).padStart(4, "0")}`,
-        invoiceNumber: text(payment.invoiceNumber) || text(invoice?.invoice_number),
-        dateLabel: dateLabel(payment.date),
-        timestamp: new Date(payment.date ?? 0).getTime() || 0,
-        amount: numberValue(payment.amount ?? payment.total ?? payment.subTotal),
-        currency: text(payment.currency) || text(invoice?.currency) || "USD",
-        method: text(payment.method) || "Cash",
-        notes: text(payment.notes),
-        internalNotes: text(payment.internalNotes),
-        attachment: text(payment.Attachment || payment.attachments),
-        source: "paymentReceived" as const,
-      }));
-    const merged = [...direct, ...received, ...local].sort((a, b) => b.timestamp - a.timestamp);
+    const merged = [...direct, ...received].sort((a, b) => b.timestamp - a.timestamp);
     return merged.filter((payment, index, arr) => arr.findIndex((item) => item.id === payment.id && item.source === payment.source) === index);
-  }, [allowedLocalInvoiceKeys, invoice, invoiceCustomerId, localPaymentsReceived, paymentDocs, paymentsData]);
+  }, [invoice, paymentDocs, paymentsData]);
 
   const customerSearch = useQuery({
     queryKey: ["invoice-payment-customers", customerQuery],
@@ -601,71 +578,50 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
     },
   });
 
-  const openReceiptWindow = (mode: "preview" | "print" | "email") => {
+  const openReceiptWindow = async (mode: "preview" | "print" | "email") => {
     if (!selectedPayment) return;
-    const title = `Payment Receipt ${selectedPayment.serial}`;
-    const body = `
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            .sheet { border: 1px solid #d1d5db; }
-            .row { display: flex; justify-content: space-between; gap: 24px; padding: 16px; border-bottom: 1px solid #e5e7eb; }
-            .amount { font-size: 28px; font-weight: 700; text-align: center; padding: 28px 16px; border-bottom: 1px solid #e5e7eb; }
-            .section { padding: 16px; border-bottom: 1px solid #e5e7eb; }
-            table { border-collapse: collapse; }
-            td { border: 1px solid #d1d5db; padding: 6px 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="sheet">
-            <h1 style="text-align:center; padding:16px; margin:0; border-bottom:1px solid #d1d5db;">PAYMENT RECEIPT</h1>
-            <div class="row">
-              <div>
-                <div style="font-size:20px; font-weight:700;">info</div>
-                <div>${displayCustomerName}</div>
-                <div>${partyMode ? "" : customerSubtitle(invoice) || ""}</div>
-              </div>
-              <table>
-                <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
-                <tr><td><strong>Payment date</strong></td><td>${selectedPayment.dateLabel}</td></tr>
-                <tr><td><strong>Payment Type</strong></td><td>${selectedPayment.method}</td></tr>
-                <tr><td><strong>Amount</strong></td><td>${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</td></tr>
-              </table>
-            </div>
-            <div class="amount">${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
-            <div class="section"><strong>Invoice</strong><div>${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}</div></div>
-            <div class="section"><strong>Notes</strong><div>${selectedPayment.notes || "No Notes"}</div></div>
-            <div class="section"><strong>Internal Notes</strong><div>${selectedPayment.internalNotes || "No Internal Notes"}</div></div>
-          </div>
-        </body>
-      </html>
-    `;
-
+    const record: PaymentReceiptReference = {
+      id: selectedPayment.id,
+      source: selectedPayment.source === "payment" ? "direct" : "received",
+    };
+    const title = `Payment# ${selectedPayment.serial.replace(/^#/, "")}`;
+    if (mode === "preview") {
+      setReceiptPreview({ record, title });
+      return;
+    }
     if (mode === "email") {
-      const subject = encodeURIComponent(title);
+      const subject = encodeURIComponent(`Payment Receipt ${selectedPayment.serial}`);
       const mailBody = encodeURIComponent(
         `Customer: ${displayCustomerName}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
       );
       window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
       return;
     }
-
-    const popup = window.open("", "_blank", "width=900,height=700");
-    if (!popup) {
-      showToast("Popup blocked by browser", "warning");
-      return;
+    if (printingReceiptRef.current) return;
+    printingReceiptRef.current = true;
+    setPrintingReceipt(true);
+    try {
+      const settings = await getPdfSettings("paymentReceived", "normal");
+      const url = await fetchPaymentReceiptPdf([record], settings);
+      await printPdfUrl(url, true);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to print payment receipt", "error");
+    } finally {
+      printingReceiptRef.current = false;
+      setPrintingReceipt(false);
     }
-    popup.document.open();
-    popup.document.write(body);
-    popup.document.close();
-    if (mode === "print") popup.print();
   };
-
   if (!open || (!invoice && !partyMode)) return null;
 
   return (
+    <>
+      {receiptPreview && (
+        <PaymentReceiptPreviewModal
+          records={[receiptPreview.record]}
+          title={receiptPreview.title}
+          onClose={() => setReceiptPreview(null)}
+        />
+      )}
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
       <div className="flex h-full w-full items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
         <div className={`relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-2xl border shadow-2xl ${modalShell}`}>
@@ -922,13 +878,13 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <button title="Edit" onClick={openEditForm} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button title="Preview" onClick={() => openReceiptWindow("preview")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button title="Preview" onClick={() => void openReceiptWindow("preview")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button title="Print" onClick={() => openReceiptWindow("print")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button title={printingReceipt ? "Preparing print…" : "Print"} disabled={printingReceipt} onClick={() => void openReceiptWindow("print")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 disabled:opacity-40">
                         <Printer className="h-4 w-4" />
                       </button>
-                      <button title="Email" onClick={() => openReceiptWindow("email")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
+                      <button title="Email" onClick={() => void openReceiptWindow("email")} className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">
                         <Mail className="h-4 w-4" />
                       </button>
                       <Dropdown
@@ -1005,6 +961,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

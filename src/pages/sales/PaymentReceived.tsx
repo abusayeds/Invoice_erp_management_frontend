@@ -15,7 +15,8 @@ import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter, LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
-import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview, PdfPreviewModal } from "@/lib/db";
+import { useCollection, repo, nextNumber, money as fmtMoney, parseMoney, DocPreview } from "@/lib/db";
+import { PaymentReceiptPreviewModal } from "@/components/payments/PaymentReceiptPreviewModal";
 import { buildListSortParam } from "@/lib/listSort";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
@@ -85,7 +86,7 @@ const mapPaymentRow = (doc: BackendPaymentReceivedDoc): Payment => ({
   id: doc._id,
   backendId: doc._id,
   name: paymentCustomerName(doc),
-  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : "—",
+  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : `#PR-${doc._id.slice(-8).toUpperCase()}`,
   note: doc.notes || "No Notes",
   date: formatPayDate(doc.date || doc.createdAt),
   amount: fmtMoney(doc.total || 0),
@@ -99,7 +100,7 @@ const mapDirectRow = (doc: BackendInvoicePaymentDoc): Payment => ({
   id: doc._id,
   backendId: doc._id,
   name: paymentCustomerName(doc),
-  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : "—",
+  number: doc.payment_number ? `#${String(doc.payment_number).replace(/^#/, "")}` : `#PR-${doc._id.slice(-8).toUpperCase()}`,
   note: doc.notes || "No Notes",
   date: formatPayDate(doc.payment_date || doc.createdAt),
   amount: fmtMoney(doc.amount || 0),
@@ -697,16 +698,13 @@ export const PaymentReceived: React.FC = () => {
 
       {/* ════════ MODALS ════════ */}
       {modal === "preview" && (() => {
-        // In select mode with several rows ticked, preview them all merged into
-        // one PDF; otherwise preview the single active record.
-        const batchIds = selectMode ? [...checked] : [];
-        const d: any = dbPayments.find((x) => x.id === (selected?.id ?? selectedId)) || {};
+        const previewRows = selectMode && checked.size > 0
+          ? mergedRows.filter(row => checked.has(row.id))
+          : selected ? [selected] : [];
         return (
-          <PdfPreviewModal
-            docType="paymentReceived"
-            recordId={0}
-            backendId={batchIds[0] || selected?.backendId || (d._id ? String(d._id) : undefined)}
-            title={batchIds.length > 1 ? `Payment Receipts (${batchIds.length})` : `Payment Receipt `}
+          <PaymentReceiptPreviewModal
+            records={previewRows.map(row => ({ id: row.backendId, source: row.source }))}
+            title={previewRows.length > 1 ? `Payment Receipts (${previewRows.length})` : `Payment# ${selected?.number.replace(/^#/, "") || ""}`}
             onClose={() => setModal(null)}
           />
         );
