@@ -1,7 +1,10 @@
+import { PaymentEmailModal } from "@/components/payments/PaymentEmailModal";
+import { PAYMENT_FIELD_CLASS, PAYMENT_AMOUNT_CLASS, PAYMENT_NOTE_CLASS } from "@/components/payments/paymentFormStyles";
+import { PaymentHistorySidebar } from "@/components/payments/PaymentHistorySidebar";
 import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
+import { Eye, Mail, Pencil, Printer, Trash2, X } from "lucide-react";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { showToast } from "@/utils/toast";
 import { PaymentReceiptPreviewModal } from "@/components/payments/PaymentReceiptPreviewModal";
@@ -133,45 +136,11 @@ type UnifiedPayment = {
 };
 
 const modalShell = "bg-white text-gray-900 border-gray-300";
-const modalSidebar = "bg-white border-gray-300";
-const modalHeader = "bg-gray-100 border-gray-300";
 const modalSection = "bg-gray-50 border-gray-300";
 const modalHover = "hover:bg-gray-50";
-const fieldClass =
-  "w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fieldClass = PAYMENT_FIELD_CLASS;
 
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleMouseDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((value) => !value)}>
-        {trigger}
-      </button>
-      {open && (
-        <div
-          className={`absolute z-30 mt-2 min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${align === "right" ? "right-0" : "left-0"} ${panelClass}`}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
   open,
@@ -185,6 +154,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const [selectedPaymentId, setSelectedPaymentId] = useState<string>("");
+  const [paymentEmail, setPaymentEmail] = useState<{ subject: string; body: string } | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<{ record: PaymentReceiptReference; title: string } | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const printingReceiptRef = useRef(false);
@@ -591,11 +561,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
       return;
     }
     if (mode === "email") {
-      const subject = encodeURIComponent(`Payment Receipt ${selectedPayment.serial}`);
-      const mailBody = encodeURIComponent(
-        `Customer: ${displayCustomerName}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
-      );
-      window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
+      setReceiptPreview(null);
+      setPaymentEmail({ subject: `Payment Receipt ${selectedPayment.serial}`, body: `Customer: ${displayCustomerName}\nPayment #: ${selectedPayment.serial}\nInvoice: ${selectedPayment.invoiceNumber ? `#${selectedPayment.invoiceNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}` });
       return;
     }
     if (printingReceiptRef.current) return;
@@ -616,6 +583,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
 
   return (
     <>
+      {paymentEmail && <PaymentEmailModal {...paymentEmail} onClose={() => setPaymentEmail(null)} />}
       {receiptPreview && (
         <PaymentReceiptPreviewModal
           records={[receiptPreview.record]}
@@ -636,23 +604,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
             <X className="h-5 w-5" />
           </DocumentIconButton>
           <div className="flex h-full">
-            <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
-              <div className={`flex items-center border-b px-4 py-3 ${modalHeader}`}>
-                <h2 className="text-lg font-semibold">Payment Received</h2>
-              </div>
-
-              <div className={`border-b px-4 py-3 ${modalSidebar}`}>
-                <button
-                  onClick={openCreateForm}
-                  className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-gray-400"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Record Payment
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {payments.map((payment) => {
+            <PaymentHistorySidebar title="Payment Received" partyKind="Customer" partyName={displayCustomerName} payments={payments} loading={isFetching} total={currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice?.currency))} onCreate={openCreateForm}>
+              {visiblePayments => visiblePayments.map((payment) => {
                   const active = !showForm && selectedPayment?.id === payment.id;
                   return (
                     <button
@@ -678,26 +631,12 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     </button>
                   );
                 })}
+            </PaymentHistorySidebar>
 
-                {!isFetching && payments.length === 0 && (
-                  <div className="px-4 py-12 text-center text-sm text-gray-500">No payments recorded yet.</div>
-                )}
-              </div>
-
-              <div className={`border-t px-4 py-3 text-center ${modalHeader}`}>
-                <div className="text-lg font-semibold text-gray-900">
-                  {currencyLabel(payments.reduce((sum, item) => sum + item.amount, 0), text(invoice?.currency))}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {payments.length} {payments.length === 1 ? "Payment" : "Payments"}
-                </div>
-              </div>
-            </aside>
-
-            <section className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
+            <section className="flex min-w-0 flex-1 flex-col m-2 bg-white border border-gray-300 shadow-sm">
               {showForm ? (
-                <div className="flex-1 overflow-y-auto border-0 bg-white">
-                  <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 pr-14">
+                <div className="payment-form flex-1 min-h-0 overflow-y-auto border-0 bg-white">
+                  <div className="payment-form-header sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 pr-14">
                     <h3 className="text-lg font-semibold text-gray-900">{editingPaymentId ? "Edit Payment" : "Add Payment"}</h3>
                     <div className="flex items-center gap-2">
                       <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
@@ -732,8 +671,8 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-8 p-6 lg:grid-cols-2">
-                    <div className="space-y-4">
+                  <div className="payment-form-grid">
+                    <div className="payment-form-column">
                       <div>
                         <label className="text-xs text-gray-500">Payment #</label>
                         <input value={paymentSerial || nextPaymentNumber} onChange={(e) => setPaymentSerial(e.target.value)} className={fieldClass} />
@@ -793,7 +732,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <div>
                         <label className="text-xs text-gray-500">Amount</label>
                         {partyMode || editingPaymentId ? (
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="payment-amount-row mt-1 flex items-center gap-2">
                             {!partyMode && invoice && (
                               <button
                                 type="button"
@@ -806,13 +745,13 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                             <input
                               value={amount}
                               onChange={(e) => setAmount(e.target.value)}
-                              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                              className={PAYMENT_AMOUNT_CLASS}
                             />
                           </div>
                         ) : (
                           <div className="space-y-2">
                             {paymentDocs.map((doc) => (
-                              <div key={doc._id} className="mt-1 flex items-center gap-2">
+                              <div key={doc._id} className="payment-amount-row mt-1 flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -834,7 +773,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                                       [doc._id]: e.target.value,
                                     }))
                                   }
-                                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                                  className={PAYMENT_AMOUNT_CLASS}
                                 />
                               </div>
                             ))}
@@ -851,18 +790,18 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Notes</label>
-                        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none" />
+                        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} className={PAYMENT_NOTE_CLASS} />
                       </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="payment-form-column">
                       <div>
                         <label className="text-xs text-gray-500">Internal Notes</label>
                         <textarea
                           rows={4}
                           value={internalNotes}
                           onChange={(e) => setInternalNotes(e.target.value)}
-                          className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
+                          className={PAYMENT_NOTE_CLASS}
                         />
                       </div>
                       <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
@@ -889,24 +828,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
                       <DocumentIconButton title="Email" onClick={() => void openReceiptWindow("email")} >
                         <Mail className="h-4 w-4" />
                       </DocumentIconButton>
-                      <Dropdown
-                        align="right"
-                        panelClass="w-48"
-                        trigger={<DocumentIconButton as="span" title="More actions" ><MoreVertical className="h-4 w-4" /></DocumentIconButton>}
-                      >
-                        {(close) => (
-                          <>
-                            <button onClick={() => { openEditForm(); close(); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
-                              Edit
-                              <Pencil className="h-4 w-4 text-gray-400" />
-                            </button>
-                            <button onClick={() => { deletePaymentMut.mutate(); close(); }} disabled={deletePaymentMut.isPending} className="flex w-full items-center gap-2 border-t border-gray-200 px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-50 disabled:opacity-50">
-                              <Trash2 className="h-4 w-4" />
-                              {deletePaymentMut.isPending ? "Deleting..." : "Trash"}
-                            </button>
-                          </>
-                        )}
-                      </Dropdown>
+                      <DocumentIconButton title={deletePaymentMut.isPending ? "Deleting..." : "Trash / Delete"} disabled={deletePaymentMut.isPending} onClick={() => deletePaymentMut.mutate()}><Trash2 className="h-4 w-4" /></DocumentIconButton>
                     </div>
                   </div>
 

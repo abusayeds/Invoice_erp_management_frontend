@@ -1,4 +1,5 @@
 import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
+import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { printDocumentPdf } from "@/lib/printDocumentPdf";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -279,7 +280,7 @@ export const PaymentMade: React.FC = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<null | "preview" | "email" | "edit">(null);
+  const [modal, setModal] = useState<null | "preview" | "email" | "edit" | "pdfSettings">(null);
 
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -373,7 +374,7 @@ export const PaymentMade: React.FC = () => {
   }, [selectMode]);
 
   const actionIcons: { icon: React.ElementType; title: string; onClick?: () => void }[] = [
-    { icon: SlidersHorizontal, title: "Adjust" },
+    { icon: SlidersHorizontal, title: "Adjust", onClick: () => setModal("pdfSettings") },
     { icon: Pencil, title: "Edit", onClick: () => setModal("edit") },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
     { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("paymentMade", String(selected?.backendId || selectedDb?._id || "")) },
@@ -599,6 +600,7 @@ export const PaymentMade: React.FC = () => {
         return <PdfPreviewModal docType="paymentMade" recordId={d.id} title="Payment Made " onClose={() => setModal(null)}  onEmail={() => setModal("email")} backendId={String(selected?.backendId || selectedDb?._id || "") || undefined}/>;
       })()}
       {modal === "email" && <DocumentEmailModal docType="paymentMade" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
+      {modal === "pdfSettings" && <PdfPrintSettingsModal initialDocType="paymentMade" onClose={() => setModal(null)} />}
     </div>
   );
 };

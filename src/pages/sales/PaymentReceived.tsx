@@ -1,4 +1,5 @@
 import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
+import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal";
 import { printDocumentPdf } from "@/lib/printDocumentPdf";
 import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
 import { DocumentListRow } from "@/components/documents/DocumentListRow";
@@ -329,7 +330,7 @@ export const PaymentReceived: React.FC = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<null | "preview" | "email">(null);
+  const [modal, setModal] = useState<null | "preview" | "email" | "pdfSettings">(null);
 
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -463,7 +464,7 @@ export const PaymentReceived: React.FC = () => {
   }, [selectMode]);
 
   const actionIcons: { icon: React.ElementType; title: string; onClick?: () => void }[] = [
-    { icon: SlidersHorizontal, title: "Adjust" },
+    { icon: SlidersHorizontal, title: "Adjust", onClick: () => setModal("pdfSettings") },
     { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
     { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("paymentReceived", String(selected?.backendId || selectedDb?._id || ""), selected?.source || "received") },
@@ -685,6 +686,7 @@ export const PaymentReceived: React.FC = () => {
         );
       })()}
       {modal === "email" && <DocumentEmailModal docType="paymentReceived" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
+      {modal === "pdfSettings" && <PdfPrintSettingsModal initialDocType="paymentReceived" onClose={() => setModal(null)} />}
     </div>
   );
 };

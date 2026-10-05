@@ -1,3 +1,4 @@
+import { PAYMENT_FIELD_CLASS, PAYMENT_AMOUNT_CLASS, PAYMENT_NOTE_CLASS } from "@/components/payments/paymentFormStyles";
 /**
  * Record Payment Made — full panel (same layout as Payment Received).
  * Vendor + Bill are searchable; prefills when opened from a bill.
@@ -51,8 +52,7 @@ type Props = {
   asModal?: boolean;
 };
 
-const fieldClass =
-  "w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fieldClass = PAYMENT_FIELD_CLASS;
 
 const todayInput = () => new Date().toISOString().slice(0, 10);
 
@@ -350,11 +350,11 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
 
   return (
     <section
-      className={`overflow-y-auto custom-scrollbar bg-white border border-gray-300 shadow-sm ${
+      className={`payment-form overflow-y-auto custom-scrollbar bg-white border border-gray-300 shadow-sm ${
         asModal ? "rounded-lg max-h-[90vh]" : "flex-1 m-2"
       }`}
     >
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
+      <div className="payment-form-header flex items-center justify-between px-6 py-3 border-b border-gray-300 sticky top-0 bg-white z-20">
         <h1 className="text-lg font-semibold text-gray-900">Add Payment</h1>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">
@@ -387,8 +387,8 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6">
-        <div className="space-y-4">
+      <div className="payment-form-grid">
+        <div className="payment-form-column">
           <div>
             <label className="text-xs text-gray-500">Vendor *</label>
             <div className="relative" ref={vendorRef}>
@@ -509,11 +509,11 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
                   value={standaloneAmount}
                   onChange={(e) => setStandaloneAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                  className={PAYMENT_AMOUNT_CLASS}
                 />
               )}
               {selectedBills.map((b) => (
-                <div key={b._id} className="flex items-center gap-2">
+                <div key={b._id} className="payment-amount-row flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() =>
@@ -535,7 +535,7 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
                         [b._id]: e.target.value,
                       }))
                     }
-                    className="flex-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-900"
+                    className={PAYMENT_AMOUNT_CLASS}
                   />
                 </div>
               ))}
@@ -554,19 +554,19 @@ export const RecordPaymentMadeForm: React.FC<Props> = ({ onClose, onSaved, prefi
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm outline-none resize-none"
+              className={PAYMENT_NOTE_CLASS}
             />
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="payment-form-column">
           <div>
             <label className="text-xs text-gray-500">Internal Notes</label>
             <textarea
               value={internalNotes}
               onChange={(e) => setInternalNotes(e.target.value)}
               placeholder="Internal Notes"
-              className="mt-1 w-full h-20 border border-gray-300 rounded-md p-3 text-sm outline-none resize-none"
+              className={PAYMENT_NOTE_CLASS}
             />
           </div>
           <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />

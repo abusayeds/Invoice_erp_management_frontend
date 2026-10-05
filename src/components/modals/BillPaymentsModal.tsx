@@ -1,3 +1,8 @@
+import { PdfPreviewModal } from "@/lib/db/PdfPreviewModal";
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { PaymentEmailModal } from "@/components/payments/PaymentEmailModal";
+import { PAYMENT_FIELD_CLASS, PAYMENT_AMOUNT_CLASS, PAYMENT_NOTE_CLASS } from "@/components/payments/paymentFormStyles";
+import { PaymentHistorySidebar } from "@/components/payments/PaymentHistorySidebar";
 import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
 /**
  * Bill → Add Payment modal — same split-pane UX as InvoicePaymentsModal,
@@ -5,7 +10,7 @@ import { DocumentIconButton } from "@/components/documents/DocumentIconButton";
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Mail, MoreVertical, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
+import { Eye, Mail, Pencil, Printer, Trash2, X } from "lucide-react";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { useCollection, repo } from "@/lib/db";
@@ -101,47 +106,11 @@ const initLineAmountsForBills = (docs: BillPaymentDoc[]): Record<string, string>
 };
 
 const modalShell = "bg-white text-gray-900 border-gray-300";
-const modalSidebar = "bg-white border-gray-300";
-const modalHeader = "bg-gray-100 border-gray-300";
 const modalSection = "bg-gray-50 border-gray-300";
 const modalHover = "hover:bg-gray-50";
-const fieldClass =
-  "w-full mt-1 px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
+const fieldClass = PAYMENT_FIELD_CLASS;
 
-const Dropdown: React.FC<{
-  trigger: React.ReactNode;
-  children: (close: () => void) => React.ReactNode;
-  align?: "left" | "right";
-  panelClass?: string;
-}> = ({ trigger, children, align = "left", panelClass = "" }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleMouseDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((value) => !value)}>
-        {trigger}
-      </button>
-      {open && (
-        <div
-          className={`absolute z-30 mt-2 min-w-[180px] rounded-md border border-gray-200 bg-white py-1 shadow-xl ${
-            align === "right" ? "right-0" : "left-0"
-          } ${panelClass}`}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 type UnifiedPayment = {
   id: string;
@@ -170,6 +139,10 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
   const queryClient = useQueryClient();
   const localPaymentsMade = useCollection<any>("paymentsMade");
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
+  const [receiptPreview, setReceiptPreview] = useState<{ id: string; title: string } | null>(null);
+  const [paymentEmail, setPaymentEmail] = useState<{ subject: string; body: string } | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  const printingReceiptRef = useRef(false);
   const [showForm, setShowForm] = useState(true);
   const [paymentSerial, setPaymentSerial] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInput());
@@ -450,70 +423,28 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
     onError: (err: any) => showToast(err?.message || "Delete failed", "error"),
   });
 
-  const openReceiptWindow = (mode: "preview" | "print" | "email") => {
+  const openReceiptWindow = async (mode: "preview" | "print" | "email") => {
     if (!selectedPayment) return;
     const title = `Payment Receipt ${selectedPayment.serial}`;
-    const body = `
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            .sheet { border: 1px solid #d1d5db; }
-            .row { display: flex; justify-content: space-between; gap: 24px; padding: 16px; border-bottom: 1px solid #e5e7eb; }
-            .amount { font-size: 28px; font-weight: 700; text-align: center; padding: 28px 16px; border-bottom: 1px solid #e5e7eb; }
-            .section { padding: 16px; border-bottom: 1px solid #e5e7eb; }
-            table { border-collapse: collapse; }
-            td { border: 1px solid #d1d5db; padding: 6px 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="sheet">
-            <h1 style="text-align:center; padding:16px; margin:0; border-bottom:1px solid #d1d5db;">PAYMENT RECEIPT</h1>
-            <div class="row">
-              <div>
-                <div style="font-size:20px; font-weight:700;">info</div>
-                <div>${displayVendorName}</div>
-              </div>
-              <table>
-                <tr><td><strong>Payment #</strong></td><td>${selectedPayment.serial}</td></tr>
-                <tr><td><strong>Payment date</strong></td><td>${selectedPayment.dateLabel}</td></tr>
-                <tr><td><strong>Payment Type</strong></td><td>${selectedPayment.method}</td></tr>
-                <tr><td><strong>Amount</strong></td><td>${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</td></tr>
-              </table>
-            </div>
-            <div class="amount">${currencyLabel(selectedPayment.amount, selectedPayment.currency)}</div>
-            <div class="section"><strong>Bill</strong><div>${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}</div></div>
-            <div class="section"><strong>Notes</strong><div>${selectedPayment.notes || "No Notes"}</div></div>
-            <div class="section"><strong>Internal Notes</strong><div>${selectedPayment.internalNotes || "No Internal Notes"}</div></div>
-          </div>
-        </body>
-      </html>
-    `;
-
+    if (mode === "preview") { setReceiptPreview({ id: selectedPayment.id, title }); return; }
     if (mode === "email") {
-      const subject = encodeURIComponent(title);
-      const mailBody = encodeURIComponent(
-        `Vendor: ${displayVendorName}\nPayment #: ${selectedPayment.serial}\nBill: ${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}`,
-      );
-      window.location.href = `mailto:?subject=${subject}&body=${mailBody}`;
+      setReceiptPreview(null);
+      setPaymentEmail({ subject: title, body: `Vendor: ${displayVendorName}\nPayment #: ${selectedPayment.serial}\nBill: ${selectedPayment.billNumber ? `#${selectedPayment.billNumber}` : "—"}\nPayment date: ${selectedPayment.dateLabel}\nPayment type: ${selectedPayment.method}\nAmount: ${currencyLabel(selectedPayment.amount, selectedPayment.currency)}\n\nNotes: ${selectedPayment.notes || "No Notes"}` });
       return;
     }
-
-    const popup = window.open("", "_blank", "width=900,height=700");
-    if (!popup) {
-      showToast("Popup blocked by browser", "warning");
-      return;
-    }
-    popup.document.open();
-    popup.document.write(body);
-    popup.document.close();
-    if (mode === "print") popup.print();
+    if (printingReceiptRef.current) return;
+    printingReceiptRef.current = true;
+    setPrintingReceipt(true);
+    try { await printDocumentPdf("paymentMade", selectedPayment.id); }
+    finally { printingReceiptRef.current = false; setPrintingReceipt(false); }
   };
 
   if (!open || (!bill && !partyMode)) return null;
 
   return (
+    <>
+      {paymentEmail && <PaymentEmailModal {...paymentEmail} onClose={() => setPaymentEmail(null)} />}
+      {receiptPreview && <PdfPreviewModal docType="paymentMade" backendId={receiptPreview.id} title={receiptPreview.title} onClose={() => setReceiptPreview(null)} onEmail={() => void openReceiptWindow("email")} />}
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>
       <div className="flex h-full w-full items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
         <div className={`relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-2xl border shadow-2xl ${modalShell}`}>
@@ -526,24 +457,11 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
             <X className="h-5 w-5" />
           </DocumentIconButton>
           <div className="flex h-full">
-            <aside className={`flex w-full max-w-sm flex-col border-r ${modalSidebar}`}>
-              <div className={`flex items-center border-b px-4 py-3 ${modalHeader}`}>
-                <h2 className="text-lg font-semibold">Payment Made</h2>
-              </div>
-
-              <div className={`border-b px-4 py-3 ${modalSidebar}`}>
-                <button
-                  type="button"
-                  onClick={openCreateForm}
-                  className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-gray-400"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Record Payment
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {payments.map((payment) => {
+            <PaymentHistorySidebar title="Payment Made" partyKind="Vendor" partyName={displayVendorName} payments={payments} loading={isFetching} total={currencyLabel(
+                    payments.reduce((sum, item) => sum + item.amount, 0),
+                    text(bill?.currency),
+                  )} onCreate={openCreateForm}>
+              {visiblePayments => visiblePayments.map((payment) => {
                   const active = !showForm && selectedPayment?.id === payment.id;
                   return (
                     <button
@@ -574,29 +492,12 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                     </button>
                   );
                 })}
+            </PaymentHistorySidebar>
 
-                {!isFetching && payments.length === 0 && (
-                  <div className="px-4 py-12 text-center text-sm text-gray-500">No payments recorded yet.</div>
-                )}
-              </div>
-
-              <div className={`border-t px-4 py-3 text-center ${modalHeader}`}>
-                <div className="text-lg font-semibold text-gray-900">
-                  {currencyLabel(
-                    payments.reduce((sum, item) => sum + item.amount, 0),
-                    text(bill?.currency),
-                  )}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {payments.length} {payments.length === 1 ? "Payment" : "Payments"}
-                </div>
-              </div>
-            </aside>
-
-            <section className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
+            <section className="flex min-w-0 flex-1 flex-col m-2 bg-white border border-gray-300 shadow-sm">
               {showForm ? (
-                <div className="flex-1 overflow-y-auto border-0 bg-white">
-                  <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 pr-14">
+                <div className="payment-form flex-1 min-h-0 overflow-y-auto border-0 bg-white">
+                  <div className="payment-form-header sticky top-0 z-20 flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 pr-14">
                     <h3 className="text-lg font-semibold text-gray-900">Add Payment</h3>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
@@ -633,8 +534,8 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-8 p-6 lg:grid-cols-2">
-                    <div className="space-y-4">
+                  <div className="payment-form-grid">
+                    <div className="payment-form-column">
                       <div>
                         <label className="text-xs text-gray-500">Payment #</label>
                         <input
@@ -710,12 +611,12 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                           <input
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                            className={PAYMENT_AMOUNT_CLASS}
                           />
                         ) : (
                           <div className="space-y-2">
                             {paymentDocs.map((doc) => (
-                              <div key={doc._id} className="mt-1 flex items-center gap-2">
+                              <div key={doc._id} className="payment-amount-row mt-1 flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -737,7 +638,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                                       [doc._id]: e.target.value,
                                     }))
                                   }
-                                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-right text-sm text-gray-900"
+                                  className={PAYMENT_AMOUNT_CLASS}
                                 />
                               </div>
                             ))}
@@ -758,19 +659,19 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                           rows={4}
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
-                          className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
+                          className={PAYMENT_NOTE_CLASS}
                         />
                       </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="payment-form-column">
                       <div>
                         <label className="text-xs text-gray-500">Internal Notes</label>
                         <textarea
                           rows={4}
                           value={internalNotes}
                           onChange={(e) => setInternalNotes(e.target.value)}
-                          className="mt-1 h-20 w-full resize-none rounded-md border border-gray-300 p-3 text-sm outline-none"
+                          className={PAYMENT_NOTE_CLASS}
                         />
                       </div>
                       <DocAttachmentField compact value={attachment} onChange={(p) => setAttachment(p)} />
@@ -797,15 +698,16 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       <DocumentIconButton
                         type="button"
                         title="Preview"
-                        onClick={() => openReceiptWindow("preview")}
+                        onClick={() => void openReceiptWindow("preview")}
 
                       >
                         <Eye className="h-4 w-4" />
                       </DocumentIconButton>
                       <DocumentIconButton
                         type="button"
-                        title="Print"
-                        onClick={() => openReceiptWindow("print")}
+                        title={printingReceipt ? "Preparing print..." : "Print"}
+                        disabled={printingReceipt}
+                        onClick={() => void openReceiptWindow("print")}
 
                       >
                         <Printer className="h-4 w-4" />
@@ -813,47 +715,12 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
                       <DocumentIconButton
                         type="button"
                         title="Email"
-                        onClick={() => openReceiptWindow("email")}
+                        onClick={() => void openReceiptWindow("email")}
 
                       >
                         <Mail className="h-4 w-4" />
                       </DocumentIconButton>
-                      <Dropdown
-                        align="right"
-                        panelClass="w-48"
-                        trigger={
-                          <DocumentIconButton as="span" title="More actions" >
-                            <MoreVertical className="h-4 w-4" />
-                          </DocumentIconButton>
-                        }
-                      >
-                        {(close) => (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                openCreateForm();
-                                close();
-                              }}
-                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              Edit
-                              <Pencil className="h-4 w-4 text-gray-400" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                showToast("Trash is not available for vendor payments yet", "info");
-                                close();
-                              }}
-                              className="flex w-full items-center gap-2 border-t border-gray-200 px-3 py-2 text-left text-sm text-red-500 hover:bg-gray-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Trash
-                            </button>
-                          </>
-                        )}
-                      </Dropdown>
+                      <DocumentIconButton title={deletePaymentMut.isPending ? "Deleting..." : "Trash / Delete"} disabled={deletePaymentMut.isPending} onClick={() => deletePaymentMut.mutate()}><Trash2 className="h-4 w-4" /></DocumentIconButton>
                     </div>
                   </div>
 
@@ -918,6 +785,7 @@ export const BillPaymentsModal: React.FC<BillPaymentsModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 
