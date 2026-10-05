@@ -7,6 +7,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Plus,
   Play,
@@ -15,7 +16,6 @@ import {
   ChevronDown,
   Menu,
   X,
-  Check,
   Megaphone,
   Building2,
   Grid3x3,
@@ -42,6 +42,9 @@ import { api } from "@/lib/api/client";
 import { toArray } from "@/services/_http";
 import { resolveMediaUrl } from "@/lib/env";
 import { useAppTimer, toggleAppTimer, formatAppTimer } from "@/lib/timerStore";
+import { fetchHeaderUpdates } from "@/services/headerUpdatesApi";
+import { ApiError } from "@/lib/api/ApiError";
+import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -94,17 +97,13 @@ const createGroups: {
   },
 ];
 
-const sampleAnnouncements = [
-  { id: 1, title: "New feature: Bulk Invoice Export", description: "You can now export multiple invoices at once as PDF or CSV from the Invoices page.", date: "Apr 26, 2026", isNew: true },
-  { id: 2, title: "Scheduled maintenance — Apr 30", description: "The app will be unavailable from 2:00 AM to 4:00 AM UTC on April 30 for scheduled maintenance.", date: "Apr 24, 2026", isNew: true },
-  { id: 3, title: "Tax season reminder", description: "Don't forget to generate your quarterly tax reports before the deadline.", date: "Apr 18, 2026", isNew: false },
-];
-
-const sampleNotifications = [
-  { id: 1, title: "Invoice #1 is overdue", description: "Spark Tech Agency — $5,000 due", time: "2h ago", unread: true },
-  { id: 2, title: "Payment received", description: "Tech Corp paid Invoice #2", time: "5h ago", unread: true },
-  { id: 3, title: "New vendor added", description: "Fair Electronics was added", time: "1d ago", unread: false },
-];
+function updateDateLabel(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(undefined, {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const navigate = useNavigate();
@@ -124,9 +123,24 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMyAccount, setShowMyAccount] = useState(false);
   const [showApps, setShowApps] = useState(false);
-  const [notifications, setNotifications] = useState(sampleNotifications);
-  const [announcements, setAnnouncements] = useState(sampleAnnouncements);
   const [notifTab, setNotifTab] = useState<"notifications" | "announcements">("notifications");
+  const [updatePages, setUpdatePages] = useState({ notifications: 1, announcements: 1 });
+  const updatePage = updatePages[notifTab];
+  const canLoadUpdates = notifTab === "notifications"
+    ? user?.role === "company"
+    : ["company", "hr", "staff"].includes(user?.role || "");
+  const updatesQuery = useQuery({
+    queryKey: ["header-updates", user?.id, user?.role, notifTab, updatePage],
+    queryFn: ({ signal }) => fetchHeaderUpdates(notifTab, updatePage, signal),
+    enabled: showNotifications && !!user && canLoadUpdates,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: showNotifications ? 60_000 : false,
+  });
+
+  useEffect(() => {
+    setUpdatePages({ notifications: 1, announcements: 1 });
+  }, [user?.id]);
 
   const createRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -201,9 +215,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
-
-  const unreadCount = notifications.filter((n) => n.unread).length;
-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
 
   const appShortcuts = [
     { label: "Dashboard", path: "/dashboard" },
@@ -336,13 +347,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             }}
             className="p-1.5 hover:bg-gray-100 rounded transition-colors relative"
             title="Notifications"
+            aria-label="Notifications"
+            aria-expanded={showNotifications}
           >
             <Bell className="w-6 h-6 text-gray-700" />
-            {unreadCount > 0 && (
-              <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-medium">
-                {unreadCount}
-              </span>
-            )}
           </button>
 
           {showNotifications && (
@@ -350,12 +358,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900">Updates</h3>
                 <div className="flex items-center gap-2">
-                  {notifTab === "notifications" && unreadCount > 0 && (
-                    <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Mark all read
-                    </button>
-                  )}
-                  <button onClick={() => setShowNotifications(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <button aria-label="Close updates" onClick={() => setShowNotifications(false)} className="p-1 hover:bg-gray-100 rounded">
                     <X className="w-3.5 h-3.5 text-gray-500" />
                   </button>
                 </div>
@@ -374,31 +377,39 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                   <Megaphone className="w-3.5 h-3.5" /> Announcements
                 </button>
               </div>
-              <div className="max-h-72 overflow-y-auto">
-                {notifTab === "notifications"
-                  ? notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        onClick={() => setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, unread: false } : n)))}
-                        className={`px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${notif.unread ? "bg-blue-50" : ""}`}
-                      >
-                        <p className="text-sm font-medium text-gray-900">{notif.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{notif.description}</p>
-                        <p className="text-xs text-gray-400 mt-1">{notif.time}</p>
-                      </div>
-                    ))
-                  : announcements.map((ann) => (
-                      <div
-                        key={ann.id}
-                        onClick={() => setAnnouncements((prev) => prev.map((a) => (a.id === ann.id ? { ...a, isNew: false } : a)))}
-                        className={`px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${ann.isNew ? "bg-orange-50" : ""}`}
-                      >
-                        <p className="text-sm font-medium text-gray-900">{ann.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{ann.description}</p>
-                        <p className="text-xs text-gray-400 mt-1">{ann.date}</p>
-                      </div>
-                    ))}
+              <div className="max-h-72 overflow-y-auto" aria-live="polite" aria-busy={updatesQuery.isFetching}>
+                {!canLoadUpdates ? (
+                  <p className="px-4 py-6 text-xs text-gray-500">These updates are unavailable for your account.</p>
+                ) : updatesQuery.isPending ? (
+                  <p className="px-4 py-6 text-xs text-gray-500">Loading updates…</p>
+                ) : updatesQuery.isError ? (
+                  <div className="px-4 py-6 text-xs text-gray-500">
+                    <p>{updatesQuery.error instanceof ApiError && updatesQuery.error.status === 403
+                      ? "You don't have access to these updates."
+                      : "Unable to load updates. Please try again."}</p>
+                    <button type="button" onClick={() => void updatesQuery.refetch()} className="mt-2 text-blue-600 hover:text-blue-700">Retry</button>
+                  </div>
+                ) : !updatesQuery.data?.rows.length ? (
+                  <p className="px-4 py-6 text-xs text-gray-500">{notifTab === "notifications" ? "No notifications yet." : "No announcements yet."}</p>
+                ) : updatesQuery.data.rows.map((item) => (
+                  <div key={item._id} className="px-4 py-3 border-b border-gray-100 last:border-0">
+                    <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                    {(item.description || (typeof item.actor_id === "object" && item.actor_id?.name)) && (
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{item.description || (typeof item.actor_id === "object" ? item.actor_id?.name : "")}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">{updateDateLabel(item.createdAt || item.start_date)}</p>
+                  </div>
+                ))}
               </div>
+              {canLoadUpdates && !updatesQuery.isError && updatesQuery.data && (
+                <ListSidebarFooter
+                  total={updatesQuery.data.pagination.totalData}
+                  countLabel={notifTab === "notifications" ? "Notifications" : "Announcements"}
+                  pagination={updatesQuery.data.pagination}
+                  page={updatePage}
+                  onPageChange={updatesQuery.isFetching ? undefined : (page) => setUpdatePages((prev) => ({ ...prev, [notifTab]: page }))}
+                />
+              )}
             </div>
           )}
         </div>
