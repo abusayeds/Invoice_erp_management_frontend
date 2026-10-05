@@ -16,7 +16,6 @@ import { getPostLoginRedirect } from "../../auth/roles";
 
 /** Dev quick-fill only — matches the seed accounts created by the backend. */
 const QUICK_LOGIN_PRESETS = [
-  { label: "Super Admin", email: "superadmin@gmail.com" },
   { label: "Company", email: "company@gmail.com" },
 ];
 const QUICK_LOGIN_PASSWORD = "1qazxsw2";
@@ -69,6 +68,15 @@ export const Login: React.FC = () => {
               Enter your email
             </label>
             <div className="flex items-center gap-1.5">
+              <a
+                href="http://206.162.244.11:8090/login"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2 py-0.5 rounded border border-gray-300 text-[11px] text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                title="Open Super Admin login"
+              >
+                Super Admin
+              </a>
               {QUICK_LOGIN_PRESETS.map((preset) => (
                 <button
                   key={preset.email}
