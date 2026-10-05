@@ -866,18 +866,13 @@ export const SalesInvoiceReturns: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Warehouse <span className="text-red-500">*</span>
                 </label>
-                <select
+                <SearchSelect
                   value={formWarehouseId}
-                  onChange={(e) => setFormWarehouseId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-white"
-                >
-                  <option value="">Select Warehouse</option>
-                  {warehouses.map((w) => (
-                    <option key={w._id} value={w._id}>
-                      {(w.name ?? "").trim()}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setFormWarehouseId}
+                  options={warehouses.map((w) => ({ value: w._id, label: (w.name ?? "").trim() }))}
+                  placeholder="Select Warehouse"
+                  searchPlaceholder="Search warehouse…"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

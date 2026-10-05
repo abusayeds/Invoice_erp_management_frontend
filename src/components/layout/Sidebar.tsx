@@ -155,7 +155,7 @@ const navigationItems: NavItem[] = [
       { label: "Expenses", icon: Receipt, path: "/purchase/expense" },
       { label: "Payment Made", icon: CircleDollarSign, path: "/purchase/payment-made" },
       { label: "Debit Notes", icon: CreditCard, path: "/purchase/debit-notes" },
-      { label: "Purchase Returns", icon: FileStack, path: "/purchase/purchase-returns" },
+      // { label: "Purchase Returns", icon: FileStack, path: "/purchase/purchase-returns" },
       { label: "Warehouses", icon: Box, path: "/purchase/warehouses" },
       { label: "Transfers", icon: RefreshCcwDot, path: "/purchase/transfers" },
     ],
