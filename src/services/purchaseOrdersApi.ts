@@ -11,6 +11,7 @@ export type PurchaseOrderListRow = {
   amount: number;
   currency: string;
   status: string;
+  notes?: string;
 };
 
 const mapPoListStatus = (raw: unknown): string => {
@@ -51,6 +52,7 @@ const mapRow = (doc: any): PurchaseOrderListRow => ({
   amount: typeof doc.total === "number" ? doc.total : Number(doc.total) || 0,
   currency: String(doc.currency || "USD"),
   status: mapPoListStatus(doc.status),
+  notes: String(doc.notes || ""),
 });
 
 export async function fetchPurchaseOrders(params: {
@@ -62,6 +64,8 @@ export async function fetchPurchaseOrders(params: {
   isDeleted?: boolean;
   vendor_id?: string;
   dateField?: string;
+  dateFrom?: string;
+  dateTo?: string;
   startDate?: string;
   endDate?: string;
 }): Promise<{ rows: PurchaseOrderListRow[]; pagination: TPartyPagination }> {
@@ -74,6 +78,8 @@ export async function fetchPurchaseOrders(params: {
     isDeleted: params.isDeleted,
     vendor_id: params.vendor_id,
     dateField: params.dateField,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
     startDate: params.startDate,
     endDate: params.endDate,
   });
@@ -95,4 +101,9 @@ export async function updatePurchaseOrder(
 export async function hardDeletePurchaseOrders(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await api.raw.delete(`/purchase/invoices/hard-delete/${ids.join(",")}`);
+}
+
+export async function fetchPurchaseOrder(id: string): Promise<any> {
+  const res = await api.raw.get(`/purchase/invoices/single/${id}`);
+  return res.data?.data ?? res.data;
 }

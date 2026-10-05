@@ -1,3 +1,6 @@
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 /**
  * File: src/pages/sales/SalesReceipts.tsx
  * Sales Receipt — backend-driven master/detail layout.
@@ -126,32 +129,7 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
   );
 };
 
-const EmailModal: React.FC<{ onClose: () => void; row: ReceiptRow }> = ({ onClose, row }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-medium text-gray-900">Sales Receipt {row.number} from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue={`Sales Receipt ${row.number} from info`} className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-300 pb-2">From: info@inovoic.com</div>
-        <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
-          <p>Dear {row.name}</p>
-          <p>Sales Receipt {row.number}<br />Total Amount: {row.amount}</p>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 export const SalesReceipts: React.FC = () => {
   const queryClient = useQueryClient();
@@ -444,7 +422,7 @@ export const SalesReceipts: React.FC = () => {
               const active = !selectMode && !createOpen && !editOpen && row.id === selectedId;
               const isChecked = checked.has(Number(row.id));
               return (
-                <button key={String(row.id)} onClick={() => (selectMode ? toggleRow(Number(row.id)) : (setSelectedId(row.id), setCreateOpen(false), setEditOpen(false)))} className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
+                <DocumentListRow docType="salesReceipt" backendId={String(row.backendId || "")} label={row.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(row.backendId || row.id); setModal("email"); }} key={String(row.id)} onClick={() => (selectMode ? toggleRow(Number(row.id)) : (setSelectedId(row.id), setCreateOpen(false), setEditOpen(false)))} className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                   {selectMode && <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-gray-900 truncate">{row.name}</div>
@@ -455,7 +433,7 @@ export const SalesReceipts: React.FC = () => {
                     <span className="text-xs text-gray-500">{row.date}</span>
                     <span className="text-sm font-semibold text-gray-900 mt-1">{row.amount}</span>
                   </div>
-                </button>
+                </DocumentListRow>
               );
             })}
           </div>
@@ -486,7 +464,7 @@ export const SalesReceipts: React.FC = () => {
                 subtitle={selected.customerSubtitle || customerDisplaySubtitle(selectedCustomer) || ""}
               />
               <div className="flex items-center gap-0.5 flex-shrink-0">
-                {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Sales Receipt ${selectedDb.number} printed.`); setModal("preview"); } }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>)}
+                {[{ icon: Settings, title: "Settings", onClick: () => setModal("settings") }, { icon: expanded ? CircleChevronUp : CircleChevronDown, title: expanded ? "Collapse" : "Expand", onClick: () => setExpanded((v) => !v) }, { icon: SlidersHorizontal, title: "PDF & Print Settings", onClick: () => setModal("pdfSettings") }, { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) }, { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) }, { icon: Eye, title: "Preview", onClick: () => setModal("preview") }, { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("salesReceipt", String(selected?.backendId || selectedDb?._id || "")) }, { icon: Mail, title: "Email", onClick: () => setModal("email") }].map((item) => <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>)}
                 <Dropdown align="right" panelClass="w-56" trigger={<span title="More" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><MoreVertical className="w-4 h-4" /></span>}>
                   {(close) => (
                     <>
@@ -540,16 +518,16 @@ export const SalesReceipts: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Sales Receipt" onClose={() => setModal(null)} />}
-      {modal === "preview" && !!selectedDb.id && (
+      {modal === "preview" && !!selected?.backendId && (
         <PdfPreviewModal
           docType="salesReceipt"
           recordId={selectedDb.id}
           backendId={String(selected?.backendId || selectedDb._id || "") || undefined}
           title="Sales Receipt "
           onClose={() => setModal(null)}
-        />
+         onEmail={() => setModal("email")}/>
       )}
-      {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
+      {modal === "email" && <DocumentEmailModal docType="salesReceipt" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
       {sigRequestOpen && (
         <SignatureRequestModal

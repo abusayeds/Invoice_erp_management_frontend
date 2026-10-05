@@ -1,3 +1,6 @@
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { PdfPreviewModal } from "@/lib/db/PdfPreviewModal";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 /**
  * File: src/pages/sales/SalesInvoice.tsx
  * Sales Invoice — master/detail layout matching the reference design.
@@ -19,10 +22,8 @@ import { PdfPrintSettingsModal } from "@/components/modals/PdfPrintSettingsModal
 import { SignatureModal } from "@/components/modals/SignatureModal";
 import { SignatureRequestModal } from "@/components/modals/SignatureRequestModal";
 import { SignatureBlock } from "@/components/ui/SignatureBlock";
-import { PdfDocPreview } from "@/lib/db/PdfDocPreview";
-import { downloadServerPdf, printServerPdf, downloadServerBatchPdf, printServerBatchPdf, serverBatchPdfUrlForRecords, triggerBlobDownload, fetchServerPdfUrl, fetchServerBatchPdfUrl } from "@/lib/db/serverPdf";
+import { fetchServerPdfUrl, fetchServerBatchPdfUrl } from "@/lib/db/serverPdf";
 import { printPdfUrl } from "@/lib/printPdf";
-import { usePdfSettings, type PdfDocType } from "@/lib/db/pdfSettings";
 import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { ResizableListPanel } from "@/components/layout/ResizableListPanel";
@@ -443,58 +444,7 @@ const PreviewModal: React.FC<{ onClose: () => void; title?: string }> = ({ onClo
 );
 
 /* ── Email compose modal ───────────────────────────────────────── */
-const EmailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-medium text-gray-900">Invoice # 14 from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue="Invoice # 14 from info" className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <span className="text-sm text-gray-700">From: info@inovoic.com</span>
-          <div className="flex items-center gap-2 text-gray-500">
-            <ChevronDown className="w-4 h-4" />
-            <Pencil className="w-4 h-4" />
-          </div>
-        </div>
-        {/* toolbar */}
-        <div className="flex items-center gap-1 flex-wrap text-gray-500 border-b border-gray-300 pb-2">
-          <span className="inline-flex items-center text-xs px-1">Font <ChevronDown className="w-3 h-3 ml-0.5" /></span>
-          {[Bold, Italic, Underline].map((Ic, i) => <button key={i} className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded"><Ic className="w-3.5 h-3.5" /></button>)}
-          <span className="px-1 font-bold text-sm border-b-2 border-current">A</span>
-          {[AlignLeft, AlignCenter, AlignRight, ImageIcon, Link2].map((Ic, i) => <button key={i} className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded"><Ic className="w-3.5 h-3.5" /></button>)}
-        </div>
-        {/* body */}
-        <div className="text-sm text-gray-800 space-y-2 min-h-[140px]">
-          <p>Dear Sed aliquip eaque co</p>
-          <p>50 quie sint quos e<br />Invoice # 14<br />Invoice Total Amount: $9,093.88</p>
-          <p>Eos ab vel officiis</p>
-          <span className="inline-block px-4 py-2 bg-gray-100 rounded text-blue-600 font-semibold">Invoice # 14</span>
-        </div>
-        {/* attachment */}
-        <div className="flex items-center justify-between border-t border-gray-200 pt-3">
-          <span className="inline-flex items-center gap-2 px-2 py-1 bg-gray-100 rounded text-sm text-gray-700">
-            <FileText className="w-4 h-4" /> Invoice #14 <X className="w-3.5 h-3.5 cursor-pointer" />
-          </span>
-          <button className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-800 text-white"><Paperclip className="w-4 h-4" /></button>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 pt-1">
-          <input type="checkbox" defaultChecked className="accent-blue-600" /> Powered by Moon Invoice
-        </label>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 /* ── $ menu: Add Payment / Mark as Paid ▸ payment methods ──────── */
 const PaidMenu: React.FC<{
@@ -556,116 +506,7 @@ const InvoiceMoreMenu: React.FC<{
 };
 
 /* ── Packing Slip / Delivery Note preview (settings-driven, live data) ── */
-const DocTypePreview: React.FC<{
-  docType: PdfDocType;
-  title: string;
-  recordId: number;
-  recordIds?: number[];
-  /** Mongo `_id` — exact `/pdf/generate` preview */
-  backendId?: string;
-  onClose: () => void;
-}> = ({ docType, title, recordId, recordIds, backendId, onClose }) => {
-  const settings = usePdfSettings(docType, "normal");
-  // Batch mode: several selected records merged into one PDF (each on its own page).
-  const batchIds = (recordIds ?? []).filter((n) => Number.isFinite(n));
-  const isBatch = batchIds.length > 1;
-  const [batchUrl, setBatchUrl] = useState<string | null>(null);
-  const [batchLoading, setBatchLoading] = useState<boolean>(isBatch);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const onPdfUrl = useCallback((url: string | null) => setPreviewUrl(url), []);
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-  useEffect(() => {
-    if (!isBatch) return;
-    let alive = true;
-    let url: string | null = null;
-    setBatchLoading(true);
-    setBatchUrl(null);
-    serverBatchPdfUrlForRecords(docType, batchIds).then((u) => {
-      url = u;
-      if (!alive) { if (u) URL.revokeObjectURL(u); return; }
-      setBatchUrl(u);
-      setBatchLoading(false);
-    });
-    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docType, isBatch, batchIds.join(",")]);
-  const fileName = `${title || docType}.pdf`;
-  const onDownload = () => {
-    if (isBatch && batchUrl) {
-      triggerBlobDownload(batchUrl, fileName);
-      return;
-    }
-    if (!isBatch && previewUrl) {
-      triggerBlobDownload(previewUrl, fileName);
-      return;
-    }
-    void (isBatch
-      ? downloadServerBatchPdf(docType, batchIds, fileName)
-      : downloadServerPdf(docType, recordId, fileName, backendId));
-  };
-  const onPrint = () => {
-    if (isBatch && batchUrl) {
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      iframe.src = batchUrl;
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => iframe.remove(), 60000);
-      };
-      document.body.appendChild(iframe);
-      return;
-    }
-    if (!isBatch && previewUrl) {
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      iframe.src = previewUrl;
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => iframe.remove(), 60000);
-      };
-      document.body.appendChild(iframe);
-      return;
-    }
-    void (isBatch
-      ? printServerBatchPdf(docType, batchIds)
-      : printServerPdf(docType, recordId, backendId));
-  };
-  return (
-    <div className="fixed inset-0 z-[70] bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onMouseDown={onClose}>
-      <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-3xl my-6 rounded-lg overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-3 bg-[#2a2f36] text-white">
-          <h3 className="text-base font-medium">{title}</h3>
-          <div className="flex items-center gap-1">
-            <button type="button" title="Download" onClick={onDownload} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Download className="w-4 h-4" /></button>
-            <button type="button" title="Print" onClick={onPrint} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><Printer className="w-4 h-4" /></button>
-            <button type="button" onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10"><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-        {isBatch ? (
-          batchLoading ? (
-            <div style={{ width: "100%", height: "70vh", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div className="animate-spin" style={{ width: 44, height: 44, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%" }} />
-            </div>
-          ) : batchUrl ? (
-            <div style={{ width: "100%", height: "70vh", background: "#f3f4f6" }}>
-              <iframe src={`${batchUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} title="Documents PDF" style={{ width: "100%", height: "100%", border: "none" }} />
-            </div>
-          ) : (
-            <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} onPdfUrl={onPdfUrl} />
-          )
-        ) : (
-          <PdfDocPreview docType={docType} mode="normal" settings={settings} recordId={recordId} backendId={backendId} onPdfUrl={onPdfUrl} />
-        )}
-      </div>
-    </div>
-  );
-};
+const DocTypePreview = PdfPreviewModal;
 
 /* ── Activity Log modal — live events for one invoice ──────────── */
 const ActivityLogModal: React.FC<{ invoice: any; payments: any[]; onClose: () => void }> = ({ invoice, payments, onClose }) => {
@@ -893,7 +734,6 @@ export const SalesInvoice: React.FC = () => {
         isDeleted: statusFilter === "Trash" || undefined,
         customer_id: partyFilterParam(customerFilter),
       }),
-    placeholderData: (prev) => prev,
     staleTime: 15_000,
   });
   const listPagination = backendInvoiceList?.pagination;
@@ -1775,7 +1615,7 @@ export const SalesInvoice: React.FC = () => {
               const rowCustomer = dbCustomers.find((c) => c.id === dbInvoices.find((item) => item.id === inv.id)?.customerId);
               const rowSubtitle = customerDisplaySubtitle(rowCustomer) || inv.note;
               return (
-                <button
+                <DocumentListRow docType="invoice" backendId={String(inv.backendId || String(dbInvoices.find(item => item.id === inv.id)?._id || '') || "")} label={inv.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(inv.backendId || inv.id); setModal("email"); }}
                   key={inv.backendId || inv.id}
                   type="button"
                   onClick={() => (selectMode ? toggleRow(inv.id) : (setSelectedId(inv.backendId || inv.id), setCreateOpen(false), setEditOpen(false), setEditInvoice(null)))}
@@ -1804,7 +1644,7 @@ export const SalesInvoice: React.FC = () => {
                       {statusLabel(inv.status)}
                     </span>
                   </div>
-                </button>
+                </DocumentListRow>
               );
             })}
           </div>
@@ -2128,7 +1968,7 @@ export const SalesInvoice: React.FC = () => {
         void cn;
         void cp;
         const pdfBackendId = String(
-          selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || d?._id || "",
+          selected?.backendId || selectedDb?._id || d?._id || "",
         );
         const pdfRecordId = Number(d.id || selectedDb?.id || selected?.id) || 0;
         return (
@@ -2139,10 +1979,10 @@ export const SalesInvoice: React.FC = () => {
             recordIds={batchIds.length > 1 ? batchIds : undefined}
             backendId={pdfBackendId || undefined}
             onClose={() => setModal(null)}
-          />
+           onEmail={() => setModal("email")} backendIds={selectMode && selectedInvoices.length > 1 ? selectedInvoices.map(item => String(item.backendId || "")) : undefined}/>
         );
       })()}
-      {modal === "email" && <EmailModal onClose={() => setModal(null)} />}
+      {modal === "email" && <DocumentEmailModal docType="invoice" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {modal === "payment" && (
         <InvoicePaymentsModal
           open
@@ -2257,7 +2097,7 @@ export const SalesInvoice: React.FC = () => {
           recordId={Number(selectedDb?.id || selected?.id) || 0}
           backendId={String(selectedInvoiceDoc?._id || selected?.backendId || selectedDb?._id || "") || undefined}
           onClose={() => setDocPreview(null)}
-        />
+         onEmail={() => { setDocPreview(null); setModal("email"); }} backendIds={selectMode && selectedInvoices.length > 1 ? selectedInvoices.map(item => String(item.backendId || "")) : undefined}/>
       )}
       {activityOpen && (
         <ActivityLogModal invoice={selectedDb} payments={invoicePayments} onClose={() => setActivityOpen(false)} />

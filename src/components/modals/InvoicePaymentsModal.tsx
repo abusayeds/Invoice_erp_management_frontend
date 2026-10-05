@@ -620,6 +620,7 @@ export const InvoicePaymentsModal: React.FC<InvoicePaymentsModalProps> = ({
           records={[receiptPreview.record]}
           title={receiptPreview.title}
           onClose={() => setReceiptPreview(null)}
+          onEmail={() => void openReceiptWindow("email")}
         />
       )}
     <div className="fixed inset-0 z-[70] bg-black/50 p-4" onMouseDown={onClose}>

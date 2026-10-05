@@ -33,6 +33,11 @@ export function backendPdfType(docType: PdfDocType): string | undefined {
   return WEB_TO_PDF_TYPE[docType];
 }
 
+/** Thermal support exposed by the current backend dispatch. */
+export function supportsThermalPdf(docType: PdfDocType): boolean {
+  return hasServerPdf(docType) && !["paymentReceived", "paymentMade", "statement"].includes(docType);
+}
+
 /** True when this web doc-type has a real server PDF generator. */
 export function hasServerPdf(docType: PdfDocType): boolean {
   return !!WEB_TO_PDF_TYPE[docType];
@@ -75,15 +80,16 @@ export async function fetchServerPdfUrl(
 export async function fetchServerBatchPdfUrl(
   docType: PdfDocType,
   ids: string[],
+  opts?: { thermal?: boolean },
 ): Promise<string | null> {
   const type = WEB_TO_PDF_TYPE[docType];
   const clean = ids.filter(Boolean);
   if (!type || clean.length === 0 || !getToken()) return null;
-  if (clean.length === 1) return fetchServerPdfUrl(docType, clean[0]);
+  if (clean.length === 1) return fetchServerPdfUrl(docType, clean[0], opts);
   try {
     const res = await api.raw.post(
       "/pdf/generate",
-      { type, ids: clean },
+      { type, ids: clean, ...(opts?.thermal ? { thermal: true } : {}) },
       { responseType: "blob" },
     );
     return URL.createObjectURL(res.data as Blob);
@@ -113,6 +119,7 @@ const WEB_TO_COLLECTION: Partial<Record<PdfDocType, string>> = {
 export async function serverPdfUrlForRecord(
   docType: PdfDocType,
   recordId: number,
+  opts?: { thermal?: boolean },
 ): Promise<string | null> {
   const col = WEB_TO_COLLECTION[docType];
   if (!col) return null;
@@ -123,7 +130,7 @@ export async function serverPdfUrlForRecord(
       row = all.find((r: any) => r.id === recordId || String(r._id) === String(recordId));
     }
     if (!row?._id) return null;
-    return fetchServerPdfUrl(docType, String(row._id));
+    return fetchServerPdfUrl(docType, String(row._id), opts);
   } catch {
     return null;
   }
@@ -145,16 +152,17 @@ async function backendIdsForRecords(
       /* skip unresolved */
     }
   }
-  return out;
+  return out.length === recordIds.length ? out : [];
 }
 
 /** Merged backend PDF blob URL for several UI records (numeric ids), or null. */
 export async function serverBatchPdfUrlForRecords(
   docType: PdfDocType,
   recordIds: number[],
+  opts?: { thermal?: boolean },
 ): Promise<string | null> {
   const ids = await backendIdsForRecords(docType, recordIds);
-  return fetchServerBatchPdfUrl(docType, ids);
+  return fetchServerBatchPdfUrl(docType, ids, opts);
 }
 
 /** Sanitize a download filename and ensure it ends with `.pdf`. */

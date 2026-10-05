@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useCollection } from "./hooks";
-import { fetchServerPdfUrl, hasServerPdf } from "./serverPdf";
+import { fetchServerPdfUrl, hasServerPdf, supportsThermalPdf } from "./serverPdf";
 import type { PdfDocType, PdfSettings, PrintMode } from "./pdfSettings";
 import { fetchPaymentReceiptPdf } from "@/services/paymentReceiptPdfApi";
 
@@ -101,7 +101,7 @@ export const PdfDocPreview: React.FC<{
   useEffect(() => {
     let url: string | null = null;
     let alive = true;
-    if (!useServer) {
+    if (!useServer || (mode === "thermal" && !supportsThermalPdf(docType))) {
       setPdfLoading(false);
       setServerPdfUrl(null);
       setPdfFailed(true);
@@ -135,6 +135,10 @@ export const PdfDocPreview: React.FC<{
       if (url) URL.revokeObjectURL(url);
     };
   }, [docType, resolvedBackendId, mode, useServer, receiptSettingsKey]);
+
+  if (mode === "thermal" && !supportsThermalPdf(docType)) {
+    return <div role="status" className="p-8 bg-white text-gray-900">Thermal printing is not available for this document yet.</div>;
+  }
 
   if (pdfLoading) {
     return (

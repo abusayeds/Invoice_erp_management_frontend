@@ -1,3 +1,6 @@
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 /**
  * File: src/pages/sales/Proformainvoices.tsx
  * Proforma Invoice — backend-driven master/detail layout.
@@ -172,33 +175,7 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
   );
 };
 
-const EmailModal: React.FC<{ onClose: () => void; row: ProformaRow }> = ({ onClose, row }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-medium text-gray-900">Proforma Invoice {row.number} from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue={`Proforma Invoice ${row.number} from info`} className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-300 pb-2">From: info@inovoic.com</div>
-        <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
-          <p>Dear {row.name}</p>
-          <p>Proforma Invoice {row.number}<br />Total Amount: {row.amount}</p>
-          <span className="inline-block px-4 py-2 bg-gray-100 rounded text-blue-600 font-semibold">Proforma Invoice {row.number}</span>
-        </div>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 export const ProformaInvoices: React.FC = () => {
   const queryClient = useQueryClient();
@@ -618,7 +595,7 @@ export const ProformaInvoices: React.FC = () => {
               const active = !selectMode && !createOpen && !editRecord && (row.backendId ? row.backendId === selected?.backendId : row.id === selectedId);
               const isChecked = checked.has(Number(row.id));
               return (
-                <button
+                <DocumentListRow docType="proformaInvoice" backendId={String(row.backendId || "")} label={row.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(row.backendId || row.id); setModal("email"); }}
                   key={String(row.backendId || row.id)}
                   type="button"
                   onClick={() => (selectMode ? toggleRow(Number(row.id)) : (setSelectedId(row.backendId || row.id), setCreateOpen(false), setEditRecord(null)))}
@@ -637,7 +614,7 @@ export const ProformaInvoices: React.FC = () => {
                     <span className="text-sm font-semibold text-gray-900 mt-0.5">{row.amount}</span>
                     <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusBadge(row.status)}`}>{row.status}</span>
                   </div>
-                </button>
+                </DocumentListRow>
               );
             })}
           </div>
@@ -685,7 +662,7 @@ export const ProformaInvoices: React.FC = () => {
                   { icon: Pencil, title: "Edit", onClick: () => selectedDb?.id && setEditRecord(selectedDb) },
                   { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) },
                   { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
-                  { icon: Printer, title: "Print", onClick: () => setModal("preview") },
+                  { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("proformaInvoice", String(selected?.backendId || selectedDb?._id || "")) },
                   { icon: Mail, title: "Email", onClick: () => setModal("email") },
                 ].map((item) => (
                   <button key={item.title} title={item.title} onClick={item.onClick} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><item.icon className="w-4 h-4" /></button>
@@ -852,16 +829,16 @@ export const ProformaInvoices: React.FC = () => {
       )}
 
       {modal === "settings" && <AppSettingsModal initialTab="Proforma Invoice" onClose={() => setModal(null)} />}
-      {modal === "preview" && !!selectedDb.id && (
+      {modal === "preview" && !!selected?.backendId && (
         <PdfPreviewModal
           docType="proformaInvoice"
           recordId={selectedDb.id}
           backendId={String(selected?.backendId || selectedDb._id || "") || undefined}
           title="Proforma Invoice "
           onClose={() => setModal(null)}
-        />
+         onEmail={() => setModal("email")}/>
       )}
-      {modal === "email" && <EmailModal onClose={() => setModal(null)} row={selected} />}
+      {modal === "email" && <DocumentEmailModal docType="proformaInvoice" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="proformaInvoice" />}
       {sigOpen && <SignatureModal heading="Customer Signature" defaultName={selectedCustomer.contact || selectedCustomer.name || ""} onDone={saveSignature} onClose={() => setSigOpen(false)} />}
       {sigRequestOpen && (

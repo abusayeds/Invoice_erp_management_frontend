@@ -1,3 +1,6 @@
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 /**
  * File: src/pages/purchase/DebitNotes.tsx
  * Debit Note — master/detail layout matching the reference design.
@@ -269,36 +272,7 @@ const PreviewModal: React.FC<{ onClose: () => void; dn: DebitNote }> = ({ onClos
 );
 
 /* ── Email modal ───────────────────────────────────────────────── */
-const EmailModal: React.FC<{ onClose: () => void; dn: DebitNote }> = ({ onClose, dn }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-        <h3 className="text-base font-medium text-gray-900">Debit Note {dn.number} from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue={`Debit Note ${dn.number} from info`} className="w-full border-b border-gray-200 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-200 pb-2">From: info@inovoic.com</div>
-        <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
-          <p>Dear {dn.name}</p>
-          <p>Debit Note {dn.number}<br />Total Amount: {dn.amount}</p>
-          <span className="inline-block px-4 py-2 bg-gray-100 rounded text-blue-600 font-semibold">Debit Note {dn.number}</span>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 pt-1">
-          <input type="checkbox" defaultChecked className="accent-blue-600" /> Powered by Moon Invoice
-        </label>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 /* ── Floating-label field ──────────────────────────────────────── */
 const fieldCls = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-600";
@@ -747,7 +721,7 @@ export const DebitNotes: React.FC = () => {
     { icon: Pencil, title: "Edit", onClick: () => setEditMode(true) },
     { icon: PenTool, title: "Vendor Signature", onClick: () => setSigOpen(true) },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
-    { icon: Printer, title: "Print", onClick: () => { void logActivity("printed", `Debit Note ${selectedDb.number} printed.`); setModal("preview"); } },
+    { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("debitNote", String(selected?.backendId || selectedDb?._id || "")) },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
@@ -832,7 +806,7 @@ export const DebitNotes: React.FC = () => {
             const isChecked = checked.has(p.id);
             const applied = usedFor(p) > 0;
             return (
-              <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : (setSelectedId(p.id), setCreateOpen(false), setEditMode(false)))}
+              <DocumentListRow docType="debitNote" backendId={String(p.backendId || "")} label={p.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(p.id); setModal("email"); }} key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : (setSelectedId(p.id), setCreateOpen(false), setEditMode(false)))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-200 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
@@ -847,7 +821,7 @@ export const DebitNotes: React.FC = () => {
                   <span className={`text-sm font-semibold mt-0.5 ${applied ? "text-green-600" : "text-gray-900"}`}>{applied ? money(unusedFor(p)) : p.amount}</span>
                   <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[p.status]}`}>{p.status}</span>
                 </div>
-              </button>
+              </DocumentListRow>
             );
           })}
           </div>
@@ -1049,9 +1023,9 @@ export const DebitNotes: React.FC = () => {
       {modal === "settings" && <AppSettingsModal initialTab="Debit Note" onClose={() => setModal(null)} />}
       {modal === "preview" && (() => {
         const d: any = dbNotes.find((x) => String(x._id) === selectedId || String(x.id) === selectedId) || {};
-        return <PdfPreviewModal docType="debitNote" recordId={d.id} title="Debit Note " onClose={() => setModal(null)} />;
+        return <PdfPreviewModal docType="debitNote" recordId={d.id} title="Debit Note " onClose={() => setModal(null)}  onEmail={() => setModal("email")} backendId={String(selected?.backendId || selectedDb?._id || "") || undefined}/>;
       })()}
-      {modal === "email" && <EmailModal onClose={() => setModal(null)} dn={selected} />}
+      {modal === "email" && <DocumentEmailModal docType="debitNote" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {modal === "apply" && <ApplyModal onClose={() => setModal(null)} dn={selected} unused={unusedFor(selected)} openBills={openBills} onApply={applyToBill} />}
       {modal === "pdfSettings" && <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="debitNote" />}
       {sigOpen && (

@@ -9,12 +9,14 @@ export async function fetchPaymentReceiptPdf(
   records: PaymentReceiptReference[],
   settings?: PdfSettings,
   signal?: AbortSignal,
+  opts?: { thermal?: boolean },
 ): Promise<string> {
   let response;
   try {
     response = await api.raw.post("/pdf/generate", {
       type: "Payment_Received",
       renderMode: "web-receipt",
+      ...(opts?.thermal ? { thermal: true } : {}),
       ...(records.length === 1
         ? { id: records[0].id, source: records[0].source }
         : records.length > 1 ? { ids: records.map(record => record.id), records } : {}),

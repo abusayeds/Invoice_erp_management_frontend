@@ -1,3 +1,11 @@
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { numericId, specFor } from "@/lib/db/sync";
+import { db } from "@/lib/db/db";
+import { buildListSortParam } from "@/lib/listSort";
+import { LIST_PAGE_SIZE } from "@/components/ui/ListSidebarFooter";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 /**
  * File: src/pages/purchase/PurchaseOrders.tsx
  * Purchase Order — master/detail layout matching the reference design.
@@ -13,7 +21,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ListFilterDropdown as Dropdown } from "@/components/ui/ListFilterDropdown";
 import { MoreMenuFlyoutRow } from "@/components/ui/MoreMenuFlyoutRow";
-import { PartyFilterPopover } from "@/components/ui/PartyFilterPopover";
+import { PartyFilterPopover, partyFilterParam } from "@/components/ui/PartyFilterPopover";
 import { dateRangeFor } from "@/lib/listDateRange";
 import { ListEmptyState } from "@/components/ListEmptyState";
 import { ListSidebarFooter } from "@/components/ui/ListSidebarFooter";
@@ -30,7 +38,7 @@ import { ConfirmAlert } from "@/components/ui/ConfirmAlert";
 import { showToast } from "@/utils/toast";
 import { DocAttachmentField } from "@/components/ui/DocAttachmentField";
 import { DocPartyHeader, partyIdFromRef } from "@/components/modals/PartyDetailModal";
-import { updatePurchaseOrder, hardDeletePurchaseOrders } from "@/services/purchaseOrdersApi";
+import { updatePurchaseOrder, hardDeletePurchaseOrders, fetchPurchaseOrders, fetchPurchaseOrder } from "@/services/purchaseOrdersApi";
 import { api } from "@/lib/api/client";
 import {
   Search,
@@ -59,6 +67,7 @@ type Status = "Draft" | "Sent" | "Approved" | "On Hold" | "Disputed" | "Declined
 
 interface PurchaseOrder {
   id: number;
+  backendId: string;
   name: string;
   vendor: string;
   number: string;
@@ -154,36 +163,7 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
 };
 
 /* ── Email modal ───────────────────────────────────────────────── */
-const EmailModal: React.FC<{ onClose: () => void; po: PurchaseOrder }> = ({ onClose, po }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-        <h3 className="text-base font-medium text-gray-900">Purchase Order {po.number} from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue={`Purchase Order ${po.number} from info`} className="w-full border-b border-gray-200 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-200 pb-2">From: info@inovoic.com</div>
-        <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
-          <p>Dear {po.name}</p>
-          <p>Purchase Order {po.number}<br />Total Amount: {po.amount}</p>
-          <span className="inline-block px-4 py-2 bg-gray-100 rounded text-blue-600 font-semibold">Purchase Order {po.number}</span>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 pt-1">
-          <input type="checkbox" defaultChecked className="accent-blue-600" /> Powered by Moon Invoice
-        </label>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 /* ── Component ──────────────────────────────────────────────────── */
 export const PurchaseOrder: React.FC = () => {
@@ -191,6 +171,8 @@ export const PurchaseOrder: React.FC = () => {
   const navigate = useNavigate();
   const navState = (location.state as { selectedId?: number; openCreate?: boolean } | null) ?? null;
   const navSelectedId = navState?.selectedId;
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(navSelectedId ?? 1);
   useEffect(() => { if (navSelectedId != null) setSelectedId(navSelectedId); }, [navSelectedId]);
   const [sortBy, setSortBy] = useState("Purchase orders date");
@@ -223,46 +205,56 @@ export const PurchaseOrder: React.FC = () => {
   const dbOrders = useCollection<any>("purchaseOrders");
   const dbVendors = useCollection<any>("vendors", "name");
   const poDateRange = useMemo(() => dateRangeFor(dateFilter), [dateFilter]);
-  const filteredVendorLocalIds = useMemo(() => {
-    if (!vendorFilter.length) return null;
-    const keys = new Set(vendorFilter.map(String));
-    return new Set(
-      dbVendors.filter((v) => keys.has(String(v._id))).map((v) => v.id),
-    );
-  }, [dbVendors, vendorFilter]);
-  const orders: PurchaseOrder[] = useMemo(
-    () => dbOrders.slice().sort((a, b) => b.id - a.id).map((d) => {
-      const ven = dbVendors.find((v) => v.id === d.vendorId);
-      const vn = ven?.name || "—";
-      return { id: d.id, name: vn, vendor: ven?.contact || ven?.email || "", number: d.number, note: d.notes || "No Notes", date: d.date, amount: fmtMoney(d.total), status: normalizePoStatus(d.status), billNo: d.billNo || "-", billStatus: d.billStatus || "Not Billed" };
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter]);
+  const { data: backendOrders, isPending: ordersLoading, isError: ordersError, refetch: refetchOrders } = useQuery({
+    queryKey: ["purchase-orders-backend-list", page, search, sortBy, sortDir, statusFilter, vendorFilter, dateFilter],
+    queryFn: () => fetchPurchaseOrders({
+      page, limit: LIST_PAGE_SIZE, searchTerm: search || undefined,
+      sort: buildListSortParam(sortBy === "Total" ? "total" : sortBy === "Status" ? "status" : sortBy === "Purchase Order #" ? "invoice_number" : sortBy.includes("Name") ? "vendor_name" : "date", sortDir === "Ascending" ? "Ascending" : "Descending"),
+      status: statusFilter === "All" || statusFilter === "Trash" ? undefined : statusFilter === "Closed" ? "posted" : statusFilter.toLowerCase().replace(/\s/g, ""),
+      isDeleted: statusFilter === "Trash" || undefined,
+      vendor_id: partyFilterParam(vendorFilter), dateField: "date", ...poDateRange,
     }),
-    [dbOrders, dbVendors],
-  );
-
-  const filtered = useMemo(() => {
-    const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-    let list = orders.filter(
-      (i) =>
-        (statusFilter === "All" || i.status === statusFilter) &&
-        (filteredVendorLocalIds == null || filteredVendorLocalIds.has(dbOrders.find((d) => d.id === i.id)?.vendorId)) &&
-        matchesDateRange(i.date, poDateRange) &&
-        (search.trim() === "" || i.name.toLowerCase().includes(search.toLowerCase()) || i.number.includes(search)),
-    );
-    list = [...list].sort((a, b) => {
-      let r = 0;
-      if (sortBy === "Total") r = toNum(a.amount) - toNum(b.amount);
-      else if (sortBy === "Purchase Order #") r = a.id - b.id;
-      else if (sortBy === "Status") r = a.status.localeCompare(b.status);
-      else if (sortBy === "Name" || sortBy === "First Name" || sortBy === "Last Name") r = a.name.localeCompare(b.name);
-      else r = a.id - b.id; // Purchase orders date
-      return sortDir === "Ascending" ? r : -r;
-    });
-    return list;
-  }, [orders, sortBy, sortDir, statusFilter, filteredVendorLocalIds, poDateRange, search, dbOrders]);
-
+  });
+  const orders: PurchaseOrder[] = useMemo(() => (backendOrders?.rows ?? []).map(row => {
+    const cached = dbOrders.find(item => String(item._id) === row._id);
+    let amount: string;
+    try { amount = new Intl.NumberFormat("en-US", { style: "currency", currency: row.currency || "USD" }).format(row.amount); }
+    catch { amount = row.amount.toFixed(2) + " " + row.currency; }
+    return {
+      id: numericId(row._id), backendId: row._id, name: row.vendorName, vendor: "", number: "#" + row.number.replace(/^#/, ""),
+      note: row.notes || "No Notes", date: row.dateLabel, amount,
+      status: normalizePoStatus(row.status), billNo: cached?.billNo || "-", billStatus: cached?.billStatus || "Not Billed",
+    };
+  }), [backendOrders, dbOrders]);
+  const filtered = orders;
   const selected = orders.find((i) => i.id === selectedId) || orders[0];
-  const selectedDb: any = dbOrders.find((d) => d.id === (selected?.id ?? selectedId)) || {};
-  const selectedVendor: any = dbVendors.find((v) => v.id === selectedDb.vendorId) || {};
+  useEffect(() => {
+    if (orders.length && !orders.some(item => item.id === selectedId)) setSelectedId(orders[0].id);
+  }, [orders, selectedId]);
+  const { data: selectedOrderDoc } = useQuery({
+    queryKey: ["purchase-order-backend-detail", selected?.backendId],
+    enabled: !!selected?.backendId,
+    queryFn: async () => {
+      const raw = await fetchPurchaseOrder(selected!.backendId);
+      if (!raw) throw new Error("Purchase order not found");
+      const spec = specFor("purchaseOrders");
+      const existing = await db.purchaseOrders.get(numericId(String(raw._id)));
+      await db.purchaseOrders.put({ ...existing, ...(spec?.map(raw) || {}), id: numericId(String(raw._id)), _id: String(raw._id), Attachment: raw.Attachment || "", currency: raw.currency || "USD" } as any);
+      return raw;
+    },
+  });
+  const selectedDb: any = dbOrders.find(d => String(d._id) === selected?.backendId) || { id: selected?.id, _id: selected?.backendId, number: selected?.number };
+
+  const vendorRef = selectedOrderDoc?.vendor_id;
+  const vendorProfile = typeof vendorRef === "object" ? vendorRef?.businessProfile || {} : {};
+  const vendorAddress = vendorProfile.billing_address || {};
+  const selectedVendor: any = dbVendors.find(v => v.id === selectedDb.vendorId) || (typeof vendorRef === "object" ? {
+    ...vendorRef, name: vendorProfile.companyName || vendorRef.name, contact: vendorRef.name,
+    street1: vendorAddress.street, street2: vendorAddress.street2, city: vendorAddress.city,
+    state: vendorAddress.state, zip: vendorAddress.zip, country: vendorAddress.country,
+  } : {});
+
 
   /* Append an event to the purchase order's activity log. */
   const logActivity = async (kind: string, text: string) => {
@@ -271,6 +263,7 @@ export const PurchaseOrder: React.FC = () => {
   };
   const markAs = async (status: string) => {
     await repo.update("purchaseOrders", selectedDb.id, { status });
+    await queryClient.invalidateQueries({ queryKey: ["purchase-orders-backend-list"] });
     await logActivity(status === "Sent" ? "sent" : "status", `Purchase Order ${selectedDb.number} mark as ${status.toLowerCase()}.`);
     showToast(`Purchase order marked as ${status}`, "success");
   };
@@ -333,7 +326,8 @@ export const PurchaseOrder: React.FC = () => {
     const backendId = selectedDb?._id ? String(selectedDb._id) : "";
     try {
       if (permanent && backendId) await hardDeletePurchaseOrders([backendId]);
-      await repo.remove("purchaseOrders", selectedDb.id);
+      if (!permanent && backendId) await api.raw.delete(`/purchase/invoices/delete/${backendId}`);
+      await queryClient.invalidateQueries({ queryKey: ["purchase-orders-backend-list"] });
       showToast(permanent ? `Purchase Order ${selectedDb.number} permanently deleted` : `Purchase Order ${selectedDb.number} moved to trash`, "success");
     } catch {
       showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
@@ -342,22 +336,15 @@ export const PurchaseOrder: React.FC = () => {
     setConfirmAction(null);
   };
   const trashSelectedPo = async () => {
-    const ids = [...checked];
-    const permanent = statusFilter === "Trash";
-    const backendIds = ids
-      .map((id) => dbOrders.find((d) => d.id === id)?._id)
-      .filter(Boolean)
-      .map((v) => String(v));
+    const ids = orders.filter(row => checked.has(row.id)).map(row => row.backendId);
+    if (!ids.length || ids.length !== checked.size) { showToast("Select saved purchase orders to delete", "warning"); return; }
     try {
-      if (permanent && backendIds.length) await hardDeletePurchaseOrders(backendIds);
-      await repo.removeMany("purchaseOrders", ids);
-      showToast(`${ids.length} purchase ${ids.length === 1 ? "order" : "orders"} ${permanent ? "permanently deleted" : "moved to trash"}`, "success");
-    } catch {
-      showToast(permanent ? "Permanent delete failed" : "Delete failed", "error");
-    }
-    if (ids.includes(selectedId)) setSelectedId(orders.find((o) => !ids.includes(o.id))?.id ?? 0);
-    setConfirmAction(null);
-    exitSelect();
+      if (statusFilter === "Trash") await hardDeletePurchaseOrders(ids);
+      else await Promise.all(ids.map(id => api.raw.delete("/purchase/invoices/delete/" + id)));
+      await queryClient.invalidateQueries({ queryKey: ["purchase-orders-backend-list"] });
+      showToast(statusFilter === "Trash" ? "Purchase orders permanently deleted" : "Purchase orders moved to trash", "success");
+      setChecked(new Set()); setSelectMode(false); setConfirmAction(null);
+    } catch (error) { showToast(error instanceof Error ? error.message : "Unable to delete purchase orders", "error"); }
   };
   const saveSignature = async (data: { image: string; name: string; title: string; date: string }) => {
     const backendId = selectedDb?._id;
@@ -412,11 +399,13 @@ export const PurchaseOrder: React.FC = () => {
     { icon: Pencil, title: "Edit", onClick: () => selectedDb?.id && setEditRecord(selectedDb) },
     { icon: PenTool, title: "Vendor Signature", onClick: () => setSigOpen(true) },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
-    { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Purchase Order ${selectedDb.number} printed.`); setModal("preview"); } },
+    { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("purchaseOrder", String(selected?.backendId || selectedDb?._id || "")) },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
   const hasActiveFilters = statusFilter !== "All" || !!search.trim() || vendorFilter.length > 0 || dateFilter !== "All";
+  if (ordersLoading && !createOpen) return <div role="status" className="p-8">Loading purchase orders?</div>;
+  if (ordersError && !createOpen) return <div role="alert" className="p-8">Unable to load purchase orders. <button className="text-blue-600" onClick={() => void refetchOrders()}>Retry</button></div>;
   if (!selected && !createOpen && !hasActiveFilters) return <ListEmptyState title="No purchase orders yet" onCreate={() => setCreateOpen(true)} createLabel="New Purchase Order" />;
 
   return (
@@ -496,7 +485,7 @@ export const PurchaseOrder: React.FC = () => {
             const active = !selectMode && p.id === selectedId;
             const isChecked = checked.has(p.id);
             return (
-              <button key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : setSelectedId(p.id))}
+              <DocumentListRow docType="purchaseOrder" backendId={String(p.backendId || "")} label={p.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(p.id); setModal("email"); }} key={p.id} onClick={() => (selectMode ? toggleRow(p.id) : setSelectedId(p.id))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
@@ -511,18 +500,18 @@ export const PurchaseOrder: React.FC = () => {
                   <span className="text-sm font-semibold text-gray-900 mt-0.5">{p.amount}</span>
                   <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${poBadge(p.status)}`}>{p.status}</span>
                 </div>
-              </button>
+              </DocumentListRow>
             );
           })}
           </div>
         </div>
 
-        <ListSidebarFooter total={money(listTotal)} countLabel={`${filtered.length} Purchase Orders`} />
+        <ListSidebarFooter total={money(listTotal)} countLabel={`${backendOrders?.pagination.totalData ?? filtered.length} Purchase Orders`} pagination={backendOrders?.pagination} page={page} onPageChange={setPage} />
       </ResizableListPanel>
 
       {/* ════════ RIGHT PANEL ════════ */}
-      {createOpen ? (
-        <CreateDocForm collection="purchaseOrders" title="New Purchase Order" party="vendors" buy onClose={() => setCreateOpen(false)} onSaved={(id) => setSelectedId(id)} />
+      {!selected && !createOpen ? <section className="flex-1 p-8 text-gray-500">No purchase orders match the selected filters.</section> : createOpen ? (
+        <CreateDocForm collection="purchaseOrders" title="New Purchase Order" party="vendors" buy onClose={() => setCreateOpen(false)} onSaved={(id) => { setSelectedId(id); void queryClient.invalidateQueries({ queryKey: ["purchase-orders-backend-list"] }); }} />
       ) : editRecord ? (
         <CreateDocForm collection="purchaseOrders" title="Edit Purchase Order" party="vendors" buy record={editRecord} onClose={() => setEditRecord(null)} onSaved={(id) => { setEditRecord(null); setSelectedId(id); }} />
       ) : selectMode ? (
@@ -684,8 +673,8 @@ export const PurchaseOrder: React.FC = () => {
 
       {/* ════════ MODALS ════════ */}
       {modal === "settings" && <AppSettingsModal initialTab="Purchase Order" onClose={() => setModal(null)} />}
-      {modal === "preview" && (() => { const d: any = dbOrders.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="purchaseOrder" recordId={d.id} title={`Purchase Order `} onClose={() => setModal(null)} />; })()}
-      {modal === "email" && <EmailModal onClose={() => setModal(null)} po={selected} />}
+      {modal === "preview" && (() => { const d: any = dbOrders.find((x) => x.id === selectedId) || {}; const pp: any = dbVendors.find((x) => x.id === d.vendorId) || {}; const pn = pp.name || "—"; return <PdfPreviewModal docType="purchaseOrder" recordId={d.id} title={`Purchase Order `} onClose={() => setModal(null)}  onEmail={() => setModal("email")} backendId={String(selected?.backendId || selectedDb?._id || "") || undefined}/>; })()}
+      {modal === "email" && <DocumentEmailModal docType="purchaseOrder" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="purchaseOrder" />
       )}

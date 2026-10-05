@@ -1,3 +1,6 @@
+import { printDocumentPdf } from "@/lib/printDocumentPdf";
+import { DocumentEmailModal } from "@/components/documents/DocumentEmailModal";
+import { DocumentListRow } from "@/components/documents/DocumentListRow";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,36 +102,7 @@ const Overlay: React.FC<{ onClose: () => void; children: React.ReactNode }> = ({
 };
 
 /* ── DELIVERY CHALLAN preview (white document) ─────────────────── */
-const EmailModal: React.FC<{ onClose: () => void; row: ChallanRow }> = ({ onClose, row }) => (
-  <Overlay onClose={onClose}>
-    <div className="w-full max-w-2xl my-8 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-300">
-        <h3 className="text-base font-medium text-gray-900">Delivery Challan {row.number} from info</h3>
-        <div className="flex items-center gap-2">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"><Settings className="w-4 h-4" /></button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Cancel</button>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
-        </div>
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-300 pb-2">
-          <input placeholder="To" className="flex-1 bg-transparent text-sm outline-none" />
-          <button className="text-xs text-gray-500 hover:text-gray-700">Cc &amp; Bcc</button>
-        </div>
-        <input defaultValue={`Delivery Challan ${row.number} from info`} className="w-full border-b border-gray-300 pb-2 text-sm outline-none bg-transparent text-gray-900" />
-        <div className="text-sm text-gray-700 border-b border-gray-300 pb-2">From: info@inovoic.com</div>
-        <div className="text-sm text-gray-800 space-y-2 min-h-[120px]">
-          <p>Dear {row.name}</p>
-          <p>Delivery Challan {row.number}<br />Total Amount: {row.amount}</p>
-          <span className="inline-block px-4 py-2 bg-gray-100 rounded text-blue-600 font-semibold">Delivery Challan {row.number}</span>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 pt-1">
-          <input type="checkbox" defaultChecked className="accent-blue-600" /> Powered by Moon Invoice
-        </label>
-      </div>
-    </div>
-  </Overlay>
-);
+
 
 export const DeliveryChallan: React.FC = () => {
   const queryClient = useQueryClient();
@@ -346,7 +320,7 @@ export const DeliveryChallan: React.FC = () => {
     { icon: Pencil, title: "Edit", onClick: () => setEditOpen(true) },
     { icon: PenTool, title: "Customer Signature", onClick: () => setSigOpen(true) },
     { icon: Eye, title: "Preview", onClick: () => setModal("preview") },
-    { icon: Printer, title: "Print", onClick: () => { logActivity("printed", `Delivery Challan ${selectedDb.number} printed.`); setModal("preview"); } },
+    { icon: Printer, title: "Print", onClick: () => void printDocumentPdf("deliveryChallan", String(selected?.backendId || selectedDb?._id || "")) },
     { icon: Mail, title: "Email", onClick: () => setModal("email") },
   ];
 
@@ -432,7 +406,7 @@ export const DeliveryChallan: React.FC = () => {
             const active = !selectMode && !createOpen && !editOpen && p.backendId === selected?.backendId;
             const isChecked = checked.has(p.backendId);
             return (
-              <button key={p.backendId} onClick={() => (selectMode ? toggleRow(p.backendId) : (setSelectedId(p.backendId), setCreateOpen(false), setEditOpen(false)))}
+              <DocumentListRow docType="deliveryChallan" backendId={String(p.backendId || "")} label={p.number} permanent={statusFilter === "Trash"} selectMode={selectMode} onEmail={() => { setSelectedId(p.backendId); setModal("email"); }} key={p.backendId} onClick={() => (selectMode ? toggleRow(p.backendId) : (setSelectedId(p.backendId), setCreateOpen(false), setEditOpen(false)))}
                 className={`w-full text-left px-4 py-3 border-b border-gray-300 flex items-start gap-3 transition-colors ${active || (selectMode && isChecked) ? "bg-gray-100" : "hover:bg-gray-50"}`}>
                 {selectMode && (
                   <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-[5px] border flex items-center justify-center ${isChecked ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>{isChecked && <Check className="w-3.5 h-3.5 text-white" />}</span>
@@ -447,7 +421,7 @@ export const DeliveryChallan: React.FC = () => {
                   <span className="text-sm font-semibold text-gray-900 mt-0.5">{p.amount}</span>
                   <span className={`mt-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${badgeOf(p.status)}`}>{p.status}</span>
                 </div>
-              </button>
+              </DocumentListRow>
             );
           })}
           </div>
@@ -644,10 +618,10 @@ export const DeliveryChallan: React.FC = () => {
             backendId={String(selected?.backendId || d._id || "") || undefined}
             title={`Delivery Challan `}
             onClose={() => setModal(null)}
-          />
+           onEmail={() => setModal("email")}/>
         );
       })()}
-      {modal === "email" && selected && <EmailModal onClose={() => setModal(null)} row={selected} />}
+      {modal === "email" && selected && <DocumentEmailModal docType="deliveryChallan" backendId={String(selected?.backendId || selectedDb?._id || "")} onClose={() => setModal(null)} />}
       {modal === "pdfSettings" && (
         <PdfPrintSettingsModal onClose={() => setModal(null)} initialDocType="deliveryChallan" />
       )}
